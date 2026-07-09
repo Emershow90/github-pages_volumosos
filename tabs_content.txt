@@ -1,0 +1,227 @@
+        {/* CONTENT STAGE */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar pb-24">
+          {activeTab === "radar_lojas_live" && (
+            <RadarLojasTab
+              currentRole={currentRole}
+              onSaveRadar={setRadar}
+            />
+          )}
+
+          {activeTab === "dashboard" && (
+            <DashboardTab
+              setores={setores}
+              referentesSemana={referentesSemana}
+              colaboradores={colaboradores}
+              radar={radar}
+              reaproData={reaproData}
+              bolsaoData={bolsaoData}
+              copilData={copilData}
+              copilActiveSector={activeSectorId}
+              setCopilActiveSector={setActiveSectorId}
+              onToggleSeguranca={handleToggleSeguranca}
+              onSaveRadar={setRadar}
+              onSaveBolsao={setBolsaoData}
+              onSaveReapro={setReaproData}
+              terminalLogs={terminalLogs}
+              onTerminalCommand={handleTerminalCommand}
+              currentRole={currentRole}
+              historico={historico}
+              capacidade={capacidade}
+              onUpdateSetor={handleUpdateSetorField}
+            />
+          )}
+
+          {activeTab === "executivo" && (
+            <ExecutivoTab
+              setores={setoresFluctuated}
+              capacidade={capacidade}
+              alerts={alerts}
+              historico={historico}
+              copilData={copilData}
+              calcCopilNota={calcCopilNota}
+            />
+          )}
+
+          {activeTab === "analytics" && <AnalyticsTab setores={setoresFluctuated} historico={historico} />}
+
+          {activeTab === "capacidade" && (
+            <CapacidadeTab
+              setores={setores}
+              colaboradores={colaboradores}
+              capacidade={capacidade}
+              onUpdateCapacidade={handleUpdateCapacidade}
+            />
+          )}
+
+          {activeTab === "produtividade" && (
+            <ProdutividadeTab
+              setores={setores}
+              colaboradores={colaboradores}
+              activeSectorId={activeSectorId}
+              setActiveSectorId={setActiveSectorId}
+              onUpdateSetorProd={handleUpdateSetorProd}
+              onUpdateColaboradorStatus={handleUpdateColaboradorStatus}
+              onUpdateColaboradorHoras={handleUpdateColaboradorHoras}
+              onGravarTurno={handleGravarTurno}
+            />
+          )}
+
+          {activeTab === "mix" && (
+            <MixTab
+              setores={setores}
+              universos={universos}
+              onAddUniverso={(sid, nome, meta) => {
+                setUniversos((prev) => {
+                  const list = prev[sid] || [];
+                  return { ...prev, [sid]: [...list, { nome, meta, feito: 0 }] };
+                });
+                addAudit(currentUser, "Novo Mix Universo", sid, nome);
+              }}
+              onRemoveUniverso={(sid, uIdx) => {
+                setUniversos((prev) => {
+                  const list = (prev[sid] || []).filter((_, i) => i !== uIdx);
+                  return { ...prev, [sid]: list };
+                });
+                addAudit(currentUser, "Remover Mix Universo", sid, uIdx);
+              }}
+              onIncrementUniverso={(sid, uIdx, delta) => {
+                setUniversos((prev) => {
+                  const list = [...(prev[sid] || [])];
+                  if (list[uIdx]) {
+                    list[uIdx] = { ...list[uIdx], feito: list[uIdx].feito + delta };
+                  }
+                  return { ...prev, [sid]: list };
+                });
+                addAudit(currentUser, "Apontar Mix", `${sid}.${uIdx}`, delta);
+              }}
+              onZerarMix={() => {
+                if (currentRole !== UserRole.Admin) return;
+                setUniversos((prev) => {
+                  const copy = { ...prev };
+                  Object.keys(copy).forEach((k) => {
+                    copy[k] = (copy[k] as any[]).map((u: any) => ({ ...u, feito: 0 }));
+                  });
+                  return copy;
+                });
+                addAudit(currentUser, "Zerar Mix Completo", "Tudo", 0);
+              }}
+              onExportMixCSV={() => {
+                let csv = "Setor;Universo;Meta;Feito;Progresso\n";
+                Object.entries(universos).forEach(([sid, list]) => {
+                  (list as any[]).forEach((u: any) => {
+                    const pct = u.meta ? ((u.feito / u.meta) * 100).toFixed(1) : "0.0";
+                    csv += `${sid};${u.nome};${u.meta};${u.feito};${pct}%\n`;
+                  });
+                });
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.setAttribute("download", `backup_mix_volumosos.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+              currentRole={currentRole}
+            />
+          )}
+
+          {activeTab === "copil" && (
+            <CopilTab
+              setores={setores}
+              copilData={copilData}
+              activeSectorId={activeSectorId}
+              setActiveSectorId={setActiveSectorId}
+              onUpdateCopilKPI={handleUpdateCopilKPI}
+              onAddCopilKPI={handleAddCopilKPI}
+              onRemoveCopilKPI={handleRemoveCopilKPI}
+              onSaveCopil={() => {
+                localStorage.setItem("sys_copil", JSON.stringify(copilData));
+                addAudit(currentUser, "Gravação COPIL", "Estado", "Sucesso");
+                alert(`KPIs do Setor S${activeSectorId} salvos e sincronizados com sucesso.`);
+              }}
+              onExportCopilCSV={() => {
+                let csv = "Pilar;Indicador;Meta;Realizado;Resultado\n";
+                const activeCopil = copilData[activeSectorId];
+                if (activeCopil) {
+                  ["operacionais", "economico", "seguranca"].forEach((g) => {
+                    const list = (activeCopil as any)[g] || [];
+                    list.forEach((k: any) => {
+                      csv += `${g.toUpperCase()};${k.kpi};${k.comp};${k.real};${calcCopilNota(k)}\n`;
+                    });
+                  });
+                }
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.setAttribute("download", `copil_matriz_S${activeSectorId}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+              currentRole={currentRole}
+              calcCopilNota={calcCopilNota}
+              onRestoreDefaultKPIs={handleRestoreDefaultKPIs}
+              onBulkImportKPIs={handleBulkImportKPIs}
+            />
+          )}
+
+          {activeTab === "equipa" && (
+            <EquipaTab
+              colaboradores={colaboradores}
+              setores={setores}
+              onAddColaborador={handleAddColaborador}
+              onUpdateColaborador={handleUpdateColaborador}
+              onRemoveColaborador={handleRemoveColaborador}
+              onUpdateColaboradorStatus={handleUpdateColaboradorStatus}
+              onUpdateColaboradorHoras={handleUpdateColaboradorHoras}
+              onSetColaboradores={(cols) => setColaboradores(cols)}
+              currentRole={currentRole}
+            />
+          )}
+
+          {activeTab === "historico" && (
+            <HistoricoTab
+              historico={historico}
+              onClearHistorico={() => {
+                setHistorico([]);
+                // Save to PostgreSQL automatically
+                fetch("/api/historico_consolidado", { method: "DELETE" })
+                  .then(() => {
+                    addAudit(currentUser, "Limpar Histórico", "Todos", "Apagados");
+                  })
+                  .catch(err => console.error("Failed to clear consolidated history on DB:", err));
+              }}
+              currentRole={currentRole}
+            />
+          )}
+
+          {activeTab === "alerts" && (
+            <AlertasTab
+              alerts={alerts}
+              onMarkAlertLido={handleMarkAlertLido}
+              onClearOldAlerts={() => setAlerts([])}
+            />
+          )}
+
+          {activeTab === "audit" && (
+            <AuditoriaTab
+              audit={audit}
+              onClearAudit={() => {
+                setAudit([]);
+                // Save to PostgreSQL automatically
+                fetch("/api/audit_logs", { method: "DELETE" })
+                  .then(() => {
+                    addAudit(currentUser, "Limpar Auditoria", "Todos", "Apagados");
+                  })
+                  .catch(err => console.error("Failed to clear audit logs on DB:", err));
+              }}
+            />
+          )}
+
+          {activeTab === "relatorios" && <RelatoriosTab setores={setores} coordenador={currentUser} />}
+
+          {activeTab === "config" && (
+            <ConfigTab
+              setores={setores}
+              colaboradores={colaboradores}
+              referentesSemana={referentesSemana}
