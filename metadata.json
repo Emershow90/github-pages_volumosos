@@ -1,0 +1,6 @@
+{
+  "name": "Torre de Comando Volumosos",
+  "description": "Sistema de Monitoramento, Logística e Controle de Escala Micro dos Operadores",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
