@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) ? get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data : null;
+    }
+    
+    function getUserRole() {
+      let data = getUserData();
+      return data != null ? data.role : 'guest';
+    }
+    
+    function isSuperUser() {
+      return isAuthenticated() && request.auth.token.email != null && request.auth.token.email.lower() == 'emersonoliveira.goncalves@gmail.com';
+    }
+    
+    function isAdmin() {
+      return isSuperUser() || (isAuthenticated() && getUserRole() == 'admin');
+    }
+    
+    function isCoordenador() {
+      return isAuthenticated() && getUserRole() == 'coordenador';
+    }
+    
+    function isAdminOrCoordenador() {
+      return isSuperUser() || (isAuthenticated() && getUserRole() in ['admin', 'coordenador']);
+    }
+    
+    // Coleção usuarios
+    match /usuarios/{userId} {
+      allow read: if isAuthenticated();
+      
+      // Auto-cadastro apenas como "consulta"/"Pendente"
+      allow create: if isSuperUser() || (isAuthenticated()
+                    && request.auth.uid == userId
+                    && request.resource.data.role == 'consulta'
+                    && request.resource.data.situacao == 'Pendente'
+                    && request.resource.data.setoresAutorizados.size() == 0);
+      
+      allow update: if isAdminOrCoordenador();
+      allow delete: if isAdmin();
+    }
+    
+    // Coleções operacionais
+    match /store_master/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrCoordenador();
+    }
+    
+    match /store_operations/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrCoordenador();
+    }
+    
+    match /atividade_loja/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrCoordenador();
+    }
+    
+    match /lista_coleta/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrCoordenador();
+    }
+    
+    match /radar_lojas_status/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrCoordenador();
+    }
+    
+    match /setores/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrCoordenador();
+    }
+    
+    match /colaboradores/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrCoordenador();
+    }
+    
+    // Negar tudo não explicitamente permitido
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
