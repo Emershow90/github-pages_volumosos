@@ -261,66 +261,74 @@ const validateBody = (schema: z.ZodSchema) => (req: Request, res: Response, next
   next();
 };
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+// Express App Initialization
+export const app = express();
 
-  // Body parser
-  app.use(express.json());
+// Netlify compatibility middleware to normalize path
+app.use((req, res, next) => {
+  if (req.url.startsWith('/.netlify/functions/api')) {
+    req.url = req.url.replace('/.netlify/functions/api', '/api');
+  }
+  next();
+});
 
-  // CORS Config
-  const allowedOrigins = [
-    "http://localhost:3000",
-    "https://ais-dev-tjndsqzrue4au5i2br6va4-17783458042.us-east1.run.app",
-    "https://ais-pre-tjndsqzrue4au5i2br6va4-17783458042.us-east1.run.app"
-  ];
+// Body parser
+app.use(express.json());
 
-  const corsOptions: cors.CorsOptions = {
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      const isAllowed = allowedOrigins.includes(origin) || 
-                        origin.endsWith(".run.app") ||
-                        origin.startsWith("http://localhost:") ||
-                        origin.startsWith("https://localhost:");
-      if (isAllowed) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  };
-  app.use(cors(corsOptions));
+// CORS Config
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://ais-dev-tjndsqzrue4au5i2br6va4-17783458042.us-east1.run.app",
+  "https://ais-pre-tjndsqzrue4au5i2br6va4-17783458042.us-east1.run.app"
+];
 
-  // Public Health Check Endpoint (Registered BEFORE auth middleware)
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", database: process.env.SQL_HOST ? "connected" : "memory" });
-  });
-
-  // Auth Middleware
-  const authMiddleware = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    if (req.method === "OPTIONS") {
-      return next();
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const isAllowed = allowedOrigins.includes(origin) || 
+                      origin?.endsWith(".run.app") ||
+                      origin?.endsWith(".netlify.app") ||
+                      origin?.startsWith("http://localhost:") ||
+                      origin?.startsWith("https://localhost:");
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
     }
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Unauthorized: No token provided" });
-    }
-    const token = authHeader.split("Bearer ")[1];
-    try {
-      const decodedToken = await getAuth().verifyIdToken(token);
-      req.user = decodedToken;
-      next();
-    } catch (error: any) {
-      console.error("Token verification failed:", error);
-      return res.status(401).json({ error: "Unauthorized: Invalid token", details: error.message });
-    }
-  };
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+};
+app.use(cors(corsOptions));
 
-  // Mount Auth Middleware for all other API endpoints
-  app.use("/api", authMiddleware);
+// Public Health Check Endpoint (Registered BEFORE auth middleware)
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", database: process.env.SQL_HOST ? "connected" : "memory" });
+});
+
+// Auth Middleware
+const authMiddleware = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  if (req.method === "OPTIONS") {
+    return next();
+  }
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized: No token provided" });
+  }
+  const token = authHeader.split("Bearer ")[1];
+  try {
+    const decodedToken = await getAuth().verifyIdToken(token);
+    req.user = decodedToken;
+    next();
+  } catch (error: any) {
+    console.error("Token verification failed:", error);
+    return res.status(401).json({ error: "Unauthorized: Invalid token", details: error.message });
+  }
+};
+
+// Mount Auth Middleware for all other API endpoints
+app.use("/api", authMiddleware);
 
   // 1. SETORES API
   app.get("/api/setores", async (req, res) => {
@@ -870,6 +878,8 @@ async function startServer() {
     }
   });
 
+async function startServer() {
+  const PORT = 3000;
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -890,4 +900,7 @@ async function startServer() {
   });
 }
 
-startServer();
+// Only start the server if not running inside a serverless environment like Netlify
+if (!process.env.NETLIFY && !process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+  startServer();
+}
