@@ -30,34 +30,61 @@ class RealtimeSyncService {
       }
 
       if (this.unsubscribes.has(key)) return;
-      if (isStaticBuild || !supabase) return;
 
-      const channel = supabase.channel(key)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'store_operations',
-            filter: `programacaoId=eq.${programacaoId}`
-          },
-          (payload) => {
-            const changeType = payload.eventType;
-            const data = payload.new as StoreOperation;
-            if (changeType === 'INSERT' || changeType === 'UPDATE') {
-              useStoreOperations.getState().upsertOperation(data);
-            } else if (changeType === 'DELETE') {
-              const oldId = payload.old?.id;
-              if (oldId) {
-                useStoreOperations.getState().removeOperation(oldId);
-              }
-            }
+      let channel: any = null;
+      let cancelled = false;
+
+      // Buscar operações iniciais para essa programação
+      SupabaseService.fetchTable<StoreOperation>('store_operations')
+        .then((dbOps) => {
+          if (cancelled) return;
+          if (dbOps && dbOps.length > 0) {
+            const filtered = dbOps.filter(op => op.programacaoId === programacaoId);
+            const opsMap: Record<string, StoreOperation> = {};
+            filtered.forEach(op => {
+              opsMap[op.id] = op;
+            });
+            useStoreOperations.getState().setOperations(opsMap);
           }
-        )
-        .subscribe();
+
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'store_operations',
+                filter: `programacaoId=eq.${programacaoId}`
+              },
+              (payload) => {
+                const changeType = payload.eventType;
+                const data = payload.new as StoreOperation;
+                if (changeType === 'INSERT' || changeType === 'UPDATE') {
+                  useStoreOperations.getState().upsertOperation(data);
+                } else if (changeType === 'DELETE') {
+                  const oldId = payload.old?.id;
+                  if (oldId) {
+                    useStoreOperations.getState().removeOperation(oldId);
+                  }
+                }
+              }
+            )
+            .subscribe();
+
+          this.unsubscribes.set(key, () => {
+            cancelled = true;
+            if (channel) channel.unsubscribe();
+          });
+        })
+        .catch((err) => {
+          console.error("[RealtimeSyncService] Falha ao sincronizar operacoes iniciais:", err);
+        });
 
       this.unsubscribes.set(key, () => {
-        channel.unsubscribe();
+        cancelled = true;
+        if (channel) channel.unsubscribe();
       });
     });
 
@@ -84,34 +111,59 @@ class RealtimeSyncService {
       }
 
       if (this.unsubscribes.has(key)) return;
-      if (isStaticBuild || !supabase) return;
 
-      const channel = supabase.channel(key)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'atividade_loja',
-            filter: `programacaoId=eq.${programacaoId}`
-          },
-          (payload) => {
-            const changeType = payload.eventType;
-            const data = payload.new as AtividadeLoja;
-            if (changeType === 'INSERT' || changeType === 'UPDATE') {
-              useAtividadeLoja.getState().upsertAtividade(data);
-            } else if (changeType === 'DELETE') {
-              const oldId = payload.old?.id;
-              if (oldId) {
-                useAtividadeLoja.getState().removeAtividade(oldId);
-              }
-            }
+      let channel: any = null;
+      let cancelled = false;
+
+      // Buscar atividades iniciais de coleta para essa programação
+      SupabaseService.fetchTable<AtividadeLoja>('atividade_loja')
+        .then((dbAtivs) => {
+          if (cancelled) return;
+          if (dbAtivs && dbAtivs.length > 0) {
+            const filtered = dbAtivs.filter(ativ => ativ.programacaoId === programacaoId);
+            filtered.forEach(ativ => {
+              useAtividadeLoja.getState().upsertAtividade(ativ);
+            });
           }
-        )
-        .subscribe();
+
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'atividade_loja',
+                filter: `programacaoId=eq.${programacaoId}`
+              },
+              (payload) => {
+                const changeType = payload.eventType;
+                const data = payload.new as AtividadeLoja;
+                if (changeType === 'INSERT' || changeType === 'UPDATE') {
+                  useAtividadeLoja.getState().upsertAtividade(data);
+                } else if (changeType === 'DELETE') {
+                  const oldId = payload.old?.id;
+                  if (oldId) {
+                    useAtividadeLoja.getState().removeAtividade(oldId);
+                  }
+                }
+              }
+            )
+            .subscribe();
+
+          this.unsubscribes.set(key, () => {
+            cancelled = true;
+            if (channel) channel.unsubscribe();
+          });
+        })
+        .catch((err) => {
+          console.error("[RealtimeSyncService] Falha ao sincronizar atividades iniciais:", err);
+        });
 
       this.unsubscribes.set(key, () => {
-        channel.unsubscribe();
+        cancelled = true;
+        if (channel) channel.unsubscribe();
       });
     });
 

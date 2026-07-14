@@ -40,7 +40,7 @@ import { StoreService } from "../services/storeService";
 import { BusinessRules } from "../services/businessRules";
 import { SupabaseService as FirebaseService, isOnline } from "../lib/supabaseService";
 import { realtimeSync } from "../services/realtimeSyncService";
-import { StoreOperation, ParsedProgramRow, StoreMaster } from "../types";
+import { StoreOperation, ParsedProgramRow, StoreMaster, AtividadeLoja } from "../types";
 import { useSectorStore } from "../stores/useSectorStore";
 
 interface RadarLojasTabProps {
@@ -64,6 +64,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
   // Connection & sync state
   const [onlineState, setOnlineState] = useState<boolean>(isOnline());
   const [offlineQueueLength, setOfflineQueueLength] = useState<number>(0);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [applyToAllSectors, setApplyToAllSectors] = useState(false);
   
   // Local interaction state
@@ -116,9 +117,17 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
 
     // Check connectivity periodic interval
     const interval = setInterval(() => {
-      setOnlineState(isOnline());
+      const online = isOnline();
+      setOnlineState(online);
       const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
       setOfflineQueueLength(queue.length);
+
+      // Auto-flush queue if online and has pending items
+      if (online && queue.length > 0) {
+        FirebaseService.flushOfflineQueue().catch(err => {
+          console.warn("[Auto-Sync] Falha ao sincronizar fila offline em segundo plano:", err);
+        });
+      }
     }, 2000);
 
     return () => {
@@ -137,14 +146,72 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
   };
 
   // Connectivity switch
-  const handleToggleOffline = () => {
+  const handleToggleOffline = async () => {
     const simOffline = localStorage.getItem("sys_radar_sim_offline") === "true";
     localStorage.setItem("sys_radar_sim_offline", simOffline ? "false" : "true");
-    setOnlineState(!simOffline);
-    triggerFeedback(`Modo ${!simOffline ? "OFFLINE" : "ONLINE"} ativado.`);
+    const nextState = !simOffline;
+    setOnlineState(nextState);
+    triggerFeedback(`Modo ${nextState ? "ONLINE" : "OFFLINE"} ativado.`);
     
     if (simOffline) {
-      FirebaseService.flushOfflineQueue();
+      setIsSyncing(true);
+      try {
+        await FirebaseService.flushOfflineQueue();
+        triggerFeedback("Modo Online restabelecido e dados sincronizados com sucesso!");
+      } catch (err: any) {
+        console.error("[Sync Switch] Falha ao esvaziar fila de sincronização:", err);
+        triggerFeedback("Internet restabelecida, mas alguns itens da fila falharam ao sincronizar.", true);
+      } finally {
+        setIsSyncing(false);
+      }
+    }
+  };
+
+  // Force manual synchronization and reload local states from DB
+  const handleForceSync = async () => {
+    if (!onlineState) {
+      triggerFeedback("Não é possível sincronizar no modo offline.", true);
+      return;
+    }
+    setIsSyncing(true);
+    triggerFeedback("Iniciando sincronização forçada...");
+    try {
+      await FirebaseService.flushOfflineQueue();
+      
+      // Carregar os dados atualizados de volta do banco para garantir o live sync
+      const targetDate = "2026-07-05";
+      const dbOps = await FirebaseService.fetchTable<StoreOperation>('store_operations');
+      if (dbOps && dbOps.length > 0) {
+        const filtered = dbOps.filter(op => op.programacaoId === targetDate);
+        const opsMap: Record<string, StoreOperation> = {};
+        filtered.forEach(op => {
+          opsMap[op.id] = op;
+        });
+        useStoreOperations.getState().setOperations(opsMap);
+      }
+      
+      const dbAtivs = await FirebaseService.fetchTable<AtividadeLoja>('atividade_loja');
+      if (dbAtivs && dbAtivs.length > 0) {
+        const filtered = dbAtivs.filter(ativ => ativ.programacaoId === targetDate);
+        filtered.forEach(ativ => {
+          useAtividadeLoja.getState().upsertAtividade(ativ);
+        });
+      }
+
+      // Atualizar contador da fila
+      const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
+      setOfflineQueueLength(queue.length);
+
+      if (queue.length === 0) {
+        triggerFeedback("Sincronização concluída com sucesso!");
+      } else {
+        triggerFeedback(`Sincronização parcial realizada: ${queue.length} registros ainda pendentes.`, true);
+      }
+    } catch (err: any) {
+      console.error("[Force Sync] Erro geral na sincronização:", err);
+      triggerFeedback(`Falha ao sincronizar: ${err?.message || err}`, true);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -784,17 +851,33 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
 
           <div className="flex items-center justify-between text-xs text-zinc-300">
             <span className="font-mono">Fila de Alterações:</span>
-            <span className={`font-mono font-bold ${offlineQueueLength > 0 ? "text-amber-400" : "text-zinc-500"}`}>
+            <span className={`font-mono font-bold ${offlineQueueLength > 0 ? "text-amber-400 animate-pulse" : "text-zinc-500"}`}>
               {offlineQueueLength} registros pendentes
             </span>
           </div>
 
-          <button
-            onClick={handleToggleOffline}
-            className="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-bold font-mono text-[10px] py-2 rounded-lg border border-white/5 uppercase transition-colors"
-          >
-            Simular {onlineState ? "Corte de Internet" : "Restabelecer Conexão"}
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={handleToggleOffline}
+              disabled={isSyncing}
+              className="bg-zinc-900 hover:bg-zinc-800 disabled:opacity-55 text-zinc-300 font-bold font-mono text-[9px] py-2 px-1 rounded-lg border border-white/5 uppercase transition-colors text-center"
+            >
+              Simular {onlineState ? "Offline" : "Online"}
+            </button>
+
+            <button
+              onClick={handleForceSync}
+              disabled={isSyncing || !onlineState}
+              className={`flex items-center justify-center gap-1 font-bold font-mono text-[9px] py-2 px-1 rounded-lg border uppercase transition-all ${
+                offlineQueueLength > 0 && onlineState
+                  ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border-amber-500/30 animate-pulse"
+                  : "bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border-white/5 disabled:opacity-50"
+              }`}
+            >
+              <RefreshCw size={10} className={isSyncing ? "animate-spin" : ""} />
+              {isSyncing ? "Sincronizando..." : "Sincronizar"}
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
