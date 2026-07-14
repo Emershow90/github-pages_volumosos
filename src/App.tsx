@@ -93,12 +93,12 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Firestore connection tracking states
-  const [firestoreOnline, setFirestoreOnline] = useState<boolean | null>(null);
-  const [checkingFirestore, setCheckingFirestore] = useState(false);
+  // Supabase connection tracking states
+  const [supabaseOnline, setSupabaseOnline] = useState<boolean | null>(null);
+  const [checkingSupabase, setCheckingSupabase] = useState(false);
 
-  const checkFirestoreConnection = async () => {
-    setCheckingFirestore(true);
+  const verifySupabaseConnection = async () => {
+    setCheckingSupabase(true);
     try {
       const { supabase } = await import('./lib/supabase');
       
@@ -106,29 +106,29 @@ export default function App() {
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
       
       await Promise.race([checkPromise, timeoutPromise]);
-      setFirestoreOnline(true);
+      setSupabaseOnline(true);
       console.log('✅ [Supabase Connection Log] Supabase está acessível e online.');
     } catch (err) {
       console.warn('❌ [Supabase Connection Log] Erro ou timeout ao conectar com o Supabase:', err);
-      setFirestoreOnline(false);
+      setSupabaseOnline(false);
     } finally {
-      setCheckingFirestore(false);
+      setCheckingSupabase(false);
     }
   };
 
   useEffect(() => {
     if (fbUser?.uid) {
-      checkFirestoreConnection();
+      verifySupabaseConnection();
     } else {
-      setFirestoreOnline(null);
+      setSupabaseOnline(null);
     }
   }, [fbUser?.uid]);
 
-  // Sync with Firebase Auth state
+  // Sync with Supabase Auth state
   useEffect(() => {
     let resolved = false;
 
-    // Timeout de segurança: se o Firebase Auth não responder em 8s,
+    // Timeout de segurança: se o Supabase Auth não responder em 8s,
     // sai do estado de loading e mostra um erro explícito em vez de travar para sempre.
     const timeoutId = setTimeout(() => {
       if (!resolved) {
@@ -168,7 +168,7 @@ export default function App() {
         }
       },
       (error) => {
-        // Callback de erro do próprio onAuthStateChanged (ex: configuração inválida do Firebase)
+        // Callback de erro do próprio onAuthStateChanged (ex: configuração inválida do Supabase)
         resolved = true;
         clearTimeout(timeoutId);
         console.error("[Supabase Auth Error]", error);
@@ -1574,27 +1574,27 @@ export default function App() {
             )}
           </div>
 
-          {/* Firestore Connection Indicator */}
+          {/* Supabase Connection Indicator */}
           {fbUser && (
             <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1.5 rounded-xl border border-white/5 font-mono text-[9px] font-bold">
-              {checkingFirestore ? (
+              {checkingSupabase ? (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-pulse"></span>
-                  <span className="text-zinc-400 uppercase">Verificando Firestore...</span>
+                  <span className="text-zinc-400 uppercase">Verificando Supabase...</span>
                 </>
-              ) : firestoreOnline === true ? (
+              ) : supabaseOnline === true ? (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-                  <span className="text-emerald-400 uppercase">Firestore Conectado</span>
+                  <span className="text-emerald-400 uppercase">Supabase Conectado</span>
                 </>
-              ) : firestoreOnline === false ? (
+              ) : supabaseOnline === false ? (
                 <button
-                  onClick={checkFirestoreConnection}
-                  title="Clique para tentar reconectar ao Firestore"
+                  onClick={verifySupabaseConnection}
+                  title="Clique para tentar reconectar ao Supabase"
                   className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300 transition-all uppercase bg-rose-950/20 px-1.5 py-0.5 rounded border border-rose-500/30 cursor-pointer"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
-                  <span>Firestore Indisponível (Reconectar)</span>
+                  <span>Supabase Indisponível (Reconectar)</span>
                 </button>
               ) : null}
             </div>

@@ -430,7 +430,7 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
               className="space-y-4"
             >
               <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-3 text-[11px] text-zinc-400 font-medium leading-relaxed mb-2">
-                Esqueceu a senha? Digite seu e-mail abaixo. Nós lhe enviaremos um link seguro do Firebase para você redefinir sua senha imediatamente e evitar qualquer perda de acesso ou falhas no sistema.
+                Esqueceu a senha? Digite seu e-mail abaixo. Nós lhe enviaremos um link seguro do Supabase para você redefinir sua senha imediatamente e evitar qualquer perda de acesso ou falhas no sistema.
               </div>
 
               <div>
