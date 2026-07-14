@@ -168,12 +168,23 @@ export const getUserProfile = async (uid: string): Promise<Usuario | null> => {
     const { data, error } = await supabase!
       .from('usuarios')
       .select('*')
-      .eq('uid', uid)
+      .eq('id', uid)
       .single();
 
     if (error) throw error;
     if (data) {
-      const profile = data as Usuario;
+      const dbRecord = data as any;
+      const profile: Usuario = {
+        uid: dbRecord.id,
+        email: dbRecord.email,
+        nome: dbRecord.nome,
+        role: dbRecord.role as UserRole,
+        setoresAutorizados: dbRecord.setoresAutorizados || [],
+        foto: dbRecord.avatar_url,
+        cargo: dbRecord.cargo,
+        unidade: dbRecord.unidade,
+        situacao: dbRecord.situacao
+      };
       localStorage.setItem(localKey, JSON.stringify(profile));
       return profile;
     }
@@ -211,7 +222,17 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
           try {
             await supabase!
               .from('usuarios')
-              .upsert({ uid: user.uid, ...existing });
+              .upsert({
+                id: user.uid,
+                email: existing.email,
+                nome: existing.nome,
+                role: existing.role,
+                setoresAutorizados: existing.setoresAutorizados,
+                situacao: existing.situacao,
+                cargo: existing.cargo,
+                unidade: existing.unidade || 'CD Principal',
+                avatar_url: existing.foto || ''
+              });
           } catch (e) {
             console.warn("Could not elevate to admin online", e);
           }
@@ -234,7 +255,17 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
     if (!isStaticBuild) {
       await supabase!
         .from('usuarios')
-        .upsert({ uid: user.uid, ...defaultProfile });
+        .upsert({
+          id: user.uid,
+          email: defaultProfile.email,
+          nome: defaultProfile.nome,
+          role: defaultProfile.role,
+          setoresAutorizados: defaultProfile.setoresAutorizados,
+          situacao: defaultProfile.situacao,
+          cargo: defaultProfile.cargo,
+          unidade: defaultProfile.unidade || 'CD Principal',
+          avatar_url: defaultProfile.foto || ''
+        });
     }
     localStorage.setItem(localKey, JSON.stringify(defaultProfile));
     return defaultProfile;
@@ -412,7 +443,17 @@ export const signUpWithEmail = async (
 
   await supabase!
     .from('usuarios')
-    .upsert({ uid: u.id, ...userProfile });
+    .upsert({
+      id: u.id,
+      email: userProfile.email,
+      nome: userProfile.nome,
+      role: userProfile.role,
+      setoresAutorizados: userProfile.setoresAutorizados,
+      situacao: userProfile.situacao,
+      cargo: userProfile.cargo,
+      unidade: userProfile.unidade || 'CD Principal',
+      avatar_url: userProfile.foto || ''
+    });
 
   localStorage.setItem(`sys_cached_profile_${u.id}`, JSON.stringify(userProfile));
   return { user: mappedUser, profile: userProfile };
