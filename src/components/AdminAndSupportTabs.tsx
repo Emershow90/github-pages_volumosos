@@ -44,13 +44,13 @@ import {
   googleSignIn,
   logoutGoogle,
   initAuth
-} from "../lib/firebaseAuth";
+} from "../lib/supabaseAuth";
 import {
   createScaleSpreadsheet,
   writeScaleToSpreadsheet,
   readScaleFromSpreadsheet
 } from "../lib/googleSheetsService";
-import { FirebaseService } from "../lib/firebaseService";
+import { SupabaseService as FirebaseService } from "../lib/supabaseService";
 import { IndexedDBService } from "../lib/indexedDb";
 import { ListaColetaItem, RadarLojaStatus } from "../types";
 
