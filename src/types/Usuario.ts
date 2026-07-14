@@ -19,6 +19,8 @@ export interface Usuario {
   cargo?: string;
   unidade?: string;
   situacao: 'Ativo' | 'Inativo' | 'Pendente' | 'Erro';
+  aprovado_por?: string;
+  data_aprovacao?: string;
 }
 
 export interface UserSession {

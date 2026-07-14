@@ -183,7 +183,9 @@ export const getUserProfile = async (uid: string): Promise<Usuario | null> => {
         foto: dbRecord.avatar_url,
         cargo: dbRecord.cargo,
         unidade: dbRecord.unidade,
-        situacao: dbRecord.situacao
+        situacao: dbRecord.situacao,
+        aprovado_por: dbRecord.aprovado_por,
+        data_aprovacao: dbRecord.data_aprovacao
       };
       localStorage.setItem(localKey, JSON.stringify(profile));
       return profile;
@@ -231,7 +233,9 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
                 situacao: existing.situacao,
                 cargo: existing.cargo,
                 unidade: existing.unidade || 'CD Principal',
-                avatar_url: existing.foto || ''
+                avatar_url: existing.foto || '',
+                aprovado_por: existing.aprovado_por || null,
+                data_aprovacao: existing.data_aprovacao || null
               });
           } catch (e) {
             console.warn("Could not elevate to admin online", e);
@@ -264,7 +268,9 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
           situacao: defaultProfile.situacao,
           cargo: defaultProfile.cargo,
           unidade: defaultProfile.unidade || 'CD Principal',
-          avatar_url: defaultProfile.foto || ''
+          avatar_url: defaultProfile.foto || '',
+          aprovado_por: defaultProfile.aprovado_por || null,
+          data_aprovacao: defaultProfile.data_aprovacao || null
         });
     }
     localStorage.setItem(localKey, JSON.stringify(defaultProfile));
@@ -452,7 +458,9 @@ export const signUpWithEmail = async (
       situacao: userProfile.situacao,
       cargo: userProfile.cargo,
       unidade: userProfile.unidade || 'CD Principal',
-      avatar_url: userProfile.foto || ''
+      avatar_url: userProfile.foto || '',
+      aprovado_por: userProfile.aprovado_por || null,
+      data_aprovacao: userProfile.data_aprovacao || null
     });
 
   localStorage.setItem(`sys_cached_profile_${u.id}`, JSON.stringify(userProfile));

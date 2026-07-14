@@ -138,6 +138,8 @@ CREATE TABLE IF NOT EXISTS public.usuarios (
   cargo TEXT NOT NULL DEFAULT 'AGUARDANDO_APROVACAO',
   unidade TEXT NOT NULL DEFAULT 'CD Principal',
   avatar_url TEXT DEFAULT '',
+  aprovado_por TEXT,
+  data_aprovacao TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -398,3 +400,35 @@ CREATE POLICY select_escalas ON public.escalas
 
 CREATE POLICY write_escalas ON public.escalas 
   FOR ALL TO authenticated USING (public.has_write_access()) WITH CHECK (public.has_write_access());
+
+-- NOTIFICAÇÃO: Gatilho para disparar e-mail ao cadastrar usuário pendente via Supabase Edge Function
+CREATE EXTENSION IF NOT EXISTS pg_net SCHEMA extensions;
+
+CREATE OR REPLACE FUNCTION public.notify_admin_on_pending_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.situacao = 'Pendente' THEN
+    PERFORM
+      extensions.http_post(
+        'https://ojuewwutcymfqxzpdtci.supabase.co/functions/v1/notify-admin',
+        jsonb_build_object(
+          'Content-Type', 'application/json'
+        )::text,
+        jsonb_build_object(
+          'record', jsonb_build_object(
+            'nome', NEW.nome,
+            'email', NEW.email
+          )
+        )::text,
+        10000
+      );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE TRIGGER on_pending_user_created
+  AFTER INSERT ON public.usuarios
+  FOR EACH ROW
+  EXECUTE FUNCTION public.notify_admin_on_pending_user();
+

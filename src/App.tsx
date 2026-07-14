@@ -50,6 +50,8 @@ import {
   RelatoriosTab,
   ConfigTab,
 } from "./components/AdminAndSupportTabs";
+import { AdminApprovalTab } from "./components/AdminApprovalTab";
+import { useUserStore } from "./stores/useUserStore";
 import RadarLojasTab from "./components/RadarLojasTab";
 import { useStoreOperations } from "./stores/useStoreOperations";
 import { useSectorStore } from "./stores/useSectorStore";
@@ -80,13 +82,25 @@ import {
   UserCheck,
   RotateCcw,
   Radio,
+  ShieldAlert,
 } from "lucide-react";
 
 export default function App() {
-  // Global States
-  const [currentUser, setCurrentUser] = useState<string>(() => localStorage.getItem("current_user") || "Admin");
-  const [currentRole, setCurrentRole] = useState<UserRole>(() => (localStorage.getItem("current_role") as UserRole) || UserRole.Admin);
-  const [currentStatus, setCurrentStatus] = useState<string>(() => localStorage.getItem("current_status") || "Pendente");
+  // Global States from Zustand (Unified User and Auth states)
+  const {
+    currentUser,
+    setCurrentUser,
+    currentRole,
+    setCurrentRole,
+    currentStatus,
+    setCurrentStatus,
+    setCurrentUserUid,
+    toasts,
+    removeToast,
+    startListeningUserStatus,
+    pendingUsers,
+    loadPendingUsers
+  } = useUserStore();
 
   // Auth States
   const [fbUser, setFbUser] = useState<any>(null);
@@ -182,6 +196,24 @@ export default function App() {
       unsubscribe();
     };
   }, []);
+
+  // Listen for active user's status changes in database to fire toast and update page layout
+  useEffect(() => {
+    if (fbUser?.uid) {
+      setCurrentUserUid(fbUser.uid);
+      const unsubscribe = startListeningUserStatus(fbUser.uid);
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, [fbUser?.uid, startListeningUserStatus, setCurrentUserUid]);
+
+  // Load pending users for Admin on startup/role-change
+  useEffect(() => {
+    if (currentRole === UserRole.Admin) {
+      loadPendingUsers();
+    }
+  }, [currentRole, loadPendingUsers]);
 
   // Zustand Stores
   const {
@@ -581,7 +613,9 @@ export default function App() {
         if (resLideranca.ok && active) {
           const dbLider = await resLideranca.json();
           if (dbLider && dbLider.nome) {
-            setCurrentUser((prev) => (prev !== dbLider.nome ? dbLider.nome : prev));
+            if (currentUser !== dbLider.nome) {
+              setCurrentUser(dbLider.nome);
+            }
           }
         }
 
@@ -1788,6 +1822,32 @@ export default function App() {
           </div>
         </div>
 
+        {currentRole === UserRole.Admin && (
+          <div className="border border-white/5 bg-[#0b0b0f] rounded-lg p-1.5 flex flex-col gap-1.5 shadow-sm">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-mono font-black uppercase text-rose-500 tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+              Administração
+            </div>
+            <div className="grid grid-cols-1 gap-1">
+              <button
+                onClick={() => setActiveTab("aprovacoes")}
+                className={`nav-btn py-1 px-1 text-[10px] flex items-center justify-center gap-2 ${activeTab === "aprovacoes" ? "active" : ""}`}
+                title="Aprovações de Usuários"
+              >
+                <ShieldAlert size={11} className="text-rose-500" />
+                <span className="truncate flex items-center justify-between w-full">
+                  <span>Aprovações</span>
+                  {pendingUsers.length > 0 && (
+                    <span className="bg-amber-500 text-slate-900 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full animate-bounce">
+                      {pendingUsers.length}
+                    </span>
+                  )}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
       </nav>
 
       {/* CORE WRAPPER */}
@@ -2002,7 +2062,16 @@ export default function App() {
             </ProtectedRoute>
           )}
 
-                    {activeTab === "equipa" && (
+                    {activeTab === "aprovacoes" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin]}
+            >
+              <AdminApprovalTab />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "equipa" && (
             <ProtectedRoute 
               userRole={currentRole} 
               allowedRoles={[UserRole.Admin]}
@@ -2235,6 +2304,33 @@ export default function App() {
         >
           <TerminalIcon size={20} />
         </button>
+      </div>
+
+      {/* TOAST NOTIFICATIONS CONTAINER */}
+      <div className="fixed bottom-24 right-5 z-[99999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            id={`toast-${toast.id}`}
+            className={`p-4 rounded-xl shadow-2xl border text-white font-semibold flex items-center justify-between gap-3 transition-all duration-300 pointer-events-auto backdrop-blur-md ${
+              toast.type === 'success' ? 'bg-emerald-600/95 border-emerald-500' :
+              toast.type === 'error' ? 'bg-rose-600/95 border-rose-500' :
+              toast.type === 'warning' ? 'bg-amber-600/95 border-amber-500' :
+              'bg-blue-600/95 border-blue-500'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
+              <span className="text-xs md:text-sm">{toast.message}</span>
+            </div>
+            <button
+              onClick={() => removeToast(toast.id)}
+              className="text-white/70 hover:text-white text-xs font-black p-1 hover:bg-white/10 rounded transition-colors shrink-0"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
       </div>
 
       {/* INACTIVITY SCREENSAVER CANVAS OVERLAY */}
