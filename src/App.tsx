@@ -131,7 +131,6 @@ export default function App() {
   useEffect(() => {
     let resolved = false;
 
-    // Timeout de segurança: se o Supabase Auth não responder em 8s
     const timeoutId = setTimeout(() => {
       if (!resolved) {
         console.error(
@@ -174,7 +173,6 @@ export default function App() {
       }
     );
 
-    // Verifica estado inicial
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!resolved) {
         const user = session?.user || null;
@@ -253,15 +251,14 @@ export default function App() {
   const [isScreensaverActive, setIsScreensaverActive] = useState<boolean>(false);
   const [ticker, setTicker] = useState(0);
 
-  // Unified fluctuation selector (No state duplication!)
   const setoresFluctuated = React.useMemo(() => {
     return setores.map((s) => {
       const numericId = parseInt(s.id.replace(/\D/g, "")) || 0;
       const seed = numericId + ticker;
-      const change = (seed % 11) - 5; // -5 to +5
+      const change = (seed % 11) - 5;
       const newAtiv = Math.max(0, s.ativ + change);
       
-      const uphChange = (seed % 5) - 2; // -2 to +2
+      const uphChange = (seed % 5) - 2;
       const newUph = Math.max(10, s.uph + uphChange);
       
       return {
@@ -288,22 +285,18 @@ export default function App() {
     return () => clearInterval(clockTimer);
   }, []);
 
-  // Multi-site & Notifications States
   const [currentSite, setCurrentSite] = useState<string>(() => {
     return localStorage.getItem("sys_active_site") || "Campinas";
   });
 
-  // Zustand Operations Store for Radar live sync
   const operations = useStoreOperations((state) => state.operations);
 
-  // Real-time synchronization for store operations, sectors, collaborators & live radar syncing
   useEffect(() => {
     if (!supabaseUser?.id) {
       realtimeSync.stopAll();
       return;
     }
 
-    // Start listening in real-time to programming day: 2026-07-05
     const targetDate = "2026-07-05";
     realtimeSync.startListeningProgramacao(targetDate);
     realtimeSync.startListeningAtividades(targetDate);
@@ -315,7 +308,6 @@ export default function App() {
     };
   }, [supabaseUser?.id]);
 
-  // Synchronize radar with store_operations in real-time
   useEffect(() => {
     const opsList = Object.values(operations);
     if (opsList.length > 0) {
@@ -351,7 +343,6 @@ export default function App() {
     });
   };
 
-  // Helper to load site-specific data
   const loadSiteData = (site: string) => {
     try {
       const sSetores = localStorage.getItem(`sys_setores_${site}`);
@@ -411,12 +402,10 @@ export default function App() {
     }
   };
 
-  // Run on mount or site changes
   useEffect(() => {
     loadSiteData(currentSite);
   }, [currentSite]);
 
-  // Time States
   const [timeState, setTimeState] = useState<{ local: string; utc: string }>({
     local: "",
     utc: "",
@@ -437,11 +426,8 @@ export default function App() {
 
   const lastActivityRef = useRef<number>(Date.now());
 
-  // ---------------------------------------------------------------------------
   // TIMERS & BACKGROUND SIMULATION
-  // ---------------------------------------------------------------------------
   useEffect(() => {
-    // Clock updates
     const clockInt = setInterval(() => {
       const now = new Date();
       setTimeState({
@@ -450,12 +436,10 @@ export default function App() {
       });
     }, 1000);
 
-    // Dynamic alert and notification simulation (no state duplication!)
     const simulationInt = setInterval(() => {
       if (!setores || setores.length === 0) return;
       const s = setores[Math.floor(Math.random() * setores.length)];
 
-      // Randomly trigger safety or SLA alert
       if (Math.random() > 0.85) {
         const isSla = Math.random() > 0.5;
         const newAlert: AlertLog = {
@@ -472,7 +456,6 @@ export default function App() {
         setAlerts((a) => [newAlert, ...a]);
       }
 
-      // Randomly trigger notification simulation
       if (Math.random() > 0.85) {
         const types: ("info" | "success" | "warning" | "danger")[] = ["info", "success", "warning", "danger"];
         const notifType = types[Math.floor(Math.random() * types.length)];
@@ -515,9 +498,7 @@ export default function App() {
     };
   }, [setores]);
 
-  // ---------------------------------------------------------------------------
   // INACTIVITY / SCREENSAVER MONITOR
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!screensaver.enabled) return;
 
@@ -551,9 +532,7 @@ export default function App() {
     };
   }, [screensaver, isScreensaverActive]);
 
-  // ---------------------------------------------------------------------------
   // DATABASE SYNCHRONIZATION (Supabase)
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (authLoading || !supabaseUser) {
       return;
@@ -570,7 +549,6 @@ export default function App() {
       const signal = abortController.signal;
 
       try {
-        // 1. Fetch weekly schedule
         const resEscala = await fetchWithAuth("/api/escala_semanal", { signal });
         if (resEscala.ok && active) {
           const dbEscala = await resEscala.json();
@@ -590,7 +568,6 @@ export default function App() {
           }
         }
 
-        // 2. Fetch coordinator / leadership
         const resLideranca = await fetchWithAuth("/api/lideranca", { signal });
         if (resLideranca.ok && active) {
           const dbLider = await resLideranca.json();
@@ -599,7 +576,6 @@ export default function App() {
           }
         }
 
-        // 3. Fetch audit logs from database
         const resAudit = await fetchWithAuth("/api/audit_logs", { signal });
         if (resAudit.ok && active) {
           const dbAudit = await resAudit.json();
@@ -647,7 +623,6 @@ export default function App() {
           }
         }
 
-        // 4. Fetch consolidated history from database
         const resConsolidado = await fetchWithAuth("/api/historico_consolidado", { signal });
         if (resConsolidado.ok && active) {
           const dbConsolidado = await resConsolidado.json();
@@ -684,7 +659,6 @@ export default function App() {
 
     fetchFromDb();
 
-    // Poll every 30 seconds
     const interval = setInterval(fetchFromDb, 30000);
     return () => {
       active = false;
@@ -695,9 +669,7 @@ export default function App() {
     };
   }, [supabaseUser, authLoading]);
 
-  // ---------------------------------------------------------------------------
   // AUTO PERSISTENCE SYNC EFFECTS
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     localStorage.setItem("current_user", currentUser);
     if (authLoading || !supabaseUser) return;
@@ -791,9 +763,7 @@ export default function App() {
     localStorage.setItem("sys_historico", JSON.stringify(historico));
   }, [historico]);
 
-  // ---------------------------------------------------------------------------
   // CORE DISPATCHERS & STATE WRITERS
-  // ---------------------------------------------------------------------------
   const addAudit = (user: string, action: string, field: string, nVal: any, pVal?: any) => {
     const logData = {
       data: new Date().toISOString(),
@@ -811,7 +781,6 @@ export default function App() {
     };
     setAudit((prev) => [...prev, newLog]);
 
-    // Save to Supabase automatically if authenticated
     if (authLoading || !supabaseUser) return;
     fetchWithAuth("/api/audit_logs", {
       method: "POST",
@@ -907,7 +876,6 @@ export default function App() {
   const handleSaveRadar = React.useCallback(async (newRadar: RadarLoja[]) => {
     setRadar(newRadar);
     
-    // Push the changes to Supabase store_operations
     const currentOps = useStoreOperations.getState().operations;
     for (const r of newRadar) {
       const parts = r.loja.split(" - ");
@@ -957,6 +925,7 @@ export default function App() {
       prev.map((a) => (a.id === id ? { ...a, lido: true } : a))
     );
   };
+
   const handleGravarTurno = () => {
     const s = setores.find((x) => x.id === activeSectorId) || setores[0];
     if (!s) {
@@ -1003,8 +972,334 @@ export default function App() {
   };
 
   // ---------------------------------------------------------------------------
-  // RENDER
+  // COPIL DYNAMIC KPI COMPUTING
   // ---------------------------------------------------------------------------
+  const calcCopilNota = (row: any): string => {
+    if (row.notaManual && ["A", "B", "C", "D"].includes(row.notaManual)) {
+      return row.notaManual;
+    }
+
+    let ratioVal = -1;
+
+    if (row.auto) {
+      const s = setores.find((x) => x.id === activeSectorId) || setores[0];
+      const kpiLower = row.kpi.toLowerCase();
+      
+      if (kpiLower.includes("volume") || kpiLower.includes("produtividade")) {
+        const cap = capacidade.find((c) => c.id === s.id) || { abertura: 1000 };
+        const calculatedVal = cap.abertura > 0 ? (s.ativ / cap.abertura) : 0;
+        const meta = parseFloat(row.comp) || 1.0;
+        ratioVal = meta > 0 ? calculatedVal / meta : calculatedVal;
+      }
+      else if (kpiLower.includes("promessa") || kpiLower.includes("sla") || kpiLower.includes("eficiência")) {
+        const calculatedVal = s.promessa / 100;
+        const meta = (parseFloat(row.comp) || 95) / 100;
+        ratioVal = meta > 0 ? calculatedVal / meta : calculatedVal;
+      }
+      else if (kpiLower.includes("5s") || kpiLower.includes("auditoria") || kpiLower.includes("área")) {
+        const calculatedVal = s.nota5s / 100;
+        const meta = (parseFloat(row.comp) || 90) / 100;
+        ratioVal = meta > 0 ? calculatedVal / meta : calculatedVal;
+      }
+      else if (kpiLower.includes("reprocesso") || kpiLower.includes("erro")) {
+        const realReproRate = s.ativ > 0 ? (s.reproTotal || 0) / s.ativ : 0;
+        const metaReproRate = (parseFloat(row.comp) || 1.0) / 100;
+        ratioVal = realReproRate <= metaReproRate ? 1.0 : (realReproRate === 0 ? 0 : metaReproRate / realReproRate);
+      }
+      else if (kpiLower.includes("segurança") || kpiLower.includes("bsi")) {
+        const calculatedVal = s.bsi / 100;
+        const meta = (parseFloat(row.comp) || 98) / 100;
+        ratioVal = meta > 0 ? calculatedVal / meta : calculatedVal;
+      }
+    }
+
+    if (ratioVal === -1) {
+      if (!row.comp || !row.real || String(row.comp).trim() === "" || String(row.real).trim() === "") {
+        return "—";
+      }
+
+      const meta = parseFloat(row.comp);
+      const real = parseFloat(row.real);
+
+      if (isNaN(meta) || isNaN(real)) {
+        return "—";
+      }
+
+      const isVariacaoEstoque = row.regraCalculo === "Variação de Estoque" || row.kpi.toLowerCase().includes("variação") || row.kpi.toLowerCase().includes("variacao");
+
+      if (isVariacaoEstoque) {
+        if (meta > 0) {
+          if (Math.abs(real) <= meta) {
+            return "A";
+          } else {
+            return "D";
+          }
+        } else {
+          return real <= 0 ? "A" : "D";
+        }
+      }
+
+      const isInverse = row.regraCalculo === "Inverso" || row.inverso || row.kpi.toLowerCase().includes("erro") || row.kpi.toLowerCase().includes("infraç") || row.kpi.toLowerCase().includes("infrac");
+      if (isInverse) {
+        ratioVal = real <= meta ? 1.0 : (real === 0 ? 0 : meta / real);
+      } else {
+        ratioVal = meta > 0 ? real / meta : 1.0;
+      }
+    }
+
+    if (ratioVal >= 1.00) return "A";
+    if (ratioVal >= 0.95) return "B";
+    if (ratioVal >= 0.90) return "C";
+    return "D";
+  };
+
+  const handleUpdateCopilKPI = (sid: string, group: string, kpiIdx: number, field: string, value: string) => {
+    setCopilData((prev) => {
+      const copy = { ...prev };
+      const sector = { ...copy[sid] };
+      const list = [...(sector[group as keyof CopilSetor] as any[])];
+      list[kpiIdx] = { ...list[kpiIdx], [field]: value };
+      (sector as any)[group] = list;
+      copy[sid] = sector;
+      addAudit(currentUser, "Edição COPIL KPI", `${sid}.${group}.${kpiIdx}.${field}`, value);
+      return copy;
+    });
+  };
+
+  const handleAddCopilKPI = (sid: string, group: string, kpi: string, comp: string) => {
+    setCopilData((prev) => {
+      const copy = { ...prev };
+      const sector = { ...copy[sid] };
+      const list = [...(sector[group as keyof CopilSetor] as any[])];
+      list.push({ kpi, comp, real: "0", inverso: false, auto: false });
+      (sector as any)[group] = list;
+      copy[sid] = sector;
+      addAudit(currentUser, "Novo COPIL KPI", kpi, comp);
+      return copy;
+    });
+  };
+
+  const handleRemoveCopilKPI = (sid: string, group: string, kpiIdx: number) => {
+    setCopilData((prev) => {
+      const copy = { ...prev };
+      const sector = { ...copy[sid] };
+      const list = [...(sector[group as keyof CopilSetor] as any[])].filter((_, i) => i !== kpiIdx);
+      (sector as any)[group] = list;
+      copy[sid] = sector;
+      addAudit(currentUser, "Remover COPIL KPI", `${sid}.${group}.${kpiIdx}`, "Apagado");
+      return copy;
+    });
+  };
+
+  const handleRestoreDefaultKPIs = (sid: string) => {
+    setCopilData((prev) => {
+      const copy = { ...prev };
+      const standard = initialCopil[sid] || initialCopil["87"];
+      copy[sid] = JSON.parse(JSON.stringify(standard));
+      addAudit(currentUser, "Restaurar COPIL Padrão", sid, "Sucesso");
+      localStorage.setItem("sys_copil", JSON.stringify(copy));
+      return copy;
+    });
+    alert(`KPIs padrão do Setor S${sid} restaurados com sucesso!`);
+  };
+
+  const handleBulkImportKPIs = (validRows: any[]) => {
+    setCopilData((prev) => {
+      const copy = { ...prev };
+
+      validRows.forEach((row) => {
+        const sid = row.sector;
+        if (!copy[sid]) {
+          copy[sid] = { operacionais: [], economico: [], seguranca: [] };
+        }
+
+        let group: "operacionais" | "economico" | "seguranca" = "operacionais";
+        const kpiLower = row.kpi.toLowerCase();
+        if (kpiLower.includes("variação") || kpiLower.includes("estoque") || kpiLower.includes("demarca") || kpiLower.includes("economico") || kpiLower.includes("econômico")) {
+          group = "economico";
+        } else if (kpiLower.includes("segurança") || kpiLower.includes("seguranca") || kpiLower.includes("infração") || kpiLower.includes("infracao")) {
+          group = "seguranca";
+        }
+
+        const sectorGroupList = [...copy[sid][group]];
+        const existIdx = sectorGroupList.findIndex(k => k.kpi.toLowerCase() === row.kpi.toLowerCase());
+
+        const isInverse = kpiLower.includes("erro") || kpiLower.includes("infraç") || kpiLower.includes("infrac") || kpiLower.includes("reprocesso");
+
+        const newKpiObj = {
+          kpi: row.kpi,
+          comp: row.meta,
+          real: row.real,
+          tolerancia: row.tolerancia || row.meta,
+          regraCalculo: group === "economico" ? "Variação de Estoque" : (isInverse ? "Inverso" : "Padrão"),
+          criterio: row.obs || "Dentro do Limite = A",
+          notaManual: row.nota || "auto",
+          calcNota: true,
+          inverso: isInverse,
+          auto: false
+        };
+
+        if (existIdx !== -1) {
+          sectorGroupList[existIdx] = {
+            ...sectorGroupList[existIdx],
+            comp: row.meta,
+            real: row.real,
+            notaManual: row.nota || sectorGroupList[existIdx].notaManual || "auto",
+            tolerancia: row.tolerancia || sectorGroupList[existIdx].tolerancia,
+            criterio: row.obs || sectorGroupList[existIdx].criterio,
+          };
+        } else {
+          sectorGroupList.push(newKpiObj);
+        }
+
+        copy[sid][group] = sectorGroupList;
+
+        const recordDate = row.data || new Date().toLocaleDateString("pt-BR");
+        const recordSemana = row.semana || "S4";
+        const calculatedNota = calcCopilNota(newKpiObj);
+
+        if (authLoading || !supabaseUser) return;
+        fetchWithAuth("/api/historico_consolidado", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data: recordDate,
+            hora: new Date().toLocaleTimeString("pt-BR"),
+            semana: recordSemana,
+            setorId: sid,
+            capacidadeAbertura: 1000,
+            eficienciaSla: 95,
+            auditoria5s: 90,
+            reprocessoRate: 0.5,
+            segurancaBsi: 100,
+            statusGeral: calculatedNota,
+            obs: row.obs || `Importado via planilha. KPI: ${row.kpi}`
+          })
+        }).catch(err => console.error("Database save failed:", err));
+      });
+
+      addAudit(currentUser, "Importação Planilha COPIL", `${validRows.length} linhas`, "Sucesso");
+      localStorage.setItem("sys_copil", JSON.stringify(copy));
+      return copy;
+    });
+  };
+
+  const handleToggleSeguranca = (index: number) => {
+    setSetores((prev) => {
+      const copy = [...prev];
+      const prevVal = copy[index].infracaoSeguranca;
+      const updated = { ...copy[index], infracaoSeguranca: !prevVal };
+      copy[index] = updated;
+      addAudit(currentUser, "Segurança Setor", copy[index].id, !prevVal, prevVal);
+      SupabaseService.upsertRecord('setores', updated).catch(err => console.error("Failed to upsert sector safety:", err));
+      return copy;
+    });
+  };
+
+  // REGEX AI COPIL TERMINAL COMMANDS
+  const handleTerminalCommand = (cmd: string) => {
+    if (!cmd) return;
+
+    setTerminalLogs((prev) => [...prev, `> ${cmd}`]);
+
+    const helpMatch = cmd.match(/^\/ajuda/i);
+    const setAtivMatch = cmd.match(/^\/setor\s+(\d+)\s+ativ\s+(\d+)/i);
+    const setUphMatch = cmd.match(/^\/setor\s+(\d+)\s+uph\s+(\d+)/i);
+    const alertMatch = cmd.match(/^\/alerta\s+(.+)/i);
+    const reaproMatch = cmd.match(/^\/reaproveitar/i);
+    const suggestMatch = cmd.match(/^\/sugerir/i);
+
+    if (helpMatch) {
+      setTerminalLogs((prev) => [
+        ...prev,
+        "COMANDOS DISPONÍVEIS:",
+        "  /setor [id] ativ [val]  - Ajusta ATIV do setor",
+        "  /setor [id] uph [val]   - Ajusta UPH do setor",
+        "  /alerta [mensagem]       - Dispara alerta operacional",
+        "  /reaproveitar           - Limpa volumetria e re-aloca",
+        "  /sugerir                - Diagnóstico IA de Gargalos",
+      ]);
+    } else if (setAtivMatch) {
+      const sid = setAtivMatch[1];
+      const val = parseInt(setAtivMatch[2]);
+      if (setores.some((s) => s.id === sid)) {
+        handleUpdateSetorProd(sid, "ativ", val);
+        setTerminalLogs((prev) => [...prev, `[Sucesso] Setor S${sid} ATIV definido para ${val}.`]);
+      } else {
+        setTerminalLogs((prev) => [...prev, `[Erro] Setor S${sid} não cadastrado.`]);
+      }
+    } else if (setUphMatch) {
+      const sid = setUphMatch[1];
+      const val = parseInt(setUphMatch[2]);
+      if (setores.some((s) => s.id === sid)) {
+        handleUpdateSetorProd(sid, "uph", val);
+        setTerminalLogs((prev) => [...prev, `[Sucesso] Setor S${sid} UPH definido para ${val}.`]);
+      } else {
+        setTerminalLogs((prev) => [...prev, `[Erro] Setor S${sid} não cadastrado.`]);
+      }
+    } else if (alertMatch) {
+      const msg = alertMatch[1];
+      const newAlert: AlertLog = {
+        id: `alt-${Date.now()}`,
+        titulo: "Mensagem do Console",
+        descricao: msg,
+        setor: activeSectorId,
+        prioridade: "critica",
+        lido: false,
+        hora: new Date().toISOString(),
+      };
+      setAlerts((a) => [newAlert, ...a]);
+      setTerminalLogs((prev) => [...prev, "[Notificação] Alerta disparado com prioridade máxima."]);
+    } else if (reaproMatch) {
+      setSetores((prev) =>
+        prev.map((s) => ({
+          ...s,
+          uph: Math.round(s.uph * 1.15),
+          promessa: 100,
+        }))
+      );
+      setTerminalLogs((prev) => [
+        ...prev,
+        "[REAPRO] Ajustado fluxo logístico. Eficiência de todos os setores incrementada em 15%.",
+      ]);
+    } else if (suggestMatch) {
+      const bottleneck = setores.reduce((min, s) => (s.uph < min.uph ? s : min), setores[0]);
+      setTerminalLogs((prev) => [
+        ...prev,
+        `[IA Copil] DIAGNÓSTICO DE FLUXO EM TEMPO REAL:`,
+        `  - Maior gargalo ativo detectado no Setor S${bottleneck.id} (${bottleneck.uph} UPH).`,
+        `  - Sugestão: Transferir operadores adicionais (Poli) para equilibrar o escoamento.`,
+        `  - Alerta: Certifique-se de que a auditoria 5S está em conformidade (${bottleneck.nota5s}%).`,
+      ]);
+    } else {
+      setTerminalLogs((prev) => [...prev, `[Erro] Comando não identificado. Digite /ajuda.`]);
+    }
+  };
+
+  const handleTerminalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cmd = terminalInput.trim();
+    if (!cmd) return;
+    handleTerminalCommand(cmd);
+    setTerminalInput("");
+  };
+
+  // ROLE GATE HELPER
+  const handleRoleChange = (role: UserRole) => {
+    setCurrentRole(role);
+    if (role === UserRole.Admin) {
+      setCurrentUser("Admin");
+    } else if (role === UserRole.Coordenador) {
+      setCurrentUser("Coordenador");
+    } else if (role === UserRole.Operador) {
+      setCurrentUser("Operador");
+    } else {
+      setCurrentUser("Guest");
+    }
+    addAudit("Sistema", "Acesso", "Perfil", role);
+  };
+
+  // --- AUTH SEAMLESS GATE ---
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#060608] flex flex-col items-center justify-center font-sans">
@@ -1081,30 +1376,9 @@ export default function App() {
     );
   }
 
-  return (
-  if (currentStatus === "Pendente") {
-    return (
-      <div className="min-h-screen bg-[#060608] flex flex-col items-center justify-center font-sans p-4">
-        <div className="bg-black/40 border border-amber-500/30 p-8 rounded-2xl text-center max-w-md backdrop-blur-xl shadow-2xl">
-          <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-500/30">
-            <span className="text-amber-500 text-3xl">⏳</span>
-          </div>
-          <h2 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Acesso Pendente</h2>
-          <p className="text-zinc-400 text-sm mb-6">
-            Seu cadastro foi realizado com sucesso e está aguardando aprovação de um Administrador.
-            Você será notificado quando seu acesso for liberado.
-          </p>
-          <button 
-            onClick={() => logoutUser()}
-            className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors border border-white/10"
-          >
-            Voltar para o Login
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // ============================================================
+  // MAIN APP RENDER (Apenas para usuários autenticados e ativos)
+  // ============================================================
   return (
     <div className="min-h-screen bg-[#060608] flex flex-col antialiased select-none font-sans relative overflow-hidden">
       {/* Background Matrix/Hex grid details */}
@@ -1802,7 +2076,270 @@ export default function App() {
                     return copy;
                   });
                 }}
-                onAdd
+                onAddReferente={() => {
+                  setReferentesSemana((prev) => [
+                    ...prev,
+                    { dia: "segunda", ref87: "Novo Líder", refVol: "Apoio Volumoso" },
+                  ]);
+                }}
+                onRemoveReferente={(idx) => {
+                  setReferentesSemana((prev) => prev.filter((_, i) => i !== idx));
+                }}
+                onAddSetor={(id, resp, foto) => {
+                  const newSec: Setor = { 
+                    id, 
+                    resp, 
+                    ativ: 0, 
+                    uph: 0, 
+                    promessa: 100, 
+                    nota5s: 100, 
+                    bsi: 100, 
+                    reproTotal: 0, 
+                    errosPicking: 0, 
+                    horasDKT: 0, 
+                    poliRec: 0, 
+                    rdl: 0, 
+                    poliSaid: 0, 
+                    coletado: 0, 
+                    varFin: 0, 
+                    infracaoSeguranca: false, 
+                    fotoLider: foto 
+                  };
+                  setSetores((prev) => [...prev, newSec]);
+                }}
+                onRemoveSetor={(idx) => {
+                  setSetores((prev) => prev.filter((_, i) => i !== idx));
+                }}
+                onUpdateSetor={(sid, field, val) => {
+                  setSetores((prev) =>
+                    prev.map((s) => (s.id === sid ? { ...s, [field]: val } : s))
+                  );
+                }}
+                onUpdateCoordenador={(nome) => {
+                  setCurrentUser(nome);
+                }}
+                onUpdateScreensaver={(cfg) => {
+                  setScreensaver(cfg);
+                  alert("Configuração da tela de descanso gravada.");
+                }}
+                onExportBackup={() => {
+                  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(
+                    JSON.stringify({
+                      setores,
+                      colaboradores,
+                      capacidade,
+                      universos,
+                      alerts,
+                      audit,
+                      historico,
+                      referentesSemana,
+                      copilData,
+                    })
+                  );
+                  const dlAnchorElem = document.createElement("a");
+                  dlAnchorElem.setAttribute("href", dataStr);
+                  dlAnchorElem.setAttribute("download", `backup_torre_comando_volumosos.json`);
+                  dlAnchorElem.click();
+                }}
+                onImportBackup={(obj) => {
+                  if (obj.setores) {
+                    setSetores(obj.setores);
+                  }
+                  if (obj.colaboradores) setColaboradores(obj.colaboradores);
+                  if (obj.capacidade) setCapacidade(obj.capacidade);
+                  if (obj.universos) setUniversos(obj.universos);
+                  if (obj.alerts) setAlerts(obj.alerts);
+                  if (obj.audit) setAudit(obj.audit);
+                  if (obj.historico) setHistorico(obj.historico);
+                  if (obj.referentesSemana) setReferentesSemana(obj.referentesSemana);
+                  if (obj.copilData) setCopilData(obj.copilData);
+                  alert("Backup restaurado com sucesso!");
+                }}
+                onLogout={() => {
+                  handleRoleChange(UserRole.Guest);
+                }}
+              />
+            </ProtectedRoute>
+          )}
+        </main>
+      </div>
+
+      {/* FLOATING TERMINAL TOGGLE */}
+      <div className="fixed bottom-6 right-6 z-[60000] flex flex-col items-end gap-3">
+        {showTerminal && (
+          <div className="w-80 md:w-96 bg-[#070709]/98 border border-indigo-500/30 rounded-2xl p-4 flex flex-col h-96 shadow-[0_0_40px_rgba(79,70,229,0.25)] backdrop-blur-2xl animate-fade-in">
+            <div className="flex items-center justify-between border-b border-indigo-500/20 pb-2 mb-2 text-xs font-black uppercase text-indigo-400 font-mono">
+              <span className="flex items-center gap-1.5 tracking-wider">
+                <TerminalIcon size={12} className="pulse-anim text-indigo-400" /> Co-Pilot OS Console
+              </span>
+              <button
+                onClick={() => setShowTerminal(false)}
+                className="text-zinc-500 hover:text-white cursor-pointer text-sm"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto font-mono text-[11px] leading-relaxed custom-scrollbar space-y-1.5 mb-2 pr-1">
+              {terminalLogs.map((log, i) => {
+                let colorClass = "text-zinc-400";
+                if (log.startsWith("> ")) {
+                  colorClass = "text-sky-400 font-semibold";
+                } else if (log.includes("[Sucesso]")) {
+                  colorClass = "text-emerald-400";
+                } else if (log.includes("[Erro]")) {
+                  colorClass = "text-red-400 font-medium";
+                } else if (log.includes("[REAPRO]") || log.includes("[BOLSAO]") || log.includes("[RADAR]")) {
+                  colorClass = "text-amber-400 font-medium";
+                } else if (log.includes("[IA Copil]") || log.includes("DIAGNÓSTICO")) {
+                  colorClass = "text-indigo-400 font-semibold text-[11.5px]";
+                }
+                return (
+                  <div key={i} className={`whitespace-pre-wrap ${colorClass}`}>
+                    {log}
+                  </div>
+                );
+              })}
+            </div>
+            <form onSubmit={handleTerminalSubmit} className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Ex: /sugerir, /setor 87 ativ 25000..."
+                value={terminalInput}
+                onChange={(e) => setTerminalInput(e.target.value)}
+                className="flex-1 bg-black text-emerald-400 font-mono text-xs border border-indigo-500/20 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20"
+              />
+              <button
+                type="submit"
+                className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase tracking-widest px-3 rounded cursor-pointer transition-colors"
+              >
+                Exec
+              </button>
+            </form>
+          </div>
+        )}
+        <button
+          onClick={() => setShowTerminal(!showTerminal)}
+          className="w-12 h-12 rounded-full bg-gradient-to-r from-indigo-600 to-fuchsia-600 text-white flex items-center justify-center hover:opacity-95 shadow-[0_0_20px_rgba(99,102,241,0.5)] transition-transform duration-300 active:scale-95 cursor-pointer"
+        >
+          <TerminalIcon size={20} />
+        </button>
+      </div>
+
+      {/* INACTIVITY SCREENSAVER CANVAS OVERLAY */}
+      {isScreensaverActive && (
+        <div className="fixed inset-0 z-[100000] bg-black/95 backdrop-blur-md flex flex-col justify-between text-left animate-fade-in p-6 select-none font-sans text-white overflow-hidden">
+          <div className="absolute inset-0 overflow-hidden opacity-[0.03] pointer-events-none">
+            <div className="w-full h-full bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[size:100%_4px,6px_100%] pointer-events-none"></div>
+          </div>
+
+          <header className="flex flex-col md:flex-row justify-between items-center border-b border-white/10 pb-4 mb-4 gap-4 relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping"></div>
+              <div>
+                <h1 className="text-sm font-black tracking-[0.2em] text-zinc-400 uppercase leading-none">
+                  COPIL GESTÃO À VISTA
+                </h1>
+                <p className="text-[10px] text-zinc-500 font-mono tracking-widest mt-1 uppercase">
+                  Operação: CD LOGÍSTICO — PAINEL OPERACIONAL
+                </p>
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-zinc-200 to-zinc-400 font-mono tracking-tighter filter drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] leading-none">
+                {timeState.local || "00:00:00"}
+              </div>
+              <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-[0.2em] mt-1.5">
+                {new Date().toLocaleDateString("pt-BR", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric"
+                }).toUpperCase()}
+              </div>
+            </div>
+            <div className="text-right flex flex-col items-end gap-1 font-mono text-[10px] text-zinc-400">
+              <p>
+                COORDENADOR: <span className="text-white font-bold">{currentUser.toUpperCase()}</span>
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>ÚLTIMA ATUALIZAÇÃO: DADOS EM TEMPO REAL</span>
+              </div>
+            </div>
+          </header>
+
+          <main className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 h-[calc(100vh-160px)] overflow-y-auto mb-4 relative z-10">
+            {["87", "88", "89", "90"].map(id => {
+              const s = setoresFluctuated.find(s => s.id === id) || setores.find(s => s.id === id);
+              if (!s) return null;
+              const isRisk = s.bsi < 99 || s.infracaoSeguranca;
+              const unitText = s.id === "87" ? "Caixas" : "Colis";
+              const kpis = [
+                { name: "Pilotagem", meta: "100%", real: `${s.id === "87" ? 100 : s.id === "88" ? 99.2 : s.id === "89" ? 98.0 : 99.5}%`, score: 0.95 },
+                { name: "Produtividade", meta: "550 UPH", real: `${s.uph} UPH`, score: s.uph / 550 },
+                { name: "Picking", meta: "100%", real: `${s.id === "87" ? 99.8 : s.id === "88" ? 99.0 : s.id === "89" ? 97.5 : 99.2}%`, score: 0.92 },
+                { name: "Promessa", meta: "95%", real: `${s.promessa}%`, score: s.promessa / 95 },
+                { name: "Lead Time", meta: "< 45 min", real: `${Math.max(30, Math.round(35 + (100 - s.promessa) * 1.5))} min`, score: 0.80 },
+                { name: "Aderência ao Corte", meta: "100%", real: `${s.id === "87" ? 100 : s.id === "88" ? 99.4 : s.id === "89" ? 98.1 : 99.8}%`, score: 0.88 },
+                { name: "Erro de Picking", meta: "< 1.0%", real: `${s.errosPicking}%`, score: s.errosPicking <= 0 ? 1.2 : 1.0 / s.errosPicking },
+                { name: "5S Área", meta: "90%", real: `${s.nota5s}%`, score: s.nota5s / 90 },
+                { name: "BSI Cruzado", meta: "98%", real: `${s.bsi}%`, score: s.bsi / 98 },
+                { name: "Infrações Segurança", meta: "0", real: s.infracaoSeguranca ? "1 Infração" : "Nenhuma", score: s.infracaoSeguranca ? 0.0 : 1.2 },
+              ];
+
+              const getStyle = (score: number) => {
+                if (score >= 1.0) return "bg-emerald-500/10 border-emerald-500/25 text-emerald-400";
+                if (score >= 0.8) return "bg-amber-500/10 border-amber-500/25 text-amber-400";
+                if (score >= 0.6) return "bg-orange-500/10 border-orange-500/25 text-orange-400";
+                return "bg-red-500/15 border-red-500/35 text-red-400 pulse-anim";
+              };
+
+              return (
+                <div key={s.id} className={`glass-card p-4 flex flex-col justify-between border-t-2 bg-zinc-950/40 relative overflow-hidden transition-all duration-300 ${isRisk ? "border-t-red-500/70" : "border-t-emerald-500/50"}`}>
+                  <div className="absolute top-0 right-0 p-8 opacity-[0.02] font-black text-9xl pointer-events-none select-none">S{s.id}</div>
+                  <div className="flex justify-between items-center mb-3 pb-2 border-b border-white/5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full border border-white/10 bg-black/50 flex items-center justify-center text-xs font-black text-zinc-300">S{s.id}</div>
+                      <div>
+                        <h2 className="text-sm font-black tracking-wider text-white uppercase">Setor {s.id}</h2>
+                        <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Líder: {s.resp}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest leading-none">Atividade</p>
+                        <p className="text-base font-black font-mono text-white mt-0.5">{s.ativ.toLocaleString("pt-BR")} <span className="text-[10px] font-bold text-zinc-400 font-sans">{unitText}</span></p>
+                      </div>
+                      <div className={`px-2 py-1 rounded text-[8px] font-black tracking-widest uppercase ${isRisk ? "bg-red-500/20 text-red-400 border border-red-500/30 pulse-anim" : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"}`}>
+                        {isRisk ? "ALERTA CRÍTICO" : "NORMAL"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 flex-1 content-start">
+                    {kpis.map((k, idx) => (
+                      <div key={idx} className="bg-black/20 hover:bg-black/40 border border-white/[0.03] hover:border-white/10 rounded-lg px-2.5 py-1.5 flex items-center justify-between transition-colors gap-2">
+                        <div className="truncate flex-1 min-w-0">
+                          <p className="text-[9.5px] font-black text-zinc-300 uppercase tracking-wide truncate">{k.name}</p>
+                          <p className="text-[8.5px] font-mono text-zinc-500">Meta: {k.meta}</p>
+                        </div>
+                        <div className={`px-2 py-0.5 rounded text-[10px] font-mono font-black flex items-center gap-1 border ${getStyle(k.score)}`}>
+                          <span>{k.real}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </main>
+
+          <footer className="flex justify-between items-center border-t border-white/5 pt-3 mt-1 relative z-10">
+            <p className="text-[9px] text-zinc-600 font-mono tracking-widest uppercase">SISTEMA OPERACIONAL COPIL LOGÍSTICA V4.2</p>
+            <p className="text-[10px] text-indigo-400/80 font-black uppercase tracking-widest animate-pulse">[ PRESSIONE QUALQUER TECLA OU MOVA O MOUSE PARA RETORNAR AO MÓDULO OPERACIONAL ]</p>
+          </footer>
+        </div>
+      )}
+    </div>
   );
 }
 
