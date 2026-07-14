@@ -1,531 +1,338 @@
-// ---------------------------------------------------------------------------
-// SAFE ENVIRONMENT POLYFILLS FOR AI STUDIO IFRAME SANDBOX
-// ---------------------------------------------------------------------------
-if (typeof window !== 'undefined') {
-  window.addEventListener('unhandledrejection', (event) => {
-    const reason = event.reason;
-    if (reason && (
-      (typeof reason === 'string' && reason.includes('WebSocket closed')) ||
-      (reason.message && typeof reason.message === 'string' && (
-        reason.message.includes('WebSocket closed') || 
-        reason.message.includes('closed without opened')
-      )) ||
-      (reason.name === 'TypeError' && reason.message && reason.message.includes('fetch of #<Window> which has only a getter'))
-    )) {
-      console.warn('[SafeEnvironment] Suppressed benign unhandled sandbox rejection:', reason);
-      event.preventDefault();
-    }
-  });
-
-  if ('WebSocket' in window) {
-    const OriginalWebSocket = window.WebSocket;
-    if (typeof OriginalWebSocket === 'function') {
-      const SafeWebSocket = function (url: string | URL, protocols?: string | string[]) {
-        try {
-          const urlStr = typeof url === 'string' ? url : url.toString();
-          if (typeof Reflect !== 'undefined' && typeof Reflect.construct === 'function') {
-            try {
-              return Reflect.construct(OriginalWebSocket, [url, protocols]);
-            } catch (reflectErr) {
-              console.warn('[SafeWebSocket] Reflect.construct failed, falling back:', reflectErr);
-              return new OriginalWebSocket(urlStr as any, protocols);
-            }
-          } else {
-            return new OriginalWebSocket(urlStr as any, protocols);
-          }
-        } catch (err) {
-          console.error('[SafeWebSocket] WebSocket creation failed:', err);
-          const mockSocket = new EventTarget() as any;
-          mockSocket.url = typeof url === 'string' ? url : url.toString();
-          mockSocket.readyState = 3; // CLOSED
-          mockSocket.close = () => {};
-          mockSocket.send = () => {};
-          return mockSocket;
-        }
-      };
-
-      SafeWebSocket.prototype = OriginalWebSocket.prototype;
-      Object.setPrototypeOf(SafeWebSocket, OriginalWebSocket);
-
-      try {
-        window.WebSocket = SafeWebSocket as any;
-        console.log('[SafeWebSocket] Global WebSocket safety interceptor installed.');
-      } catch (e) {
-        console.warn('[SafeWebSocket] Could not overwrite window.WebSocket:', e);
-      }
-    }
-  }
-}
-
 import { supabase, isStaticBuild } from './supabase';
-import { UserRole, Usuario } from '../types/Usuario';
+import { auth, initAuth } from './supabaseAuth';
 import { IndexedDBService } from './indexedDb';
 
-// Define a safe mock user interface
-export interface SupabaseUser {
-  uid: string;
-  id: string;
-  email?: string;
-  displayName?: string;
-  user_metadata?: {
-    displayName?: string;
-    full_name?: string;
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface SupabaseErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
   };
-  getIdToken: () => Promise<string>;
 }
 
-// In-memory current user tracker for the app
-let currentMockUser: SupabaseUser | null = null;
-
-// Sincronizar usuário logado inicial do localStorage se houver
-if (typeof window !== 'undefined') {
-  const cachedUser = localStorage.getItem('sys_active_user_session');
-  if (cachedUser) {
-    try {
-      currentMockUser = JSON.parse(cachedUser);
-    } catch (e) {
-      console.error('Error loading cached user session', e);
-    }
-  }
+export function handleSupabaseError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: SupabaseErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid || null,
+      email: auth.currentUser?.email || null,
+    },
+    operationType,
+    path
+  };
+  console.error('Supabase Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }
 
-// Emulate getAuth().currentUser or similar
-export const auth = {
-  get currentUser() {
-    if (isStaticBuild) {
-      return currentMockUser;
-    }
-    const session = supabase?.auth.getSession();
-    // Return a mapped user object or null
-    return currentMockUser;
-  },
-  onAuthStateChanged: (cb: (user: any) => void, errorCb?: (err: any) => void) => {
-    if (isStaticBuild) {
-      setTimeout(() => cb(auth.currentUser), 100);
-      return () => {};
-    }
-    const { data: { subscription } } = supabase!.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        const u = session.user;
-        currentMockUser = {
-          uid: u.id,
-          id: u.id,
-          email: u.email,
-          displayName: u.user_metadata?.displayName || u.user_metadata?.full_name || u.email?.split('@')[0],
-          getIdToken: async () => session.access_token
-        };
-        localStorage.setItem('sys_active_user_session', JSON.stringify(currentMockUser));
-        cb(currentMockUser);
-      } else {
-        currentMockUser = null;
-        localStorage.removeItem('sys_active_user_session');
-        cb(null);
-      }
+export const isOnline = (): boolean => {
+  if (isStaticBuild) return false;
+  const isSimOffline = localStorage.getItem("sys_radar_sim_offline") === "true";
+  return !isSimOffline && navigator.onLine;
+};
+
+export type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
+
+export class SupabaseService {
+  private static authState: AuthState = 'loading';
+  private static authStateListeners: Set<(state: AuthState) => void> = new Set();
+  private static initializedAuthObserver = false;
+
+  public static initAuthObserver(): void {
+    if (this.initializedAuthObserver) return;
+    this.initializedAuthObserver = true;
+
+    auth.onAuthStateChanged((user) => {
+      this.authState = user ? 'authenticated' : 'unauthenticated';
+      this.authStateListeners.forEach((cb) => cb(this.authState));
     });
+  }
+
+  public static onAuthStateResolved(callback: (state: AuthState) => void): () => void {
+    this.initAuthObserver();
+    callback(this.authState);
+    this.authStateListeners.add(callback);
     return () => {
-      subscription.unsubscribe();
+      this.authStateListeners.delete(callback);
     };
-  },
-  signOut: async () => {
-    if (!isStaticBuild) {
-      await supabase!.auth.signOut();
-    }
-    currentMockUser = null;
-    localStorage.removeItem('sys_active_user_session');
-    localStorage.removeItem('current_user');
-    localStorage.removeItem('current_role');
-    localStorage.removeItem('current_status');
-    // Clear profile caches
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key?.startsWith('sys_cached_profile_')) {
-        localStorage.removeItem(key);
-      }
-    }
-    window.location.reload();
-  }
-};
-
-let isSigningIn = false;
-let cachedAccessToken: string | null = null;
-
-export const getUserProfile = async (uid: string): Promise<Usuario | null> => {
-  const localKey = `sys_cached_profile_${uid}`;
-  
-  if (isStaticBuild) {
-    const cached = localStorage.getItem(localKey);
-    if (cached) {
-      try {
-        return JSON.parse(cached) as Usuario;
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
   }
 
-  try {
-    const { data, error } = await supabase!
-      .from('usuarios')
-      .select('*')
-      .eq('uid', uid)
-      .single();
-
-    if (error) throw error;
-    if (data) {
-      const profile = data as Usuario;
-      localStorage.setItem(localKey, JSON.stringify(profile));
-      return profile;
-    }
-  } catch (error: any) {
-    console.error('❌ Error fetching user profile from Supabase:', error.message);
-    const cached = localStorage.getItem(localKey);
-    if (cached) {
-      try {
-        return JSON.parse(cached) as Usuario;
-      } catch (jsonErr) {
-        console.error('❌ Error parsing local cached profile:', jsonErr);
+  public static garantirAuthPronto(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.authState !== 'loading') {
+        resolve();
+        return;
       }
-    }
-  }
-  return null;
-};
 
-export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
-  const email = user.email || '';
-  const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com' || email.toLowerCase() === 'emerson.oliveira@decathlon.com';
-  const localKey = `sys_cached_profile_${user.uid}`;
-
-  try {
-    let existing = await getUserProfile(user.uid);
-    if (existing) {
-      if (isOwner && existing.role !== UserRole.Admin) {
-        existing = {
-          ...existing,
-          role: UserRole.Admin,
-          setoresAutorizados: ["S87", "S88", "S89", "S90"],
-          situacao: 'Ativo',
-          cargo: 'ADMINISTRADOR'
-        };
-        if (!isStaticBuild) {
-          try {
-            await supabase!
-              .from('usuarios')
-              .upsert({ uid: user.uid, ...existing });
-          } catch (e) {
-            console.warn("Could not elevate to admin online", e);
+      let unsubscribe: (() => void) | undefined;
+      unsubscribe = this.onAuthStateResolved((state) => {
+        if (state !== 'loading') {
+          if (unsubscribe) {
+            unsubscribe();
+          } else {
+            queueMicrotask(() => {
+              if (unsubscribe) unsubscribe();
+            });
           }
+          resolve();
         }
-        localStorage.setItem(localKey, JSON.stringify(existing));
-      }
-      return existing;
-    }
-
-    const defaultProfile: Usuario = {
-      email,
-      nome: user.displayName || user.user_metadata?.full_name || 'Usuário',
-      role: isOwner ? UserRole.Admin : UserRole.Consulta,
-      setoresAutorizados: isOwner ? ["S87", "S88", "S89", "S90"] : [],
-      situacao: isOwner ? 'Ativo' : 'Pendente',
-      cargo: isOwner ? 'ADMINISTRADOR' : 'AGUARDANDO_APROVACAO',
-      unidade: 'CD Principal'
-    };
-
-    if (!isStaticBuild) {
-      await supabase!
-        .from('usuarios')
-        .upsert({ uid: user.uid, ...defaultProfile });
-    }
-    localStorage.setItem(localKey, JSON.stringify(defaultProfile));
-    return defaultProfile;
-
-  } catch (error: any) {
-    console.error('❌ Erro crítico em ensureUserProfile:', error);
-    const fallbackProfile: Usuario = {
-      email,
-      nome: user.displayName || 'Usuário',
-      role: isOwner ? UserRole.Admin : UserRole.Consulta,
-      setoresAutorizados: isOwner ? ["S87", "S88", "S89", "S90"] : [],
-      situacao: isOwner ? 'Ativo' : 'Erro',
-      cargo: isOwner ? 'ADMINISTRADOR' : 'ERRO_AO_CARREGAR',
-      unidade: 'CD Principal'
-    };
-    return fallbackProfile;
+      });
+    });
   }
-};
 
-export const initAuth = (
-  onAuthSuccess?: (user: any, token: string) => void,
-  onAuthFailure?: () => void
-) => {
-  return auth.onAuthStateChanged(async (user: any) => {
-    if (user) {
-      const token = await user.getIdToken();
-      if (onAuthSuccess) onAuthSuccess(user, token);
+  private static getDocId(record: any, keyField: string = 'id'): string {
+    const idVal = record[keyField] || record.id || record.lista || record.chave;
+    return idVal ? String(idVal) : '';
+  }
+
+  public static async fetchTable<T>(tableName: string, defaultData: T[] = []): Promise<T[]> {
+    await this.garantirAuthPronto();
+
+    if (!auth.currentUser) {
+      console.warn(`[Supabase] fetchTable(${tableName}) chamado sem usuário autenticado. Retornando cache local.`);
+      const cached = await IndexedDBService.getAll<T>(tableName);
+      if (cached.length > 0) {
+        return cached;
+      }
+      if (defaultData.length > 0) {
+        await IndexedDBService.putMany(tableName, defaultData);
+        return defaultData;
+      }
+      return [];
+    }
+
+    if (isOnline()) {
+      try {
+        const { data, error } = await supabase!
+          .from(tableName)
+          .select('*');
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          await IndexedDBService.putMany(tableName, data);
+          return data as T[];
+        }
+      } catch (err) {
+        console.warn(`[Supabase] Failed to fetch table ${tableName} online. Falling back to cache.`, err);
+      }
+    }
+
+    const cached = await IndexedDBService.getAll<T>(tableName);
+    if (cached.length > 0) {
+      return cached;
+    }
+
+    if (defaultData.length > 0) {
+      await IndexedDBService.putMany(tableName, defaultData);
+      return defaultData;
+    }
+
+    return [];
+  }
+
+  public static async upsertRecord<T extends { updated_at?: string; id?: any; lista?: string; key?: string; chave?: string }>(
+    tableName: string,
+    record: T,
+    keyField: keyof T = 'id' as keyof T
+  ): Promise<T> {
+    await this.garantirAuthPronto();
+
+    const docId = this.getDocId(record, keyField as string);
+    if (!docId) {
+      throw new Error(`Cannot upsert to ${tableName} without a valid unique key.`);
+    }
+
+    const now = new Date().toISOString();
+    const finalizedRecord = {
+      ...record,
+      updated_at: record.updated_at || now
+    };
+
+    if (!auth.currentUser) {
+      console.warn(`[Supabase Offline Fallback] Gravando em "${tableName}" no cache local sem usuário autenticado.`);
+      await IndexedDBService.put(tableName, finalizedRecord);
+      return finalizedRecord;
+    }
+
+    const localExisting = await IndexedDBService.get<T>(tableName, docId);
+    if (localExisting && localExisting.updated_at) {
+      const localTime = new Date(localExisting.updated_at).getTime();
+      const newTime = new Date(finalizedRecord.updated_at).getTime();
+      if (newTime < localTime) {
+        console.log(`[Supabase LWW] Newer record exists locally for ${tableName}:${docId}. Skipping update.`);
+        return localExisting;
+      }
+    }
+
+    await IndexedDBService.put(tableName, finalizedRecord);
+
+    if (isOnline()) {
+      try {
+        const { error } = await supabase!
+          .from(tableName)
+          .upsert(finalizedRecord);
+
+        if (error) throw error;
+      } catch (err) {
+        handleSupabaseError(err, OperationType.WRITE, `${tableName}/${docId}`);
+      }
     } else {
-      if (onAuthFailure) onAuthFailure();
+      console.log(`[Supabase Offline] Queued update for ${tableName}:${docId}`);
+      const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
+      queue.push({ tableName, record: finalizedRecord, keyField, action: 'UPSERT' });
+      localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
     }
-  });
-};
 
-export const googleSignIn = async (): Promise<{ user: any; accessToken: string } | null> => {
-  if (isStaticBuild) {
-    const mockUser: SupabaseUser = {
-      uid: "local-google",
-      id: "local-google",
-      email: "google@local.com",
-      displayName: "Usuário Google Local",
-      getIdToken: async () => "local-token"
-    };
-    currentMockUser = mockUser;
-    localStorage.setItem('sys_active_user_session', JSON.stringify(mockUser));
-    await ensureUserProfile(mockUser);
-    return { user: mockUser, accessToken: "mock-token" };
+    return finalizedRecord;
   }
 
-  if (isSigningIn) return null;
-  try {
-    isSigningIn = true;
-    const { data, error } = await supabase!.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        scopes: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file'
+  public static async deleteRecord(tableName: string, keyVal: any, keyField: string = 'id'): Promise<void> {
+    await this.garantirAuthPronto();
+
+    const docId = String(keyVal);
+    
+    if (!auth.currentUser) {
+      console.warn(`[Supabase Offline Fallback] Removendo de "${tableName}" no cache local sem usuário autenticado.`);
+      await IndexedDBService.delete(tableName, docId);
+      return;
+    }
+
+    await IndexedDBService.delete(tableName, docId);
+
+    if (isOnline()) {
+      try {
+        const { error } = await supabase!
+          .from(tableName)
+          .delete()
+          .eq(keyField, keyVal);
+
+        if (error) throw error;
+      } catch (err) {
+        handleSupabaseError(err, OperationType.DELETE, `${tableName}/${docId}`);
       }
+    } else {
+      const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
+      queue.push({ tableName, keyVal, keyField, action: 'DELETE' });
+      localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
+    }
+  }
+
+  public static subscribe(
+    tableName: string, 
+    callback: (payload: { table: string; event: 'INSERT' | 'UPDATE' | 'DELETE'; new: any; old?: any }) => void
+  ): () => void {
+    let channel: any = null;
+    let cancelado = false;
+
+    const unsubscribeAuth = this.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+
+      if (state === 'unauthenticated') {
+        if (channel) {
+          channel.unsubscribe();
+          channel = null;
+        }
+        return;
+      }
+
+      if (cancelado || channel) return;
+
+      if (!isOnline()) {
+        console.log(`[Supabase] Offline mode: Real-time subscription to ${tableName} will fall back to local changes.`);
+        return;
+      }
+
+      channel = supabase!.channel(`public:${tableName}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: tableName }, async (payload) => {
+          const changeType = payload.eventType;
+          const newData = payload.new;
+          const oldData = payload.old;
+          
+          if (changeType === 'INSERT' || changeType === 'UPDATE') {
+            await IndexedDBService.put(tableName, newData);
+            callback({
+              table: tableName,
+              event: changeType,
+              new: newData
+            });
+          } else if (changeType === 'DELETE') {
+            const oldRecord = oldData as any;
+            const docId = oldRecord?.id || oldRecord?.lista || oldRecord?.chave || payload.errors?.[0];
+            if (docId) {
+              await IndexedDBService.delete(tableName, docId);
+              callback({
+                table: tableName,
+                event: 'DELETE',
+                new: { id: docId, lista: docId, chave: docId }
+              });
+            }
+          }
+        })
+        .subscribe();
     });
 
-    if (error) throw error;
-    return null; // OAuth redireciona a página
-  } catch (error: any) {
-    console.error('Sign in error:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
-  }
-};
-
-export const getCachedAccessToken = (): string | null => {
-  return cachedAccessToken;
-};
-
-export const logoutGoogle = async () => {
-  await auth.signOut();
-};
-
-export const loginWithEmail = async (email: string, password: string): Promise<any> => {
-  if (isStaticBuild) {
-    const mockUser: SupabaseUser = {
-      uid: "local-user",
-      id: "local-user",
-      email,
-      displayName: email.split('@')[0],
-      getIdToken: async () => "local-token"
-    };
-    currentMockUser = mockUser;
-    localStorage.setItem('sys_active_user_session', JSON.stringify(mockUser));
-    return mockUser;
-  }
-
-  const { data, error } = await supabase!.auth.signInWithPassword({
-    email,
-    password
-  });
-
-  if (error) throw error;
-  const u = data.user!;
-  const mappedUser: SupabaseUser = {
-    uid: u.id,
-    id: u.id,
-    email: u.email,
-    displayName: u.user_metadata?.displayName || u.email?.split('@')[0],
-    getIdToken: async () => data.session?.access_token || ""
-  };
-  currentMockUser = mappedUser;
-  localStorage.setItem('sys_active_user_session', JSON.stringify(mappedUser));
-  return mappedUser;
-};
-
-export const signUpWithEmail = async (
-  email: string,
-  password: string,
-  name: string,
-  role: UserRole
-): Promise<{ user: any; profile: Usuario }> => {
-  if (isStaticBuild) {
-    const mockUser: SupabaseUser = {
-      uid: "local-user",
-      id: "local-user",
-      email,
-      displayName: name,
-      getIdToken: async () => "local-token"
-    };
-    currentMockUser = mockUser;
-    localStorage.setItem('sys_active_user_session', JSON.stringify(mockUser));
-    
-    const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com' || email.toLowerCase() === 'emerson.oliveira@decathlon.com';
-    const profile: Usuario = {
-      email,
-      nome: name,
-      role: isOwner ? UserRole.Admin : role,
-      setoresAutorizados: isOwner ? ["S87", "S88", "S89", "S90"] : [],
-      situacao: isOwner ? 'Ativo' : 'Pendente',
-      cargo: isOwner ? 'ADMINISTRADOR' : 'AGUARDANDO_APROVACAO',
-      unidade: "CD Principal"
-    };
-    localStorage.setItem(`sys_cached_profile_${mockUser.uid}`, JSON.stringify(profile));
-    return { user: mockUser, profile };
-  }
-
-  const { data, error } = await supabase!.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        full_name: name,
-        displayName: name
+    return () => {
+      cancelado = true;
+      unsubscribeAuth();
+      if (channel) {
+        channel.unsubscribe();
       }
-    }
-  });
-
-  if (error) throw error;
-  const u = data.user!;
-  const mappedUser: SupabaseUser = {
-    uid: u.id,
-    id: u.id,
-    email: u.email,
-    displayName: name,
-    getIdToken: async () => data.session?.access_token || ""
-  };
-
-  currentMockUser = mappedUser;
-  localStorage.setItem('sys_active_user_session', JSON.stringify(mappedUser));
-
-  const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com' || email.toLowerCase() === 'emerson.oliveira@decathlon.com';
-  const userProfile: Usuario = {
-    email,
-    nome: name,
-    role: isOwner ? UserRole.Admin : role,
-    setoresAutorizados: isOwner ? ["S87", "S88", "S89", "S90"] : [],
-    situacao: isOwner ? 'Ativo' : 'Pendente',
-    cargo: isOwner ? 'ADMINISTRADOR' : 'AGUARDANDO_APROVACAO',
-    unidade: "CD Principal"
-  };
-
-  await supabase!
-    .from('usuarios')
-    .upsert({ uid: u.id, ...userProfile });
-
-  localStorage.setItem(`sys_cached_profile_${u.id}`, JSON.stringify(userProfile));
-  return { user: mappedUser, profile: userProfile };
-};
-
-export const recoverPassword = async (email: string): Promise<void> => {
-  if (isStaticBuild) return;
-  const { error } = await supabase!.auth.resetPasswordForEmail(email);
-  if (error) throw error;
-};
-
-export const logoutUser = async (): Promise<void> => {
-  await auth.signOut();
-};
-
-const IS_STATIC_BUILD = true; // For GitHub Pages / static hosting without backend
-
-// Explicit Fetch Wrapper with Auth for absolute reliability
-export const fetchWithAuth = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-  const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
-  try {
-    const user = auth.currentUser;
-    const token = user ? await user.getIdToken() : '';
-    
-    if (IS_STATIC_BUILD && url.includes('/api/')) {
-      return simulateBackendRequest(url, init);
-    }
-
-    const headers = new Headers(init?.headers);
-    if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
-    if (init?.body && typeof init.body === 'string' && !headers.has('Content-Type')) {
-      headers.set('Content-Type', 'application/json');
-    }
-    return window.fetch(input, { ...init, headers });
-  } catch (err) {
-    console.error('[SupabaseAuth Log] Error in fetchWithAuth:', err);
-    return window.fetch(input, init);
+    };
   }
-};
 
-async function simulateBackendRequest(url: string, init?: RequestInit): Promise<Response> {
-  const method = init?.method || 'GET';
-  const urlObj = new URL(url, window.location.origin);
-  const pathParts = urlObj.pathname.split('/api/');
-  const tableName = pathParts.length > 1 ? pathParts[1] : '';
-  
-  if (!tableName) return new Response("Not found", { status: 404 });
+  public static async flushOfflineQueue(): Promise<void> {
+    if (!isOnline()) return;
 
-  try {
-    if (method === 'GET') {
-      const data = await IndexedDBService.getAll(tableName);
-      return new Response(JSON.stringify(data), { status: 200, headers: {'Content-Type': 'application/json'} });
-    }
-    if (method === 'POST') {
-      const body = JSON.parse(init?.body as string);
-      const saved = await IndexedDBService.put(tableName, body);
-      return new Response(JSON.stringify(saved), { status: 200, headers: {'Content-Type': 'application/json'} });
-    }
-    if (method === 'PUT') {
-      const body = JSON.parse(init?.body as string);
-      if (Array.isArray(body)) {
-        await Promise.all(body.map(item => IndexedDBService.put(tableName, item)));
-      } else {
-        await IndexedDBService.put(tableName, body);
-      }
-      return new Response(JSON.stringify(body), { status: 200, headers: {'Content-Type': 'application/json'} });
-    }
-    if (method === 'DELETE') {
-      const id = urlObj.searchParams.get('id');
-      if (id) {
-         await IndexedDBService.delete(tableName, id);
-      } else {
-         await IndexedDBService.clear(tableName);
-      }
-      return new Response(JSON.stringify({ success: true }), { status: 200 });
-    }
-    return new Response("Method Not Allowed", { status: 405 });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-  }
-}
+    const queueStr = localStorage.getItem("sys_radar_offline_queue");
+    if (!queueStr) return;
 
-const originalFetch = window.fetch;
-
-const patchedFetch: typeof window.fetch = async (input, init) => {
-  const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
-  if (url.includes('/api/')) {
-    if (IS_STATIC_BUILD) {
-      return simulateBackendRequest(url, init);
-    }
     try {
-      const user = auth.currentUser;
-      const token = user ? await user.getIdToken() : '';
-      const headers = new Headers(init?.headers);
-      if (token) {
-        headers.set('Authorization', `Bearer ${token}`);
+      const queue = JSON.parse(queueStr);
+      if (queue.length === 0) return;
+
+      console.log(`[Supabase Sync] Sincronizando ${queue.length} alterações pendentes offline...`);
+      const remainingQueue = [];
+
+      for (const item of queue) {
+        try {
+          const client = supabase as any;
+          if (item.action === 'UPSERT') {
+            const { error } = await client
+              .from(item.tableName)
+              .upsert(item.record);
+            if (error) throw error;
+          } else if (item.action === 'DELETE') {
+            const { error } = await client
+              .from(item.tableName)
+              .delete()
+              .eq(item.keyField, item.keyVal);
+            if (error) throw error;
+          }
+        } catch (err) {
+          console.error(`[Supabase Sync] Erro ao sincronizar item offline:`, err);
+          remainingQueue.push(item);
+        }
       }
-      if (init?.body && typeof init.body === 'string' && !headers.has('Content-Type')) {
-        headers.set('Content-Type', 'application/json');
+
+      if (remainingQueue.length > 0) {
+        localStorage.setItem("sys_radar_offline_queue", JSON.stringify(remainingQueue));
+      } else {
+        localStorage.removeItem("sys_radar_offline_queue");
+        console.log(`[Supabase Sync] Sincronização offline concluída com sucesso.`);
       }
-      return originalFetch(input, { ...init, headers });
-    } catch (err) {
-      console.error('Error in global fetch auth interceptor:', err);
+    } catch (e) {
+      console.error("[Supabase Sync] Erro ao analisar fila offline:", e);
     }
   }
-  return originalFetch(input, init);
-};
-
-try {
-  (window as any).fetch = patchedFetch;
-  console.log('[SupabaseAuth] Global fetch interceptor installed.');
-} catch (err) {
-  console.warn('Could not install global fetch interceptor in this sandbox:', err);
 }

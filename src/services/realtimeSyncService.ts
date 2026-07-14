@@ -1,11 +1,10 @@
-import { collection, query, where, onSnapshot, Unsubscribe } from 'firebase/firestore';
-import { db } from '../lib/firebaseAuth';
+import { supabase, isStaticBuild } from '../lib/supabase';
+import { SupabaseService } from '../lib/supabaseService';
 import { useStoreOperations } from '../stores/useStoreOperations';
 import { useAtividadeLoja } from '../stores/useAtividadeLoja';
 import { useSectorStore } from '../stores/useSectorStore';
 import { useCollaboratorStore } from '../stores/useCollaboratorStore';
 import { StoreOperation, AtividadeLoja, Setor, Colaborador } from '../types';
-import { handleFirestoreError, OperationType, FirebaseService } from '../lib/firebaseService';
 
 class RealtimeSyncService {
   private unsubscribes: Map<string, () => void> = new Map();
@@ -16,9 +15,9 @@ class RealtimeSyncService {
    */
   public startListeningProgramacao(programacaoId: string) {
     const key = `ops_${programacaoId}`;
-    if (this.authObservers.has(key)) return; // Já possui gerenciador reativo
+    if (this.authObservers.has(key)) return;
 
-    const unsubscribeAuth = FirebaseService.onAuthStateResolved((state) => {
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
       if (state === 'loading') return;
 
       if (state === 'unauthenticated') {
@@ -30,30 +29,36 @@ class RealtimeSyncService {
         return;
       }
 
-      // state === 'authenticated'
       if (this.unsubscribes.has(key)) return;
+      if (isStaticBuild) return;
 
-      const qOps = query(
-        collection(db, 'store_operations'),
-        where('programacaoId', '==', programacaoId)
-      );
+      const channel = supabase!.channel(key)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'store_operations',
+            filter: `programacaoId=eq.${programacaoId}`
+          },
+          (payload) => {
+            const changeType = payload.eventType;
+            const data = payload.new as StoreOperation;
+            if (changeType === 'INSERT' || changeType === 'UPDATE') {
+              useStoreOperations.getState().upsertOperation(data);
+            } else if (changeType === 'DELETE') {
+              const oldId = payload.old?.id;
+              if (oldId) {
+                useStoreOperations.getState().removeOperation(oldId);
+              }
+            }
+          }
+        )
+        .subscribe();
 
-      const unsubscribeOps = onSnapshot(qOps, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-          const data = change.doc.data() as StoreOperation;
-          if (change.type === 'added' || change.type === 'modified') {
-            useStoreOperations.getState().upsertOperation(data);
-          }
-          if (change.type === 'removed') {
-            useStoreOperations.getState().removeOperation(data.id);
-          }
-        });
-      }, (error) => {
-        console.error("[RealtimeSyncService] Erro no Listener de StoreOperations:", error);
-        handleFirestoreError(error, OperationType.LIST, 'store_operations');
+      this.unsubscribes.set(key, () => {
+        channel.unsubscribe();
       });
-
-      this.unsubscribes.set(key, unsubscribeOps);
     });
 
     this.authObservers.set(key, unsubscribeAuth);
@@ -66,7 +71,7 @@ class RealtimeSyncService {
     const key = `ativ_${programacaoId}`;
     if (this.authObservers.has(key)) return;
 
-    const unsubscribeAuth = FirebaseService.onAuthStateResolved((state) => {
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
       if (state === 'loading') return;
 
       if (state === 'unauthenticated') {
@@ -78,30 +83,36 @@ class RealtimeSyncService {
         return;
       }
 
-      // state === 'authenticated'
       if (this.unsubscribes.has(key)) return;
+      if (isStaticBuild) return;
 
-      const qAtiv = query(
-        collection(db, 'atividade_loja'),
-        where('programacaoId', '==', programacaoId)
-      );
+      const channel = supabase!.channel(key)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'atividade_loja',
+            filter: `programacaoId=eq.${programacaoId}`
+          },
+          (payload) => {
+            const changeType = payload.eventType;
+            const data = payload.new as AtividadeLoja;
+            if (changeType === 'INSERT' || changeType === 'UPDATE') {
+              useAtividadeLoja.getState().upsertAtividade(data);
+            } else if (changeType === 'DELETE') {
+              const oldId = payload.old?.id;
+              if (oldId) {
+                useAtividadeLoja.getState().removeAtividade(oldId);
+              }
+            }
+          }
+        )
+        .subscribe();
 
-      const unsubscribeAtiv = onSnapshot(qAtiv, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-          const data = change.doc.data() as AtividadeLoja;
-          if (change.type === 'added' || change.type === 'modified') {
-            useAtividadeLoja.getState().upsertAtividade(data);
-          }
-          if (change.type === 'removed') {
-            useAtividadeLoja.getState().removeAtividade(data.id);
-          }
-        });
-      }, (error) => {
-        console.error("[RealtimeSyncService] Erro no Listener de Atividades:", error);
-        handleFirestoreError(error, OperationType.LIST, 'atividade_loja');
+      this.unsubscribes.set(key, () => {
+        channel.unsubscribe();
       });
-
-      this.unsubscribes.set(key, unsubscribeAtiv);
     });
 
     this.authObservers.set(key, unsubscribeAuth);
@@ -114,7 +125,7 @@ class RealtimeSyncService {
     const key = 'setores_live';
     if (this.authObservers.has(key)) return;
 
-    const unsubscribeAuth = FirebaseService.onAuthStateResolved((state) => {
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
       if (state === 'loading') return;
 
       if (state === 'unauthenticated') {
@@ -126,38 +137,42 @@ class RealtimeSyncService {
         return;
       }
 
-      // state === 'authenticated'
       if (this.unsubscribes.has(key)) return;
 
-      let unsubscribeSetores: Unsubscribe | null = null;
+      let channel: any = null;
       let cancelled = false;
 
       const currentSetores = useSectorStore.getState().setores;
-      FirebaseService.fetchTable<Setor>('setores', currentSetores)
+      SupabaseService.fetchTable<Setor>('setores', currentSetores)
         .then((dbSetores) => {
           if (cancelled) return;
           if (dbSetores && dbSetores.length > 0) {
             useSectorStore.getState().setSetores(dbSetores);
           }
 
-          const qSetores = query(collection(db, 'setores'));
-          unsubscribeSetores = onSnapshot(qSetores, (snapshot) => {
-            const list: Setor[] = [];
-            snapshot.forEach((docSnap) => {
-              list.push(docSnap.data() as Setor);
-            });
-            if (list.length > 0) {
-              list.sort((a, b) => a.id.localeCompare(b.id));
-              useSectorStore.getState().setSetores(list);
-            }
-          }, (error) => {
-            console.error("[RealtimeSyncService] Erro no Listener de Setores:", error);
-            handleFirestoreError(error, OperationType.LIST, 'setores');
-          });
+          if (isStaticBuild) return;
+
+          channel = supabase!.channel(key)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'setores'
+              },
+              async () => {
+                const fresh = await SupabaseService.fetchTable<Setor>('setores');
+                if (fresh.length > 0) {
+                  fresh.sort((a, b) => a.id.localeCompare(b.id));
+                  useSectorStore.getState().setSetores(fresh);
+                }
+              }
+            )
+            .subscribe();
 
           this.unsubscribes.set(key, () => {
             cancelled = true;
-            if (unsubscribeSetores) unsubscribeSetores();
+            if (channel) channel.unsubscribe();
           });
         })
         .catch((err) => {
@@ -166,7 +181,7 @@ class RealtimeSyncService {
 
       this.unsubscribes.set(key, () => {
         cancelled = true;
-        if (unsubscribeSetores) unsubscribeSetores();
+        if (channel) channel.unsubscribe();
       });
     });
 
@@ -180,7 +195,7 @@ class RealtimeSyncService {
     const key = 'colaboradores_live';
     if (this.authObservers.has(key)) return;
 
-    const unsubscribeAuth = FirebaseService.onAuthStateResolved((state) => {
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
       if (state === 'loading') return;
 
       if (state === 'unauthenticated') {
@@ -192,38 +207,42 @@ class RealtimeSyncService {
         return;
       }
 
-      // state === 'authenticated'
       if (this.unsubscribes.has(key)) return;
 
-      let unsubscribeColab: Unsubscribe | null = null;
+      let channel: any = null;
       let cancelled = false;
 
       const currentColab = useCollaboratorStore.getState().colaboradores;
-      FirebaseService.fetchTable<Colaborador>('colaboradores', currentColab)
+      SupabaseService.fetchTable<Colaborador>('colaboradores', currentColab)
         .then((dbColab) => {
           if (cancelled) return;
           if (dbColab && dbColab.length > 0) {
             useCollaboratorStore.getState().setColaboradores(dbColab);
           }
 
-          const qColab = query(collection(db, 'colaboradores'));
-          unsubscribeColab = onSnapshot(qColab, (snapshot) => {
-            const list: Colaborador[] = [];
-            snapshot.forEach((docSnap) => {
-              list.push(docSnap.data() as Colaborador);
-            });
-            if (list.length > 0) {
-              list.sort((a, b) => a.nome.localeCompare(b.nome));
-              useCollaboratorStore.getState().setColaboradores(list);
-            }
-          }, (error) => {
-            console.error("[RealtimeSyncService] Erro no Listener de Colaboradores:", error);
-            handleFirestoreError(error, OperationType.LIST, 'colaboradores');
-          });
+          if (isStaticBuild) return;
+
+          channel = supabase!.channel(key)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'colaboradores'
+              },
+              async () => {
+                const fresh = await SupabaseService.fetchTable<Colaborador>('colaboradores');
+                if (fresh.length > 0) {
+                  fresh.sort((a, b) => a.nome.localeCompare(b.nome));
+                  useCollaboratorStore.getState().setColaboradores(fresh);
+                }
+              }
+            )
+            .subscribe();
 
           this.unsubscribes.set(key, () => {
             cancelled = true;
-            if (unsubscribeColab) unsubscribeColab();
+            if (channel) channel.unsubscribe();
           });
         })
         .catch((err) => {
@@ -232,7 +251,7 @@ class RealtimeSyncService {
 
       this.unsubscribes.set(key, () => {
         cancelled = true;
-        if (unsubscribeColab) unsubscribeColab();
+        if (channel) channel.unsubscribe();
       });
     });
 
@@ -252,3 +271,4 @@ class RealtimeSyncService {
 }
 
 export const realtimeSync = new RealtimeSyncService();
+export default realtimeSync;

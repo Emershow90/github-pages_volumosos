@@ -1,26 +1,27 @@
-// src/types/Usuario.ts
 export enum UserRole {
-  Admin = 'Admin',
-  Operador = 'Operador',
-  Consulta = 'Consulta',
-  Supervisor = 'Supervisor',
-  Coordenador = 'Coordenador',
-  Guest = 'Guest',
-  Operacao = 'Operacao',
-  Expedicao = 'Expedicao',
-  Referente = 'Referente',
+  Guest = "guest",
+  Operador = "operador",
+  Coordenador = "coordenador",
+  Admin = "admin",
+  Referente = "referente",
+  Operacao = "operacao",
+  Expedicao = "expedicao",
+  Consulta = "consulta",
 }
 
 export interface Usuario {
-  id: string; // UUID do Supabase
+  uid?: string;
   email: string;
   nome: string;
   role: UserRole;
-  setoresAutorizados: string[];
-  situacao: 'Ativo' | 'Pendente' | 'Inativo' | 'Erro';
-  cargo: string;
-  unidade: string;
-  avatar_url?: string;
-  created_at?: string;
-  updated_at?: string;
+  setoresAutorizados: string[]; // e.g., ["S87", "S88"]
+  foto?: string;
+  cargo?: string;
+  unidade?: string;
+  situacao: 'Ativo' | 'Inativo' | 'Pendente' | 'Erro';
+}
+
+export interface UserSession {
+  user: Usuario | null;
+  loading: boolean;
 }

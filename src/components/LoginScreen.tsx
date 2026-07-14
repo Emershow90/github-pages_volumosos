@@ -68,14 +68,26 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     } catch (err: any) {
       console.error(err);
       let BrazilianMsg = 'Erro ao realizar login. Verifique suas credenciais.';
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+      const errMsg = err.message || '';
+      const errCode = err.code || '';
+      if (
+        errCode === 'auth/invalid-credential' || 
+        errCode === 'auth/wrong-password' || 
+        errCode === 'auth/user-not-found' ||
+        errCode === 'invalid_credentials' ||
+        errMsg.includes('Invalid login credentials')
+      ) {
         BrazilianMsg = 'E-mail ou senha incorretos.';
-      } else if (err.code === 'auth/invalid-email') {
+      } else if (errCode === 'auth/invalid-email' || errCode === 'invalid_email' || errMsg.includes('Email format')) {
         BrazilianMsg = 'Formato de e-mail inválido.';
-      } else if (err.code === 'auth/user-disabled') {
+      } else if (errCode === 'auth/user-disabled' || errCode === 'user_disabled') {
         BrazilianMsg = 'Este usuário foi desativado.';
-      } else if (err.code === 'auth/operation-not-allowed') {
-        BrazilianMsg = 'Autenticação por e-mail desativada. Use o Google Workspace ou ative no console do Firebase.';
+      } else if (errCode === 'auth/operation-not-allowed') {
+        BrazilianMsg = 'Autenticação por e-mail desativada. Use o Google Workspace ou ative no console.';
+      } else if (errMsg.includes('Email not confirmed')) {
+        BrazilianMsg = 'E-mail não confirmado. Por favor, verifique sua caixa de entrada.';
+      } else if (errMsg) {
+        BrazilianMsg = errMsg;
       }
       setError(BrazilianMsg);
     } finally {
@@ -106,14 +118,21 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     } catch (err: any) {
       console.error(err);
       let BrazilianMsg = 'Erro ao realizar o cadastro.';
-      if (err.code === 'auth/email-already-in-use') {
+      const errMsg = err.message || '';
+      const errCode = err.code || '';
+      if (
+        errCode === 'auth/email-already-in-use' || 
+        errCode === 'user_already_exists' || 
+        errMsg.includes('already registered') || 
+        errMsg.includes('already exists')
+      ) {
         BrazilianMsg = 'Este e-mail já está sendo utilizado.';
-      } else if (err.code === 'auth/invalid-email') {
+      } else if (errCode === 'auth/invalid-email' || errCode === 'invalid_email') {
         BrazilianMsg = 'Formato de e-mail inválido.';
-      } else if (err.code === 'auth/weak-password') {
-        BrazilianMsg = 'A senha escolhida é muito fraca.';
-      } else if (err.code === 'auth/operation-not-allowed') {
-        BrazilianMsg = 'O login por e-mail/senha não está ativado neste projeto Firebase. Por favor, use "Acessar com Google Workspace".';
+      } else if (errCode === 'auth/weak-password' || errMsg.includes('weak') || errMsg.includes('at least 6 characters')) {
+        BrazilianMsg = 'A senha escolhida é muito fraca ou curta (mínimo 6 caracteres).';
+      } else if (errMsg) {
+        BrazilianMsg = errMsg;
       }
       setError(BrazilianMsg);
     } finally {
@@ -139,10 +158,14 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     } catch (err: any) {
       console.error(err);
       let BrazilianMsg = 'Erro ao enviar e-mail de recuperação.';
-      if (err.code === 'auth/user-not-found') {
+      const errMsg = err.message || '';
+      const errCode = err.code || '';
+      if (errCode === 'auth/user-not-found' || errMsg.includes('User not found')) {
         BrazilianMsg = 'Nenhuma conta cadastrada com este e-mail.';
-      } else if (err.code === 'auth/invalid-email') {
+      } else if (errCode === 'auth/invalid-email' || errCode === 'invalid_email') {
         BrazilianMsg = 'Formato de e-mail inválido.';
+      } else if (errMsg) {
+        BrazilianMsg = errMsg;
       }
       setError(BrazilianMsg);
     } finally {
