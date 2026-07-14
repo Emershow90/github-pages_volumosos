@@ -1,5 +1,5 @@
-import { FirebaseService } from '../lib/firebaseService';
-import { auth } from '../lib/firebaseAuth';
+import { SupabaseService } from '../lib/supabaseService';
+import { auth } from '../lib/supabaseAuth';
 import { StoreMaster, StoreOperation, AtividadeLoja, ParsedProgramRow, Setor } from '../types';
 import { masterCadastroLojas } from '../initialData';
 
@@ -10,13 +10,13 @@ export class StoreService {
    */
   public static async initMasterStores(): Promise<StoreMaster[]> {
     try {
-      await FirebaseService.garantirAuthPronto();
+      await SupabaseService.garantirAuthPronto();
       if (!auth.currentUser) {
         console.warn('[StoreService] Usuário não está autenticado. Ignorando seeding/inicialização do store_master.');
         return [];
       }
 
-      const existing = await FirebaseService.fetchTable<StoreMaster>('store_master', []);
+      const existing = await SupabaseService.fetchTable<StoreMaster>('store_master', []);
       if (existing && existing.length > 0) {
         return existing;
       }
@@ -32,7 +32,7 @@ export class StoreService {
       }));
 
       for (const s of seeds) {
-        await FirebaseService.upsertRecord('store_master', s, 'id');
+        await SupabaseService.upsertRecord('store_master', s, 'id');
       }
       return seeds;
     } catch (e) {
@@ -54,7 +54,7 @@ export class StoreService {
     const discrepancies: { row: ParsedProgramRow; type: 'not_found' | 'divergent'; currentName?: string }[] = [];
     
     // Fetch current master stores to check matches
-    const masterStores = await FirebaseService.fetchTable<StoreMaster>('store_master', []);
+    const masterStores = await SupabaseService.fetchTable<StoreMaster>('store_master', []);
 
     for (const line of lines) {
       if (!line.trim() || line.startsWith('==')) continue;
@@ -151,7 +151,7 @@ export class StoreService {
         transportadoraPadrao: row.transportadora,
         observacoes: "Cadastrado automaticamente via assistente de importação"
       };
-      await FirebaseService.upsertRecord('store_master', masterStore, 'id');
+      await SupabaseService.upsertRecord('store_master', masterStore, 'id');
 
       // 2. Write Store Operation (key: lojaId + date + sector)
       const opId = `${row.lojaId}_${row.dataProgramacao}_${row.setor}`;
@@ -186,7 +186,7 @@ export class StoreService {
         updated_at: timestamp,
         updated_by: user
       };
-      await FirebaseService.upsertRecord('store_operations', op, 'id');
+      await SupabaseService.upsertRecord('store_operations', op, 'id');
 
       // 3. Write associated AtividadeLoja tracking row
       const ativId = `${row.lojaId}_${row.dataProgramacao}_${row.setor}_coleta`;
@@ -200,7 +200,7 @@ export class StoreService {
         colisColetados: 0,
         updated_at: timestamp
       };
-      await FirebaseService.upsertRecord('atividade_loja', ativ, 'id');
+      await SupabaseService.upsertRecord('atividade_loja', ativ, 'id');
     }
   }
 
@@ -214,8 +214,8 @@ export class StoreService {
 
     try {
       // 1. Fetch current legacy data
-      const legacyLists = await FirebaseService.fetchTable<any>('lista_coleta', []);
-      const legacyStatuses = await FirebaseService.fetchTable<any>('radar_lojas_status', []);
+      const legacyLists = await SupabaseService.fetchTable<any>('lista_coleta', []);
+      const legacyStatuses = await SupabaseService.fetchTable<any>('radar_lojas_status', []);
 
       if (!legacyLists || legacyLists.length === 0) return 0;
 
@@ -234,7 +234,7 @@ export class StoreService {
           uf: "SP",
           transportadoraPadrao: item.transportadora || "JADLOG"
         };
-        await FirebaseService.upsertRecord('store_master', master, 'id');
+        await SupabaseService.upsertRecord('store_master', master, 'id');
 
         // Look up corresponding status
         const matchingStatus = legacyStatuses.find((s: any) => s.lista === item.lista) || {
@@ -283,7 +283,7 @@ export class StoreService {
           updated_by: user
         };
 
-        await FirebaseService.upsertRecord('store_operations', op, 'id');
+        await SupabaseService.upsertRecord('store_operations', op, 'id');
 
         // Write activity details
         const ativId = `${storeCode}_${programacaoId}_${sectorCode}_coleta`;
@@ -297,7 +297,7 @@ export class StoreService {
           colisColetados: matchingStatus.statusColeta === 'Coletada' ? (item.volumes || 100) : 0,
           updated_at: timestamp
         };
-        await FirebaseService.upsertRecord('atividade_loja', ativ, 'id');
+        await SupabaseService.upsertRecord('atividade_loja', ativ, 'id');
 
         migratedCount++;
       }
