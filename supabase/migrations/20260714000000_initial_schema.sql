@@ -183,3 +183,40 @@ CREATE TRIGGER update_atividade_loja_updated_at BEFORE UPDATE ON atividade_loja 
 CREATE TRIGGER update_usuarios_updated_at BEFORE UPDATE ON usuarios FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_colaboradores_updated_at BEFORE UPDATE ON colaboradores FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_escalas_updated_at BEFORE UPDATE ON escalas FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
+-- RLS POLICIES & SECURITY
+-- ============================================
+ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS access_usuarios ON public.usuarios;
+DROP POLICY IF EXISTS select_usuarios ON public.usuarios;
+
+CREATE POLICY access_usuarios ON public.usuarios 
+FOR SELECT 
+USING (
+  auth.uid() = id 
+  OR EXISTS (
+    SELECT 1 
+    FROM auth.users 
+    WHERE auth.users.id = auth.uid() 
+      AND auth.users.raw_user_meta_data->>'role' = 'admin'
+  )
+);
+
+CREATE POLICY insert_usuarios ON public.usuarios
+FOR INSERT
+WITH CHECK (true);
+
+CREATE POLICY update_usuarios ON public.usuarios
+FOR UPDATE
+USING (
+  auth.uid() = id 
+  OR EXISTS (
+    SELECT 1 
+    FROM auth.users 
+    WHERE auth.users.id = auth.uid() 
+      AND auth.users.raw_user_meta_data->>'role' = 'admin'
+  )
+);
+

@@ -8,6 +8,7 @@ import { Setor, CapacidadeSetor, AlertLog, HistoricoRegistro, CopilSetor } from 
 import { ExecutivoBarChart, AnalyticsDoubleLineChart, HourlyBarChart } from "./CommandCharts";
 import { TrendingUp, AlertOctagon, Zap, Shield, HelpCircle, Activity } from "lucide-react";
 import { SupabaseHealthPanel } from "./SupabaseHealthPanel";
+import { HealthDashboard } from "./HealthDashboard";
 
 interface ExecutivoTabProps {
   setores: Setor[];
@@ -302,6 +303,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ setores, historico }
           <HourlyBarChart data={graphData} />
         </div>
       </div>
+
+      <HealthDashboard />
 
       <SupabaseHealthPanel />
 

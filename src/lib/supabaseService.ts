@@ -67,6 +67,13 @@ export class SupabaseService {
     };
   }
 
+  private static getClient() {
+    if (!supabase) {
+      throw new Error("Supabase client is not initialized. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables are defined.");
+    }
+    return supabase;
+  }
+
   public static garantirAuthPronto(): Promise<void> {
     return new Promise((resolve) => {
       if (this.authState !== 'loading') {
@@ -113,7 +120,8 @@ export class SupabaseService {
 
     if (isOnline()) {
       try {
-        const { data, error } = await supabase!
+        const client = this.getClient();
+        const { data, error } = await client
           .from(tableName)
           .select('*');
 
@@ -179,7 +187,8 @@ export class SupabaseService {
 
     if (isOnline()) {
       try {
-        const { error } = await supabase!
+        const client = this.getClient();
+        const { error } = await client
           .from(tableName)
           .upsert(finalizedRecord);
 
@@ -212,7 +221,8 @@ export class SupabaseService {
 
     if (isOnline()) {
       try {
-        const { error } = await supabase!
+        const client = this.getClient();
+        const { error } = await client
           .from(tableName)
           .delete()
           .eq(keyField, keyVal);
@@ -248,38 +258,43 @@ export class SupabaseService {
 
       if (cancelado || channel) return;
 
-      if (!isOnline()) {
-        console.log(`[Supabase] Offline mode: Real-time subscription to ${tableName} will fall back to local changes.`);
+      if (!isOnline() || !supabase) {
+        console.log(`[Supabase] Offline mode or client uninitialized: Real-time subscription to ${tableName} will fall back to local changes.`);
         return;
       }
 
-      channel = supabase!.channel(`public:${tableName}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: tableName }, async (payload) => {
-          const changeType = payload.eventType;
-          const newData = payload.new;
-          const oldData = payload.old;
-          
-          if (changeType === 'INSERT' || changeType === 'UPDATE') {
-            await IndexedDBService.put(tableName, newData);
-            callback({
-              table: tableName,
-              event: changeType,
-              new: newData
-            });
-          } else if (changeType === 'DELETE') {
-            const oldRecord = oldData as any;
-            const docId = oldRecord?.id || oldRecord?.lista || oldRecord?.chave || payload.errors?.[0];
-            if (docId) {
-              await IndexedDBService.delete(tableName, docId);
+      try {
+        const client = this.getClient();
+        channel = client.channel(`public:${tableName}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: tableName }, async (payload) => {
+            const changeType = payload.eventType;
+            const newData = payload.new;
+            const oldData = payload.old;
+            
+            if (changeType === 'INSERT' || changeType === 'UPDATE') {
+              await IndexedDBService.put(tableName, newData);
               callback({
                 table: tableName,
-                event: 'DELETE',
-                new: { id: docId, lista: docId, chave: docId }
+                event: changeType,
+                new: newData
               });
+            } else if (changeType === 'DELETE') {
+              const oldRecord = oldData as any;
+              const docId = oldRecord?.id || oldRecord?.lista || oldRecord?.chave || payload.errors?.[0];
+              if (docId) {
+                await IndexedDBService.delete(tableName, docId);
+                callback({
+                  table: tableName,
+                  event: 'DELETE',
+                  new: { id: docId, lista: docId, chave: docId }
+                });
+              }
             }
-          }
-        })
-        .subscribe();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn(`[Supabase] Failed to subscribe to ${tableName}:`, err);
+      }
     });
 
     return () => {
@@ -306,7 +321,7 @@ export class SupabaseService {
 
       for (const item of queue) {
         try {
-          const client = supabase as any;
+          const client = this.getClient() as any;
           if (item.action === 'UPSERT') {
             const { error } = await client
               .from(item.tableName)

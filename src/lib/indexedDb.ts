@@ -3,7 +3,7 @@
  */
 
 const DB_NAME = "tower_os_offline_v1";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 export class IndexedDBService {
   private static db: IDBDatabase | null = null;
@@ -45,12 +45,17 @@ export class IndexedDBService {
           ];
           
           stores.forEach(store => {
-            if (!db.objectStoreNames.contains(store)) {
-              const keyPath = (store === "override_operacional") ? "chave" : 
-                              (store === "lista_coleta" || store === "radar_lojas_status") ? "lista" : "id";
-              const autoIncrement = (store === "audit_logs" || store === "historico_consolidado");
-              db.createObjectStore(store, { keyPath, autoIncrement });
+            if (db.objectStoreNames.contains(store)) {
+              try {
+                db.deleteObjectStore(store);
+              } catch (e) {
+                console.warn(`[IndexedDB] Error deleting store ${store} during upgrade:`, e);
+              }
             }
+            const keyPath = (store === "override_operacional") ? "chave" : 
+                            (store === "lista_coleta" || store === "radar_lojas_status") ? "lista" : "id";
+            const autoIncrement = (store === "audit_logs" || store === "historico_consolidado");
+            db.createObjectStore(store, { keyPath, autoIncrement });
           });
         };
 
@@ -130,7 +135,20 @@ export class IndexedDBService {
   public static async put(storeName: string, value: any): Promise<void> {
     const keyField = (storeName === "override_operacional") ? "chave" : 
                      (storeName === "lista_coleta" || storeName === "radar_lojas_status") ? "lista" : "id";
-    const key = value[keyField];
+    
+    if (value && typeof value === "object") {
+      if (value[keyField] === undefined) {
+        if (storeName === "lideranca") {
+          value[keyField] = value.nome || "lideranca_atual";
+        } else if (storeName === "escala_semanal") {
+          value[keyField] = value.dia || "escala_semanal_item";
+        } else {
+          value[keyField] = "rand_" + Math.random().toString(36).substring(2, 11);
+        }
+      }
+    }
+    
+    const key = value ? value[keyField] : undefined;
     try {
       if (this.useMemoryFallback) {
         if (key !== undefined) {
@@ -163,6 +181,21 @@ export class IndexedDBService {
   public static async putMany(storeName: string, values: any[]): Promise<void> {
     const keyField = (storeName === "override_operacional") ? "chave" : 
                      (storeName === "lista_coleta" || storeName === "radar_lojas_status") ? "lista" : "id";
+    
+    for (const val of values) {
+      if (val && typeof val === "object") {
+        if (val[keyField] === undefined) {
+          if (storeName === "lideranca") {
+            val[keyField] = val.nome || "lideranca_atual";
+          } else if (storeName === "escala_semanal") {
+            val[keyField] = val.dia || "escala_semanal_item";
+          } else {
+            val[keyField] = "rand_" + Math.random().toString(36).substring(2, 11);
+          }
+        }
+      }
+    }
+
     try {
       if (this.useMemoryFallback) {
         const memStore = this.getMemoryStore(storeName);
