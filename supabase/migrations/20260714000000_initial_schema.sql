@@ -187,36 +187,53 @@ CREATE TRIGGER update_escalas_updated_at BEFORE UPDATE ON escalas FOR EACH ROW E
 -- ============================================
 -- RLS POLICIES & SECURITY
 -- ============================================
+-- Helper function to check if a user is an admin.
+-- Declaring it as SECURITY DEFINER runs the query with creator's privileges (postgres),
+-- which bypasses RLS and completely prevents infinite recursion when queried inside RLS policies.
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 
+    FROM public.usuarios 
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Dynamically drop all existing policies on usuarios to avoid conflicts
+DO $$ 
+DECLARE 
+    pol RECORD;
+BEGIN 
+    FOR pol IN 
+        SELECT policyname 
+        FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'usuarios'
+    LOOP 
+        EXECUTE 'DROP POLICY IF EXISTS ' || quote_ident(pol.policyname) || ' ON public.usuarios';
+    END LOOP;
+END $$;
+
 ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS access_usuarios ON public.usuarios;
-DROP POLICY IF EXISTS select_usuarios ON public.usuarios;
-
-CREATE POLICY access_usuarios ON public.usuarios 
+CREATE POLICY select_usuarios ON public.usuarios 
 FOR SELECT 
 USING (
   auth.uid() = id 
-  OR EXISTS (
-    SELECT 1 
-    FROM auth.users 
-    WHERE auth.users.id = auth.uid() 
-      AND auth.users.raw_user_meta_data->>'role' = 'admin'
-  )
+  OR public.is_admin()
 );
 
 CREATE POLICY insert_usuarios ON public.usuarios
 FOR INSERT
-WITH CHECK (true);
+WITH CHECK (
+  auth.uid() = id
+);
 
 CREATE POLICY update_usuarios ON public.usuarios
 FOR UPDATE
 USING (
   auth.uid() = id 
-  OR EXISTS (
-    SELECT 1 
-    FROM auth.users 
-    WHERE auth.users.id = auth.uid() 
-      AND auth.users.raw_user_meta_data->>'role' = 'admin'
-  )
+  OR public.is_admin()
 );
 
