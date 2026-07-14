@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Setor, ScreensaverConfig } from '../types';
 import { initialSetores } from '../initialData';
-import { FirebaseService } from '../lib/firebaseService';
+import { SupabaseService } from '../lib/supabaseService';
 
 interface ConfigState {
   setores: Setor[];
@@ -34,7 +34,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   loadSetores: async () => {
     set({ loading: true });
     try {
-      const data = await FirebaseService.fetchTable<Setor>('setores', initialSetores);
+      const data = await SupabaseService.fetchTable<Setor>('setores', initialSetores);
       set({ setores: data, loading: false });
     } catch (e) {
       console.error('Error loading sectors', e);
@@ -45,14 +45,14 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   addSetor: async (setor) => {
     const updated = [...get().setores, setor];
     set({ setores: updated });
-    await FirebaseService.upsertRecord('setores', setor, 'id');
+    await SupabaseService.upsertRecord('setores', setor, 'id');
   },
 
   updateSetor: async (id, updates) => {
     const updated = get().setores.map((s) => {
       if (s.id === id) {
         const item = { ...s, ...updates };
-        FirebaseService.upsertRecord('setores', item, 'id');
+        SupabaseService.upsertRecord('setores', item, 'id');
         return item;
       }
       return s;
@@ -63,7 +63,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   deleteSetor: async (id) => {
     const updated = get().setores.filter((s) => s.id !== id);
     set({ setores: updated });
-    await FirebaseService.deleteRecord('setores', id, 'id');
+    await SupabaseService.deleteRecord('setores', id, 'id');
   },
 
   updateScreensaver: (screensaver) => {
