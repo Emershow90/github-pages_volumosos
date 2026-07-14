@@ -1082,7 +1082,727 @@ export default function App() {
   }
 
   return (
-    // ... resto do seu JSX
+  if (currentStatus === "Pendente") {
+    return (
+      <div className="min-h-screen bg-[#060608] flex flex-col items-center justify-center font-sans p-4">
+        <div className="bg-black/40 border border-amber-500/30 p-8 rounded-2xl text-center max-w-md backdrop-blur-xl shadow-2xl">
+          <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-500/30">
+            <span className="text-amber-500 text-3xl">⏳</span>
+          </div>
+          <h2 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Acesso Pendente</h2>
+          <p className="text-zinc-400 text-sm mb-6">
+            Seu cadastro foi realizado com sucesso e está aguardando aprovação de um Administrador.
+            Você será notificado quando seu acesso for liberado.
+          </p>
+          <button 
+            onClick={() => logoutUser()}
+            className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors border border-white/10"
+          >
+            Voltar para o Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#060608] flex flex-col antialiased select-none font-sans relative overflow-hidden">
+      {/* Background Matrix/Hex grid details */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.1),rgba(255,255,255,0))] pointer-events-none"></div>
+
+      {/* HEADER BAR */}
+      <header className="header border-b border-white/5 bg-[#0b0b0d]/90 backdrop-blur-md sticky top-0 z-[50000] px-4 md:px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center font-black text-white text-base shadow-[0_0_15px_rgba(99,102,241,0.5)]">
+            T
+          </div>
+          <div>
+            <h1 className="text-sm font-black text-white tracking-widest uppercase flex items-center gap-1.5 leading-none">
+              Torre de Comando <span className="text-[10px] bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 px-1.5 py-0.5 rounded-md font-mono">OS V18.5</span>
+            </h1>
+            <p className="text-[9px] text-zinc-500 uppercase font-black tracking-wider leading-none mt-1">
+              Volumosos &amp; S87 Real-Time Operating Console — WAR ROOM EDITION
+            </p>
+          </div>
+        </div>
+
+        {/* Real-Time clocks and profiles */}
+        <div className="flex items-center gap-4 md:gap-6">
+          <div className="hidden sm:flex items-center gap-4 text-xs font-mono">
+            <div className="text-right">
+              <p className="text-white font-black">{timeState.local || "00:00:00"}</p>
+              <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Local Time</p>
+            </div>
+            <div className="h-6 w-[1px] bg-white/10"></div>
+            <div className="text-right">
+              <p className="text-sky-400 font-bold">{timeState.utc || "00:00:00 UTC"}</p>
+              <p className="text-[8px] text-zinc-500 uppercase font-bold tracking-widest">Global UTC</p>
+            </div>
+          </div>
+
+          {/* Seletor de Setor para o Radar Live */}
+          <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-xl border border-white/5">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+            </span>
+            <span className="text-[9px] text-zinc-400 font-black uppercase tracking-wider hidden lg:inline">Setor:</span>
+            <select
+              value={activeSectorId}
+              onChange={(e) => {
+                const sector = e.target.value;
+                setActiveSectorId(sector);
+                localStorage.setItem("active_sector_id", sector);
+                addAudit(currentUser, "Mudar Setor (Radar)", "Geral", sector);
+              }}
+              className="bg-[#0b0b0d] border border-white/10 rounded px-2 py-0.5 text-[10px] text-zinc-300 font-bold focus:outline-none cursor-pointer uppercase font-mono"
+            >
+              {setores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  Setor {s.id} — {s.resp.split(" ")[0]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Real-time Notifications Bell */}
+          <div className="relative">
+            <button
+              onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
+              className={`p-2 rounded-xl border transition-all duration-200 relative flex items-center justify-center cursor-pointer ${
+                showNotificationDropdown
+                  ? "bg-indigo-500/15 border-indigo-500/30 text-indigo-400"
+                  : "bg-black/40 border-white/5 text-zinc-400 hover:text-white hover:border-white/10"
+              }`}
+              title="Notificações em Tempo Real"
+            >
+              <Bell size={14} />
+              {notifications.filter((n) => !n.read).length > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center bg-red-600 text-white text-[8px] font-black rounded-full shadow-[0_0_8px_rgba(220,38,38,0.6)] animate-pulse font-mono">
+                  {notifications.filter((n) => !n.read).length}
+                </span>
+              )}
+            </button>
+
+            {showNotificationDropdown && (
+              <div className="absolute right-0 mt-3 w-80 bg-[#0d0d11]/98 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-xl z-[999999] overflow-hidden">
+                <div className="p-3 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+                  <span className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    Central de Avisos
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setNotifications((prev) => {
+                          const updated = prev.map((n) => ({ ...n, read: true }));
+                          localStorage.setItem("sys_notifications", JSON.stringify(updated));
+                          return updated;
+                        });
+                      }}
+                      className="text-[8px] text-indigo-400 hover:text-indigo-300 font-bold uppercase"
+                    >
+                      Lidas
+                    </button>
+                    <span className="text-zinc-700 text-[8px]">•</span>
+                    <button
+                      onClick={() => {
+                        setNotifications([]);
+                        localStorage.removeItem("sys_notifications");
+                      }}
+                      className="text-[8px] text-zinc-500 hover:text-zinc-300 font-bold uppercase"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-72 overflow-y-auto divide-y divide-white/5 custom-scrollbar">
+                  {notifications.length === 0 ? (
+                    <div className="p-6 text-center text-zinc-500 flex flex-col items-center justify-center gap-2">
+                      <Bell size={20} className="text-zinc-600 stroke-1" />
+                      <p className="text-[10px] font-bold uppercase tracking-wider">Nenhum aviso no momento</p>
+                    </div>
+                  ) : (
+                    notifications.map((n) => {
+                      let typeColor = "bg-blue-400";
+                      let bgTint = "bg-blue-400/5";
+                      if (n.type === "success") {
+                        typeColor = "bg-emerald-400";
+                        bgTint = "bg-emerald-400/5";
+                      } else if (n.type === "warning") {
+                        typeColor = "bg-amber-400";
+                        bgTint = "bg-amber-400/5";
+                      } else if (n.type === "danger") {
+                        typeColor = "bg-red-400";
+                        bgTint = "bg-red-400/5";
+                      }
+
+                      return (
+                        <div
+                          key={n.id}
+                          onClick={() => {
+                            setNotifications((prev) => {
+                              const updated = prev.map((item) =>
+                                item.id === n.id ? { ...item, read: true } : item
+                              );
+                              localStorage.setItem("sys_notifications", JSON.stringify(updated));
+                              return updated;
+                            });
+                          }}
+                          className={`p-3 transition-colors duration-150 text-left cursor-pointer hover:bg-white/[0.02] flex items-start gap-2.5 relative ${
+                            !n.read ? "bg-white/[0.01]" : ""
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${typeColor} mt-1 flex-shrink-0`} />
+                          <div className="flex-1 space-y-0.5">
+                            <div className="flex justify-between items-baseline gap-1">
+                              <h4 className="text-[10px] font-bold text-white uppercase tracking-tight">{n.title}</h4>
+                              <span className="text-[8px] text-zinc-500 font-mono font-bold">{n.time}</span>
+                            </div>
+                            <p className="text-[9px] text-zinc-400 leading-snug">{n.desc}</p>
+                          </div>
+                          {!n.read && (
+                            <span className="absolute top-3 right-3 w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Supabase Connection Indicator */}
+          {supabaseUser && (
+            <div className="flex items-center gap-1.5 bg-black/40 px-2.5 py-1.5 rounded-xl border border-white/5 font-mono text-[9px] font-bold">
+              {checkingSupabase ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-pulse"></span>
+                  <span className="text-zinc-400 uppercase">Verificando Supabase...</span>
+                </>
+              ) : supabaseOnline === true ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
+                  <span className="text-emerald-400 uppercase">Supabase Conectado</span>
+                </>
+              ) : supabaseOnline === false ? (
+                <button
+                  onClick={checkSupabaseConnection}
+                  title="Clique para tentar reconectar ao Supabase"
+                  className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300 transition-all uppercase bg-rose-950/20 px-1.5 py-0.5 rounded border border-rose-500/30 cursor-pointer"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+                  <span>Supabase Indisponível (Reconectar)</span>
+                </button>
+              ) : null}
+            </div>
+          )}
+
+          {/* Capability Gate Profile Switcher */}
+          <div className="flex items-center gap-3 bg-black/40 p-1.5 rounded-xl border border-white/5">
+            <div className="avatar w-8 h-8 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center font-black text-indigo-400 text-xs uppercase">
+              {currentUser ? currentUser[0] : "?"}
+            </div>
+            <div className="hidden md:block text-left min-w-20">
+              <p className="text-[10px] font-black text-white leading-none uppercase">{currentUser || "Usuário"}</p>
+              <p className="text-[8px] text-zinc-500 font-bold tracking-widest uppercase mt-0.5">{currentRole}</p>
+            </div>
+            <select
+              value={currentRole}
+              onChange={(e) => handleRoleChange(e.target.value as UserRole)}
+              className="bg-[#0b0b0d] border border-white/10 rounded px-2 py-0.5 text-[10px] text-zinc-300 font-bold focus:outline-none cursor-pointer"
+            >
+              <option value={UserRole.Guest}>Guest</option>
+              <option value={UserRole.Operador}>Operador</option>
+              <option value={UserRole.Coordenador}>Coordenador</option>
+              <option value={UserRole.Admin}>Admin</option>
+            </select>
+            {supabaseUser && (
+              <button 
+                onClick={async () => {
+                  await logoutUser();
+                }}
+                className="bg-red-950/40 hover:bg-red-900/50 border border-red-500/30 rounded px-2.5 py-1 text-[10px] text-red-400 font-black hover:text-red-300 transition-all flex items-center gap-1 cursor-pointer"
+              >
+                SAIR
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* TOP COMMAND NAVIGATION PANEL */}
+      <nav className="bg-[#08080a] border-b border-white/5 px-4 md:px-6 py-2.5 grid grid-cols-1 md:grid-cols-4 gap-3 relative z-40 shadow-[0_4px_15px_rgba(0,0,0,0.6)]">
+        {/* MONITORAMENTO */}
+        <div className="border border-white/5 bg-[#0b0b0f] rounded-lg p-1.5 flex flex-col gap-1.5 shadow-sm">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-mono font-black uppercase text-indigo-400 tracking-wider">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+            Monitoramento
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            <button
+              onClick={() => setActiveTab("dashboard")}
+              className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "dashboard" ? "active" : ""}`}
+              title="Dashboard Principal"
+            >
+              <Layers size={11} />
+              <span className="truncate">Painel</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("executivo")}
+              className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "executivo" ? "active" : ""}`}
+              title="Vista Executiva"
+            >
+              <Shield size={11} />
+              <span className="truncate">Executivo</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("analytics")}
+              className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "analytics" ? "active" : ""}`}
+              title="Analytics &amp; SLAs"
+            >
+              <BarChart size={11} />
+              <span className="truncate">SLA</span>
+            </button>
+          </div>
+        </div>
+
+        {/* LOGÍSTICA */}
+        <div className="border border-white/5 bg-[#0b0b0f] rounded-lg p-1.5 flex flex-col gap-1.5 shadow-sm">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-mono font-black uppercase text-cyan-400 tracking-wider">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+            Logística
+          </div>
+          <div className="grid grid-cols-5 gap-1">
+            <button
+              onClick={() => setActiveTab("capacidade")}
+              className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "capacidade" ? "active" : ""}`}
+              title="Escala Capacidade"
+            >
+              <Layers size={10} />
+              <span className="truncate">Escala</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("produtividade")}
+              className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "produtividade" ? "active" : ""}`}
+              title="Cálculo Produtividade"
+            >
+              <Activity size={10} />
+              <span className="truncate">Prod</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("mix")}
+              className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "mix" ? "active" : ""}`}
+              title="Mix Atividades"
+            >
+              <Layers size={10} />
+              <span className="truncate">Mix</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("copil")}
+              className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "copil" ? "active" : ""}`}
+              title="Matriz COPIL"
+            >
+              <UserCheck size={10} />
+              <span className="truncate">COPIL</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("radar_lojas_live")}
+              className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "radar_lojas_live" ? "active" : ""}`}
+              title="Radar de Lojas Live (Sincronizado)"
+            >
+              <Radio size={10} className="text-rose-400 animate-pulse" />
+              <span className="truncate font-bold text-rose-300">Radar Live</span>
+            </button>
+          </div>
+        </div>
+
+        {/* GESTÃO */}
+        <div className="border border-white/5 bg-[#0b0b0f] rounded-lg p-1.5 flex flex-col gap-1.5 shadow-sm">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-mono font-black uppercase text-amber-500 tracking-wider">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+            Gestão
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            <button
+              onClick={() => setActiveTab("equipa")}
+              className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "equipa" ? "active" : ""}`}
+              title="Equipe / Volumosos"
+            >
+              <User size={11} />
+              <span className="truncate">Equipe</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("historico")}
+              className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "historico" ? "active" : ""}`}
+              title="Histórico Consolidados"
+            >
+              <Layers size={11} />
+              <span className="truncate">Logs</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("alerts")}
+              className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "alerts" ? "active" : ""}`}
+              title="Central de Alertas"
+            >
+              <Bell size={11} />
+              <span className="truncate">Alertas</span>
+            </button>
+          </div>
+        </div>
+
+        {/* SISTEMA */}
+        <div className="border border-white/5 bg-[#0b0b0f] rounded-lg p-1.5 flex flex-col gap-1.5 shadow-sm">
+          <div className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-mono font-black uppercase text-purple-400 tracking-wider">
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+            Sistema
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            <button
+              onClick={() => setActiveTab("audit")}
+              className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "audit" ? "active" : ""}`}
+              title="Auditoria Geral"
+            >
+              <Shield size={11} />
+              <span className="truncate">Auditoria</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("relatorios")}
+              className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "relatorios" ? "active" : ""}`}
+              title="Relatórios &amp; Handovers"
+            >
+              <FileText size={11} />
+              <span className="truncate">Relatos</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("config")}
+              className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "config" ? "active" : ""}`}
+              title="Ajustes OS"
+            >
+              <Layers size={11} />
+              <span className="truncate">Ajustes</span>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* CORE WRAPPER */}
+      <div className="flex-1 flex flex-col">
+        {/* CONTENT STAGE */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar pb-24">
+          {activeTab === "radar_lojas_live" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Operador, UserRole.Operacao, UserRole.Expedicao]}
+            >
+              <RadarLojasTab
+                currentRole={currentRole}
+                onSaveRadar={handleSaveRadar}
+                activeSectorId={activeSectorId}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "dashboard" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Referente]}
+            >
+              <DashboardTab
+                setores={setores}
+                referentesSemana={referentesSemana}
+                colaboradores={colaboradores}
+                radar={radar}
+                reaproData={reaproData}
+                bolsaoData={bolsaoData}
+                copilData={copilData}
+                copilActiveSector={activeSectorId}
+                setCopilActiveSector={setActiveSectorId}
+                onToggleSeguranca={handleToggleSeguranca}
+                onSaveRadar={handleSaveRadar}
+                onSaveBolsao={setBolsaoData}
+                onSaveReapro={setReaproData}
+                terminalLogs={terminalLogs}
+                onTerminalCommand={handleTerminalCommand}
+                currentRole={currentRole}
+                historico={historico}
+                capacidade={capacidade}
+                onUpdateSetor={handleUpdateSetorField}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "executivo" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Referente]}
+            >
+              <ExecutivoTab
+                setores={setoresFluctuated}
+                capacidade={capacidade}
+                alerts={alerts}
+                historico={historico}
+                copilData={copilData}
+                calcCopilNota={calcCopilNota}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "analytics" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Referente]}
+            >
+              <AnalyticsTab setores={setoresFluctuated} historico={historico} />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "capacidade" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Operador, UserRole.Operacao, UserRole.Expedicao]}
+            >
+              <CapacidadeTab
+                setores={setores}
+                colaboradores={colaboradores}
+                capacidade={capacidade}
+                onUpdateCapacidade={handleUpdateCapacidade}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "produtividade" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Operador, UserRole.Operacao, UserRole.Expedicao]}
+            >
+              <ProdutividadeTab
+                setores={setores}
+                colaboradores={colaboradores}
+                activeSectorId={activeSectorId}
+                setActiveSectorId={setActiveSectorId}
+                onUpdateSetorProd={handleUpdateSetorProd}
+                onUpdateColaboradorStatus={handleUpdateColaboradorStatus}
+                onUpdateColaboradorHoras={handleUpdateColaboradorHoras}
+                onGravarTurno={handleGravarTurno}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "mix" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Operador, UserRole.Operacao, UserRole.Expedicao]}
+            >
+              <MixTab
+                setores={setores}
+                universos={universos}
+                onAddUniverso={(sid, nome, meta) => {
+                  setUniversos((prev) => {
+                    const list = prev[sid] || [];
+                    return { ...prev, [sid]: [...list, { nome, meta, feito: 0 }] };
+                  });
+                  addAudit(currentUser, "Novo Mix Universo", sid, nome);
+                }}
+                onRemoveUniverso={(sid, uIdx) => {
+                  setUniversos((prev) => {
+                    const list = (prev[sid] || []).filter((_, i) => i !== uIdx);
+                    return { ...prev, [sid]: list };
+                  });
+                  addAudit(currentUser, "Remover Mix Universo", sid, uIdx);
+                }}
+                onIncrementUniverso={(sid, uIdx, delta) => {
+                  setUniversos((prev) => {
+                    const list = [...(prev[sid] || [])];
+                    if (list[uIdx]) {
+                      list[uIdx] = { ...list[uIdx], feito: list[uIdx].feito + delta };
+                    }
+                    return { ...prev, [sid]: list };
+                  });
+                  addAudit(currentUser, "Apontar Mix", `${sid}.${uIdx}`, delta);
+                }}
+                onZerarMix={() => {
+                  if (currentRole !== UserRole.Admin) return;
+                  setUniversos((prev) => {
+                    const copy = { ...prev };
+                    Object.keys(copy).forEach((k) => {
+                      copy[k] = (copy[k] as any[]).map((u: any) => ({ ...u, feito: 0 }));
+                    });
+                    return copy;
+                  });
+                  addAudit(currentUser, "Zerar Mix Completo", "Tudo", 0);
+                }}
+                onExportMixCSV={() => {
+                  let csv = "Setor;Universo;Meta;Feito;Progresso\n";
+                  Object.entries(universos).forEach(([sid, list]) => {
+                    (list as any[]).forEach((u: any) => {
+                      const pct = u.meta ? ((u.feito / u.meta) * 100).toFixed(1) : "0.0";
+                      csv += `${sid};${u.nome};${u.meta};${u.feito};${pct}%\n`;
+                    });
+                  });
+                  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                  const link = document.createElement("a");
+                  link.href = URL.createObjectURL(blob);
+                  link.setAttribute("download", `backup_mix_volumosos.csv`);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                currentRole={currentRole}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "copil" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Operador, UserRole.Operacao, UserRole.Expedicao]}
+            >
+              <CopilTab
+                setores={setores}
+                copilData={copilData}
+                activeSectorId={activeSectorId}
+                setActiveSectorId={setActiveSectorId}
+                onUpdateCopilKPI={handleUpdateCopilKPI}
+                onAddCopilKPI={handleAddCopilKPI}
+                onRemoveCopilKPI={handleRemoveCopilKPI}
+                onSaveCopil={() => {
+                  localStorage.setItem("sys_copil", JSON.stringify(copilData));
+                  addAudit(currentUser, "Gravação COPIL", "Estado", "Sucesso");
+                  alert(`KPIs do Setor S${activeSectorId} salvos e sincronizados com sucesso.`);
+                }}
+                onExportCopilCSV={() => {
+                  let csv = "Pilar;Indicador;Meta;Realizado;Resultado\n";
+                  const activeCopil = copilData[activeSectorId];
+                  if (activeCopil) {
+                    ["operacionais", "economico", "seguranca"].forEach((g) => {
+                      const list = (activeCopil as any)[g] || [];
+                      list.forEach((k: any) => {
+                        csv += `${g.toUpperCase()};${k.kpi};${k.comp};${k.real};${calcCopilNota(k)}\n`;
+                      });
+                    });
+                  }
+                  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                  const link = document.createElement("a");
+                  link.href = URL.createObjectURL(blob);
+                  link.setAttribute("download", `copil_matriz_S${activeSectorId}.csv`);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                currentRole={currentRole}
+                calcCopilNota={calcCopilNota}
+                onRestoreDefaultKPIs={handleRestoreDefaultKPIs}
+                onBulkImportKPIs={handleBulkImportKPIs}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "equipa" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin]}
+            >
+              <EquipaTab
+                colaboradores={colaboradores}
+                setores={setores}
+                onAddColaborador={handleAddColaborador}
+                onUpdateColaborador={handleUpdateColaborador}
+                onRemoveColaborador={handleRemoveColaborador}
+                onUpdateColaboradorStatus={handleUpdateColaboradorStatus}
+                onUpdateColaboradorHoras={handleUpdateColaboradorHoras}
+                onSetColaboradores={handleSetColaboradores}
+                currentRole={currentRole}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "historico" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin]}
+            >
+              <HistoricoTab
+                historico={historico}
+                onClearHistorico={() => {
+                  setHistorico([]);
+                  if (authLoading || !supabaseUser) return;
+                  fetchWithAuth("/api/historico_consolidado", { method: "DELETE" })
+                    .then(() => {
+                      addAudit(currentUser, "Limpar Histórico", "Todos", "Apagados");
+                    })
+                    .catch(err => console.error("Failed to clear consolidated history on DB:", err));
+                }}
+                currentRole={currentRole}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "alerts" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin]}
+            >
+              <AlertasTab
+                alerts={alerts}
+                onMarkAlertLido={handleMarkAlertLido}
+                onClearOldAlerts={() => setAlerts([])}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "audit" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin]}
+            >
+              <AuditoriaTab
+                audit={audit}
+                onClearAudit={() => {
+                  setAudit([]);
+                  if (authLoading || !supabaseUser) return;
+                  fetchWithAuth("/api/audit_logs", { method: "DELETE" })
+                    .then(() => {
+                      addAudit(currentUser, "Limpar Auditoria", "Todos", "Apagados");
+                    })
+                    .catch(err => console.error("Failed to clear audit logs on DB:", err));
+                }}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "relatorios" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin]}
+            >
+              <RelatoriosTab setores={setores} coordenador={currentUser} />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "config" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin]}
+            >
+              <ConfigTab
+                setores={setores}
+                colaboradores={colaboradores}
+                referentesSemana={referentesSemana}
+                screensaver={screensaver}
+                coordenador={currentUser}
+                fotoCoordenador=""
+                onSaveRadar={handleSaveRadar}
+                onUpdateReferente={(idx, field, val) => {
+                  setReferentesSemana((prev) => {
+                    const copy = [...prev];
+                    copy[idx] = { ...copy[idx], [field]: val };
+                    return copy;
+                  });
+                }}
+                onAdd
   );
 }
 
