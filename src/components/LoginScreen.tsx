@@ -16,12 +16,11 @@ import {
   KeyRound
 } from 'lucide-react';
 import { 
-  signInWithEmail,
-  signUpWithEmail,
-  resetPassword,
-  signInWithGoogle,
-  supabase
-} from '../lib/supabase';
+  loginWithEmail, 
+  signUpWithEmail, 
+  recoverPassword, 
+  googleSignIn 
+} from '../lib/supabaseAuth';
 import { UserRole } from '../types/Usuario';
 
 interface LoginScreenProps {
@@ -63,25 +62,21 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     setError(null);
     
     try {
-      const { user, profile } = await signInWithEmail(email, password);
-      onAuthSuccess(user, profile);
+      const user = await loginWithEmail(email, password);
+      // Fetch profile in parent component
+      onAuthSuccess(user, null);
     } catch (err: any) {
       console.error(err);
       let BrazilianMsg = 'Erro ao realizar login. Verifique suas credenciais.';
-      
-      // Tratamento de erros do Supabase
-      if (err.message?.includes('Invalid login credentials')) {
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
         BrazilianMsg = 'E-mail ou senha incorretos.';
-      } else if (err.message?.includes('Email not confirmed')) {
-        BrazilianMsg = 'E-mail não confirmado. Verifique sua caixa de entrada.';
-      } else if (err.message?.includes('Invalid email')) {
+      } else if (err.code === 'auth/invalid-email') {
         BrazilianMsg = 'Formato de e-mail inválido.';
-      } else if (err.message?.includes('User not found')) {
-        BrazilianMsg = 'Nenhuma conta cadastrada com este e-mail.';
-      } else if (err.message?.includes('Too many requests')) {
-        BrazilianMsg = 'Muitas tentativas. Aguarde alguns minutos.';
+      } else if (err.code === 'auth/user-disabled') {
+        BrazilianMsg = 'Este usuário foi desativado.';
+      } else if (err.code === 'auth/operation-not-allowed') {
+        BrazilianMsg = 'Autenticação por e-mail desativada. Use o Google Workspace ou ative no console do Firebase.';
       }
-      
       setError(BrazilianMsg);
     } finally {
       setLoading(false);
@@ -105,30 +100,21 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     try {
       const { user, profile } = await signUpWithEmail(email, password, name, role);
       setSuccessMsg('Cadastro realizado com sucesso!');
-      
-      // Se for o proprietário, já está ativo, senão aguarda aprovação
-      const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com';
-      if (!isOwner) {
-        setSuccessMsg('Cadastro realizado! Aguarde aprovação de um administrador.');
-      }
-      
       setTimeout(() => {
         onAuthSuccess(user, profile);
       }, 1500);
     } catch (err: any) {
       console.error(err);
       let BrazilianMsg = 'Erro ao realizar o cadastro.';
-      
-      if (err.message?.includes('User already registered')) {
+      if (err.code === 'auth/email-already-in-use') {
         BrazilianMsg = 'Este e-mail já está sendo utilizado.';
-      } else if (err.message?.includes('Invalid email')) {
+      } else if (err.code === 'auth/invalid-email') {
         BrazilianMsg = 'Formato de e-mail inválido.';
-      } else if (err.message?.includes('Password should be at least 6 characters')) {
-        BrazilianMsg = 'A senha deve ter no mínimo 6 caracteres.';
-      } else if (err.message?.includes('Signup not allowed')) {
-        BrazilianMsg = 'Cadastro não permitido. Tente novamente mais tarde.';
+      } else if (err.code === 'auth/weak-password') {
+        BrazilianMsg = 'A senha escolhida é muito fraca.';
+      } else if (err.code === 'auth/operation-not-allowed') {
+        BrazilianMsg = 'O login por e-mail/senha não está ativado neste projeto Firebase. Por favor, use "Acessar com Google Workspace".';
       }
-      
       setError(BrazilianMsg);
     } finally {
       setLoading(false);
@@ -147,19 +133,17 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     setSuccessMsg(null);
 
     try {
-      await resetPassword(email);
+      await recoverPassword(email);
       setSuccessMsg('E-mail de redefinição enviado com sucesso! Verifique sua caixa de entrada.');
       setEmail('');
     } catch (err: any) {
       console.error(err);
       let BrazilianMsg = 'Erro ao enviar e-mail de recuperação.';
-      
-      if (err.message?.includes('User not found')) {
+      if (err.code === 'auth/user-not-found') {
         BrazilianMsg = 'Nenhuma conta cadastrada com este e-mail.';
-      } else if (err.message?.includes('Invalid email')) {
+      } else if (err.code === 'auth/invalid-email') {
         BrazilianMsg = 'Formato de e-mail inválido.';
       }
-      
       setError(BrazilianMsg);
     } finally {
       setLoading(false);
@@ -170,21 +154,13 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     setLoading(true);
     setError(null);
     try {
-      // O Supabase redireciona para a página do Google
-      await signInWithGoogle();
-      // Após o redirect, o usuário volta autenticado
-      // O onAuthSuccess será chamado pelo efeito no App.tsx
+      const res = await googleSignIn();
+      if (res) {
+        onAuthSuccess(res.user, null);
+      }
     } catch (err: any) {
       console.error(err);
-      let BrazilianMsg = 'Falha na autenticação com Google.';
-      
-      if (err.message?.includes('popup closed')) {
-        BrazilianMsg = 'Janela de autenticação fechada. Tente novamente.';
-      } else if (err.message?.includes('User cancelled')) {
-        BrazilianMsg = 'Autenticação cancelada pelo usuário.';
-      }
-      
-      setError(BrazilianMsg);
+      setError('Falha na autenticação com Google.');
     } finally {
       setLoading(false);
     }
@@ -431,7 +407,7 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
               className="space-y-4"
             >
               <div className="bg-zinc-950/40 border border-zinc-800 rounded-xl p-3 text-[11px] text-zinc-400 font-medium leading-relaxed mb-2">
-                Esqueceu a senha? Digite seu e-mail abaixo. Nós lhe enviaremos um link seguro para você redefinir sua senha imediatamente e evitar qualquer perda de acesso ou falhas no sistema.
+                Esqueceu a senha? Digite seu e-mail abaixo. Nós lhe enviaremos um link seguro do Firebase para você redefinir sua senha imediatamente e evitar qualquer perda de acesso ou falhas no sistema.
               </div>
 
               <div>
@@ -543,13 +519,6 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
           </svg>
           Acessar com Google Workspace
         </button>
-
-        {/* Versão do Sistema */}
-        <div className="mt-4 text-center">
-          <p className="text-[8px] text-zinc-600 font-mono tracking-widest uppercase">
-            v18.5 — Supabase Backend
-          </p>
-        </div>
 
       </motion.div>
     </div>
