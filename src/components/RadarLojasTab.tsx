@@ -38,7 +38,7 @@ import { useUserStore } from "../stores/useUserStore";
 import { useNotificationStore } from "../stores/useNotificationStore";
 import { StoreService } from "../services/storeService";
 import { BusinessRules } from "../services/businessRules";
-import { FirebaseService, isOnline } from "../lib/firebaseService";
+import { SupabaseService as FirebaseService, isOnline } from "../lib/supabaseService";
 import { realtimeSync } from "../services/realtimeSyncService";
 import { StoreOperation, ParsedProgramRow, StoreMaster } from "../types";
 import { useSectorStore } from "../stores/useSectorStore";
