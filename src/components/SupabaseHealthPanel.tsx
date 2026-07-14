@@ -29,7 +29,7 @@ export const SupabaseHealthPanel: React.FC = () => {
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   const fetchHealthData = async () => {
-    if (isStaticBuild) {
+    if (isStaticBuild || !supabase) {
       // Modo Estático (Mock)
       const mockItems: HealthItem[] = [
         { name: "usuarios", type: "table", description: "Perfis de usuários do sistema e controle de acesso (RBAC)", count: 6, status: "offline" },

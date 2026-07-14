@@ -77,12 +77,31 @@ export interface SupabaseUser {
 // In-memory current user tracker for the app
 let currentMockUser: SupabaseUser | null = null;
 
+export function ensureGetIdToken(user: any): any {
+  if (!user) return null;
+  if (typeof user.getIdToken !== 'function') {
+    user.getIdToken = async () => {
+      if (!isStaticBuild && supabase) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          return data.session?.access_token || "local-token";
+        } catch (e) {
+          return "local-token";
+        }
+      }
+      return "local-token";
+    };
+  }
+  return user;
+}
+
 // Sincronizar usuário logado inicial do localStorage se houver
 if (typeof window !== 'undefined') {
   const cachedUser = localStorage.getItem('sys_active_user_session');
   if (cachedUser) {
     try {
-      currentMockUser = JSON.parse(cachedUser);
+      const parsed = JSON.parse(cachedUser);
+      currentMockUser = ensureGetIdToken(parsed);
     } catch (e) {
       console.error('Error loading cached user session', e);
     }
@@ -92,12 +111,7 @@ if (typeof window !== 'undefined') {
 // Emulate getAuth().currentUser or similar
 export const auth = {
   get currentUser() {
-    if (isStaticBuild) {
-      return currentMockUser;
-    }
-    const session = supabase?.auth.getSession();
-    // Return a mapped user object or null
-    return currentMockUser;
+    return ensureGetIdToken(currentMockUser);
   },
   onAuthStateChanged: (cb: (user: any) => void, errorCb?: (err: any) => void) => {
     if (isStaticBuild) {
@@ -112,10 +126,10 @@ export const auth = {
           id: u.id,
           email: u.email,
           displayName: u.user_metadata?.displayName || u.user_metadata?.full_name || u.email?.split('@')[0],
-          getIdToken: async () => session.access_token
+          getIdToken: async () => session.access_token || ""
         };
         localStorage.setItem('sys_active_user_session', JSON.stringify(currentMockUser));
-        cb(currentMockUser);
+        cb(auth.currentUser);
       } else {
         currentMockUser = null;
         localStorage.removeItem('sys_active_user_session');
@@ -297,8 +311,9 @@ export const initAuth = (
 ) => {
   return auth.onAuthStateChanged(async (user: any) => {
     if (user) {
-      const token = await user.getIdToken();
-      if (onAuthSuccess) onAuthSuccess(user, token);
+      const safeUser = ensureGetIdToken(user);
+      const token = safeUser && typeof safeUser.getIdToken === 'function' ? await safeUser.getIdToken() : '';
+      if (onAuthSuccess) onAuthSuccess(safeUser, token);
     } else {
       if (onAuthFailure) onAuthFailure();
     }
@@ -484,7 +499,7 @@ export const fetchWithAuth = async (input: RequestInfo | URL, init?: RequestInit
   const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
   try {
     const user = auth.currentUser;
-    const token = user ? await user.getIdToken() : '';
+    const token = user && typeof user.getIdToken === 'function' ? await user.getIdToken() : '';
     
     if (IS_STATIC_BUILD && url.includes('/api/')) {
       return simulateBackendRequest(url, init);
@@ -556,7 +571,7 @@ const patchedFetch: typeof window.fetch = async (input, init) => {
     }
     try {
       const user = auth.currentUser;
-      const token = user ? await user.getIdToken() : '';
+      const token = user && typeof user.getIdToken === 'function' ? await user.getIdToken() : '';
       const headers = new Headers(init?.headers);
       if (token) {
         headers.set('Authorization', `Bearer ${token}`);

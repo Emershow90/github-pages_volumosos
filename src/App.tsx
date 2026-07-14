@@ -114,9 +114,14 @@ export default function App() {
   const verifySupabaseConnection = async () => {
     setCheckingSupabase(true);
     try {
-      const { supabase } = await import('./lib/supabase');
+      const { supabase, isStaticBuild } = await import('./lib/supabase');
+      if (isStaticBuild || !supabase) {
+        setSupabaseOnline(false);
+        setCheckingSupabase(false);
+        return;
+      }
       
-      const checkPromise = supabase!.from('usuarios').select('id').limit(1);
+      const checkPromise = supabase.from('usuarios').select('id').limit(1);
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
       
       await Promise.race([checkPromise, timeoutPromise]);

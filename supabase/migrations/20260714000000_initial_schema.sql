@@ -268,7 +268,7 @@ BEGIN
   RETURN EXISTS (
     SELECT 1 
     FROM public.usuarios 
-    WHERE id = auth.uid() AND role = 'admin'
+    WHERE id = auth.uid() AND LOWER(role) = 'admin'
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -279,7 +279,7 @@ BEGIN
   RETURN EXISTS (
     SELECT 1 
     FROM public.usuarios 
-    WHERE id = auth.uid() AND role = 'coordenador'
+    WHERE id = auth.uid() AND LOWER(role) = 'coordenador'
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -290,7 +290,7 @@ BEGIN
   RETURN EXISTS (
     SELECT 1 
     FROM public.usuarios 
-    WHERE id = auth.uid() AND role IN ('admin', 'coordenador')
+    WHERE id = auth.uid() AND LOWER(role) IN ('admin', 'coordenador')
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -334,7 +334,7 @@ END $$;
 
 -- POLÍTICAS: usuarios
 CREATE POLICY select_usuarios ON public.usuarios 
-  FOR SELECT USING (auth.uid() = id OR public.is_admin());
+  FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY insert_usuarios ON public.usuarios 
   FOR INSERT WITH CHECK (auth.uid() = id);

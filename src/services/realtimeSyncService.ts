@@ -30,9 +30,9 @@ class RealtimeSyncService {
       }
 
       if (this.unsubscribes.has(key)) return;
-      if (isStaticBuild) return;
+      if (isStaticBuild || !supabase) return;
 
-      const channel = supabase!.channel(key)
+      const channel = supabase.channel(key)
         .on(
           'postgres_changes',
           {
@@ -84,9 +84,9 @@ class RealtimeSyncService {
       }
 
       if (this.unsubscribes.has(key)) return;
-      if (isStaticBuild) return;
+      if (isStaticBuild || !supabase) return;
 
-      const channel = supabase!.channel(key)
+      const channel = supabase.channel(key)
         .on(
           'postgres_changes',
           {
@@ -150,9 +150,9 @@ class RealtimeSyncService {
             useSectorStore.getState().setSetores(dbSetores);
           }
 
-          if (isStaticBuild) return;
+          if (isStaticBuild || !supabase) return;
 
-          channel = supabase!.channel(key)
+          channel = supabase.channel(key)
             .on(
               'postgres_changes',
               {
@@ -220,9 +220,9 @@ class RealtimeSyncService {
             useCollaboratorStore.getState().setColaboradores(dbColab);
           }
 
-          if (isStaticBuild) return;
+          if (isStaticBuild || !supabase) return;
 
-          channel = supabase!.channel(key)
+          channel = supabase.channel(key)
             .on(
               'postgres_changes',
               {
