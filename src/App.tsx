@@ -957,6 +957,133 @@ export default function App() {
       prev.map((a) => (a.id === id ? { ...a, lido: true } : a))
     );
   };
-
   const handleGravarTurno = () => {
-    const s = setores.find((x) => x.id ===
+    const s = setores.find((x) => x.id === activeSectorId) || setores[0];
+    if (!s) {
+      console.error('Nenhum setor encontrado');
+      return;
+    }
+    
+    const newReg: HistoricoRegistro = {
+      data: new Date().toLocaleDateString("pt-BR"),
+      hora: new Date().toLocaleTimeString("pt-BR"),
+      semana: "S26",
+      turno: "Turno A",
+      setor: s.id,
+      ativ: s.ativ,
+      uph: s.uph,
+      repro: s.reproTotal,
+      promessa: s.promessa,
+      nota5s: s.nota5s,
+      erros: s.errosPicking,
+    };
+    
+    setHistorico((prev) => [...prev, newReg]);
+
+    if (authLoading || !supabaseUser) {
+      addAudit(currentUser, "Consolidação Turno", `Setor ${s.id}`, s.ativ);
+      alert(`Turno S${s.id} gravado localmente (sincronização offline).`);
+      return;
+    }
+
+    fetchWithAuth("/api/historico_consolidado", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newReg)
+    })
+    .then(() => {
+      addAudit(currentUser, "Consolidação Turno", `Setor ${s.id}`, s.ativ);
+      alert(`Turno S${s.id} gravado no histórico com sucesso!`);
+    })
+    .catch(err => {
+      console.error("Failed to automatically save turn consolidation to DB:", err);
+      addAudit(currentUser, "Consolidação Turno", `Setor ${s.id}`, s.ativ);
+      alert(`Turno S${s.id} gravado localmente (erro ao sincronizar com banco de dados).`);
+    });
+  };
+
+  // ---------------------------------------------------------------------------
+  // RENDER
+  // ---------------------------------------------------------------------------
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#060608] flex flex-col items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+          <p className="text-zinc-500 text-xs font-black tracking-widest uppercase">Inicializando Segurança...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-[#060608] flex flex-col items-center justify-center font-sans p-4">
+        <div className="bg-black/40 border border-red-500/30 p-8 rounded-2xl text-center max-w-md backdrop-blur-xl shadow-2xl">
+          <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500/30">
+            <span className="text-red-500 text-3xl">⚠️</span>
+          </div>
+          <h2 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Erro de Autenticação</h2>
+          <p className="text-zinc-400 text-sm mb-6">{authError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors border border-white/10"
+          >
+            Recarregar Página
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!supabaseUser) {
+    return (
+      <LoginScreen 
+        onAuthSuccess={async (user, profile) => {
+          setSupabaseUser(user);
+          if (profile) {
+            setCurrentUser(profile.nome);
+            setCurrentRole(profile.role);
+            setCurrentStatus(profile.situacao);
+          } else {
+            const p = await getUserProfile(user.id) || await ensureUserProfile(user);
+            if (p) {
+              setCurrentUser(p.nome);
+              setCurrentRole(p.role);
+              setCurrentStatus(p.situacao);
+            }
+          }
+        }} 
+      />
+    );
+  }
+
+  if (currentStatus === "Pendente") {
+    return (
+      <div className="min-h-screen bg-[#060608] flex flex-col items-center justify-center font-sans p-4">
+        <div className="bg-black/40 border border-amber-500/30 p-8 rounded-2xl text-center max-w-md backdrop-blur-xl shadow-2xl">
+          <div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-500/30">
+            <span className="text-amber-500 text-3xl">⏳</span>
+          </div>
+          <h2 className="text-xl font-black text-white mb-2 uppercase tracking-wide">Acesso Pendente</h2>
+          <p className="text-zinc-400 text-sm mb-6">
+            Seu cadastro foi realizado com sucesso e está aguardando aprovação de um Administrador.
+            Você será notificado quando seu acesso for liberado.
+          </p>
+          <button 
+            onClick={() => logoutUser()}
+            className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors border border-white/10"
+          >
+            Voltar para o Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    // ... resto do seu JSX
+  );
+}
+
+export default App;
