@@ -5,18 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && cp dist/index.html dist/404.html",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist",
-    "start": "vite preview",
+    "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
-    "firebase": "^12.15.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",
