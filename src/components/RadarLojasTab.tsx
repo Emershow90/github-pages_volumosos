@@ -42,6 +42,7 @@ import { SupabaseService as FirebaseService, isOnline } from "../lib/supabaseSer
 import { realtimeSync } from "../services/realtimeSyncService";
 import { StoreOperation, ParsedProgramRow, StoreMaster, AtividadeLoja } from "../types";
 import { useSectorStore } from "../stores/useSectorStore";
+import { ModalConfirmacao } from "./ModalConfirmacao";
 
 interface RadarLojasTabProps {
   currentRole?: string;
@@ -66,6 +67,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
   const [offlineQueueLength, setOfflineQueueLength] = useState<number>(0);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [applyToAllSectors, setApplyToAllSectors] = useState(false);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   
   // Local interaction state
   const [searchQuery, setSearchQuery] = useState("");
@@ -654,6 +656,42 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
     }
   };
 
+  // Delete all operations and activities
+  const handleDeleteAllOperations = async () => {
+    const opsList = Object.values(operations);
+    if (opsList.length === 0) {
+      triggerFeedback("Não há operações operacionais no Radar para apagar.", true);
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      let count = 0;
+      // Delete operations
+      for (const op of opsList) {
+        await FirebaseService.deleteRecord('store_operations', op.id);
+        removeOperation(op.id);
+        count++;
+      }
+
+      // Also delete corresponding activities in activity_loja
+      const ativs = useAtividadeLoja.getState().atividades;
+      const targetDate = "2026-07-05";
+      const ativsList = Object.values(ativs).filter(a => a.programacaoId === targetDate);
+      for (const ativ of ativsList) {
+        await FirebaseService.deleteRecord('atividade_loja', ativ.id);
+        useAtividadeLoja.getState().removeAtividade(ativ.id);
+      }
+
+      triggerFeedback(`Sucesso! ${count} rotas do Radar Live apagadas permanentemente.`);
+    } catch (e: any) {
+      console.error("[Delete All] Erro ao apagar todas as rotas:", e);
+      triggerFeedback(`Erro ao apagar dados do Radar: ${e.message || e}`, true);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Filtering Operations Lists
   const getFilteredOperations = () => {
     const list = Object.values(operations);
@@ -878,6 +916,14 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
               {isSyncing ? "Sincronizando..." : "Sincronizar"}
             </button>
           </div>
+
+          <button
+            onClick={() => setIsConfirmModalOpen(true)}
+            className="w-full mt-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg py-2 px-1 text-[9px] font-bold font-mono uppercase transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <Trash2 size={10} />
+            Apagar Todos os Dados
+          </button>
         </div>
 
         {/* Filters */}
@@ -1699,6 +1745,17 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
           </div>
         )}
 
+        {/* Confirmation Modal */}
+        <ModalConfirmacao
+          isOpen={isConfirmModalOpen}
+          onClose={() => setIsConfirmModalOpen(false)}
+          onConfirm={handleDeleteAllOperations}
+          title="⚠️ ATENÇÃO: APAGAR TODOS OS DADOS DO RADAR LIVE?"
+          description="Você está prestes a apagar permanentemente todas as rotas operacionais do Radar Live e registros de atividades correspondentes. Esta ação não poderá ser desfeita!"
+          confirmLabel="Sim, Apagar Tudo"
+          cancelLabel="Cancelar"
+          recordCount={Object.keys(operations).length}
+        />
       </div>
     </div>
   );

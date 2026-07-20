@@ -205,7 +205,11 @@ export const getUserProfile = async (uid: string): Promise<Usuario | null> => {
       return profile;
     }
   } catch (error: any) {
-    console.error('❌ Error fetching user profile from Supabase:', error.message);
+    if (error.message && (error.message.includes('fetch') || error.message.includes('NetworkError') || error.message.includes('Failed to fetch'))) {
+      console.warn('⚠️ [Supabase Auth] Erro de rede (Failed to fetch). Tentando recuperar perfil de usuário do cache local...', error.message);
+    } else {
+      console.error('❌ Error fetching user profile from Supabase:', error.message || error);
+    }
     const cached = localStorage.getItem(localKey);
     if (cached) {
       try {
@@ -271,27 +275,35 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
     };
 
     if (!isStaticBuild) {
-      await supabase!
-        .from('usuarios')
-        .upsert({
-          id: user.uid,
-          email: defaultProfile.email,
-          nome: defaultProfile.nome,
-          role: defaultProfile.role,
-          setoresAutorizados: defaultProfile.setoresAutorizados,
-          situacao: defaultProfile.situacao,
-          cargo: defaultProfile.cargo,
-          unidade: defaultProfile.unidade || 'CD Principal',
-          avatar_url: defaultProfile.foto || '',
-          aprovado_por: defaultProfile.aprovado_por || null,
-          data_aprovacao: defaultProfile.data_aprovacao || null
-        });
+      try {
+        await supabase!
+          .from('usuarios')
+          .upsert({
+            id: user.uid,
+            email: defaultProfile.email,
+            nome: defaultProfile.nome,
+            role: defaultProfile.role,
+            setoresAutorizados: defaultProfile.setoresAutorizados,
+            situacao: defaultProfile.situacao,
+            cargo: defaultProfile.cargo,
+            unidade: defaultProfile.unidade || 'CD Principal',
+            avatar_url: defaultProfile.foto || '',
+            aprovado_por: defaultProfile.aprovado_por || null,
+            data_aprovacao: defaultProfile.data_aprovacao || null
+          });
+      } catch (upsertErr: any) {
+        console.warn('⚠️ [Supabase Auth] Não foi possível salvar o perfil online (Erro de rede). Armazenando apenas localmente.', upsertErr.message || upsertErr);
+      }
     }
     localStorage.setItem(localKey, JSON.stringify(defaultProfile));
     return defaultProfile;
 
   } catch (error: any) {
-    console.error('❌ Erro crítico em ensureUserProfile:', error);
+    if (error.message && (error.message.includes('fetch') || error.message.includes('NetworkError') || error.message.includes('Failed to fetch'))) {
+      console.warn('⚠️ [Supabase Auth] Erro de rede em ensureUserProfile, usando fallback local:', error.message);
+    } else {
+      console.error('❌ Erro crítico em ensureUserProfile:', error);
+    }
     const fallbackProfile: Usuario = {
       email,
       nome: user.displayName || 'Usuário',
@@ -349,6 +361,38 @@ export const googleSignIn = async (): Promise<{ user: any; accessToken: string }
     return null; // OAuth redireciona a página
   } catch (error: any) {
     console.error('Sign in error:', error);
+    throw error;
+  } finally {
+    isSigningIn = false;
+  }
+};
+
+export const microsoftSignIn = async (): Promise<{ user: any; accessToken: string } | null> => {
+  if (isStaticBuild) {
+    const mockUser: SupabaseUser = {
+      uid: "local-microsoft",
+      id: "local-microsoft",
+      email: "microsoft@local.com",
+      displayName: "Usuário Microsoft Local",
+      getIdToken: async () => "local-token"
+    };
+    currentMockUser = mockUser;
+    localStorage.setItem('sys_active_user_session', JSON.stringify(mockUser));
+    await ensureUserProfile(mockUser);
+    return { user: mockUser, accessToken: "mock-token" };
+  }
+
+  if (isSigningIn) return null;
+  try {
+    isSigningIn = true;
+    const { data, error } = await supabase!.auth.signInWithOAuth({
+      provider: 'azure',
+    });
+
+    if (error) throw error;
+    return null; // OAuth redirects the page
+  } catch (error: any) {
+    console.error('Sign in error with Microsoft:', error);
     throw error;
   } finally {
     isSigningIn = false;

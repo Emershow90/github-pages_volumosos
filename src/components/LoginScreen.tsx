@@ -19,7 +19,8 @@ import {
   loginWithEmail, 
   signUpWithEmail, 
   recoverPassword, 
-  googleSignIn 
+  googleSignIn,
+  microsoftSignIn
 } from '../lib/supabaseAuth';
 import { UserRole } from '../types/Usuario';
 
@@ -43,6 +44,16 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Security & Validation States
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [lockoutTime, setLockoutTime] = useState<number | null>(null);
+
+  // Email format verification (regex)
+  const isValidEmail = (emailStr: string): boolean => {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return emailRegex.test(emailStr);
+  };
+
   // Clear alerts on mode change
   const handleModeChange = (newMode: AuthMode) => {
     setMode(newMode);
@@ -53,8 +64,21 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check rate limit lockout
+    if (lockoutTime && Date.now() < lockoutTime) {
+      const remaining = Math.ceil((lockoutTime - Date.now()) / 1000);
+      setError(`Muitas tentativas incorretas. Tente novamente em ${remaining} segundos.`);
+      return;
+    }
+    
     if (!email || !password) {
       setError('Por favor, preencha todos os campos.');
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setError('O formato do e-mail digitado é inválido. Por favor, insira um e-mail válido.');
       return;
     }
     
@@ -63,6 +87,9 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     
     try {
       const user = await loginWithEmail(email, password);
+      // Reset rate-limiting counts upon success
+      setLoginAttempts(0);
+      setLockoutTime(null);
       // Fetch profile in parent component
       onAuthSuccess(user, null);
     } catch (err: any) {
@@ -89,7 +116,17 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
       } else if (errMsg) {
         BrazilianMsg = errMsg;
       }
-      setError(BrazilianMsg);
+
+      // Brute-force local security lock
+      const nextAttempts = loginAttempts + 1;
+      setLoginAttempts(nextAttempts);
+      if (nextAttempts >= 5) {
+        setLockoutTime(Date.now() + 30000); // 30s lockout
+        setLoginAttempts(0);
+        setError('Muitas tentativas de login incorretas. Acesso bloqueado por 30 segundos por segurança.');
+      } else {
+        setError(`${BrazilianMsg} (Tentativas: ${nextAttempts}/5)`);
+      }
     } finally {
       setLoading(false);
     }
@@ -101,6 +138,12 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
       setError('Por favor, preencha todos os campos.');
       return;
     }
+
+    if (!isValidEmail(email)) {
+      setError('O formato do e-mail digitado é inválido. Por favor, insira um e-mail válido.');
+      return;
+    }
+
     if (password.length < 6) {
       setError('A senha deve conter no mínimo 6 caracteres.');
       return;
@@ -147,6 +190,11 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
       return;
     }
 
+    if (!isValidEmail(email)) {
+      setError('O formato do e-mail digitado é inválido. Por favor, insira um e-mail válido.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccessMsg(null);
@@ -189,6 +237,22 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     }
   };
 
+  const handleMicrosoftSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await microsoftSignIn();
+      if (res) {
+        onAuthSuccess(res.user, null);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError('Falha na autenticação com Microsoft 365.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#060608] flex items-center justify-center p-4 relative overflow-hidden font-sans">
       
@@ -221,6 +285,8 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
+              role="alert"
+              aria-live="polite"
               className="mb-4 bg-red-950/40 border border-red-500/30 rounded-xl p-3 flex gap-2.5 items-start text-red-400 text-xs font-bold leading-relaxed"
             >
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -233,6 +299,8 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
+              role="status"
+              aria-live="polite"
               className="mb-4 bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-3 flex gap-2.5 items-start text-emerald-400 text-xs font-bold leading-relaxed"
             >
               <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -246,6 +314,9 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
           {mode === 'login' && (
             <motion.form 
               key="login"
+              method="POST"
+              noValidate
+              aria-label="Formulário de login"
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
@@ -253,14 +324,17 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
               className="space-y-4"
             >
               <div>
-                <label className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">E-mail Corporativo</label>
+                <label htmlFor="login-email" className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">E-mail Corporativo</label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
                     <Mail className="w-4 h-4" />
                   </span>
                   <input 
                     type="email"
+                    id="login-email"
+                    name="email"
                     required
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="nome@empresa.com"
@@ -271,7 +345,7 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
 
               <div>
                 <div className="flex justify-between items-center mb-1.5">
-                  <label className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase">Senha de Acesso</label>
+                  <label htmlFor="login-senha" className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase">Senha de Acesso</label>
                   <button 
                     type="button"
                     onClick={() => handleModeChange('recover')}
@@ -286,7 +360,10 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
                   </span>
                   <input 
                     type={showPassword ? 'text' : 'password'}
+                    id="login-senha"
+                    name="senha"
                     required
+                    autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
@@ -295,6 +372,7 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Ocultar senha de acesso" : "Mostrar senha de acesso"}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -321,6 +399,9 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
           {mode === 'register' && (
             <motion.form 
               key="register"
+              method="POST"
+              noValidate
+              aria-label="Formulário de cadastro"
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
@@ -328,14 +409,17 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
               className="space-y-4"
             >
               <div>
-                <label className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">Nome Completo</label>
+                <label htmlFor="reg-nome" className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">Nome Completo</label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
                     <User className="w-4 h-4" />
                   </span>
                   <input 
                     type="text"
+                    id="reg-nome"
+                    name="username"
                     required
+                    autoComplete="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Emerson Oliveira"
@@ -345,14 +429,17 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
               </div>
 
               <div>
-                <label className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">E-mail Corporativo</label>
+                <label htmlFor="reg-email" className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">E-mail Corporativo</label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
                     <Mail className="w-4 h-4" />
                   </span>
                   <input 
                     type="email"
+                    id="reg-email"
+                    name="email"
                     required
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="nome@empresa.com"
@@ -362,12 +449,14 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
               </div>
 
               <div>
-                <label className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">Cargo / Perfil</label>
+                <label htmlFor="reg-perfil" className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">Cargo / Perfil</label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
                     <Shield className="w-4 h-4" />
                   </span>
                   <select 
+                    id="reg-perfil"
+                    name="perfil"
                     value={role}
                     onChange={(e) => setRole(e.target.value as UserRole)}
                     className="w-full bg-[#111116] border border-white/5 rounded-xl py-3 pl-11 pr-4 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all appearance-none font-medium cursor-pointer"
@@ -381,14 +470,17 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
               </div>
 
               <div>
-                <label className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">Defina sua Senha</label>
+                <label htmlFor="reg-senha" className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">Defina sua Senha</label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
                     <Lock className="w-4 h-4" />
                   </span>
                   <input 
                     type={showPassword ? 'text' : 'password'}
+                    id="reg-senha"
+                    name="new-password"
                     required
+                    autoComplete="new-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Mínimo 6 caracteres"
@@ -397,6 +489,7 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Ocultar nova senha" : "Mostrar nova senha"}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -423,6 +516,9 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
           {mode === 'recover' && (
             <motion.form 
               key="recover"
+              method="POST"
+              noValidate
+              aria-label="Formulário de recuperação de senha"
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
@@ -434,14 +530,17 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
               </div>
 
               <div>
-                <label className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">E-mail Cadastrado</label>
+                <label htmlFor="rec-email" className="block text-[10px] text-zinc-400 font-black tracking-widest uppercase mb-1.5">E-mail Cadastrado</label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
                     <Mail className="w-4 h-4" />
                   </span>
                   <input 
                     type="email"
+                    id="rec-email"
+                    name="email"
                     required
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="seu-email@empresa.com"
@@ -508,40 +607,63 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
           )}
         </div>
 
-        {/* Separator */}
-        <div className="relative my-6 text-center">
-          <div className="absolute inset-0 flex items-center" aria-hidden="true">
-            <div className="w-full border-t border-white/5"></div>
-          </div>
-          <span className="relative bg-[#0a0a0f] px-3 text-[9px] text-zinc-500 font-black tracking-widest uppercase">OU</span>
-        </div>
+        {/* Separator & Corporate SSO */}
+        {mode === 'login' && (
+          <>
+            <div className="relative my-6 text-center">
+              <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                <div className="w-full border-t border-white/5"></div>
+              </div>
+              <span className="relative bg-[#0a0a0f] px-3 text-[9px] text-zinc-500 font-black tracking-widest uppercase">OU ENTRAR COM</span>
+            </div>
 
-        {/* Google Authentication Integration */}
-        <button
-          onClick={handleGoogleSignIn}
-          disabled={loading}
-          className="w-full bg-zinc-900 border border-white/5 hover:bg-zinc-850 text-white rounded-xl py-2.5 text-xs font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
-        >
-          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-            <path
-              fill="currentColor"
-              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-            />
-            <path
-              fill="currentColor"
-              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-            />
-            <path
-              fill="currentColor"
-              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.6-4.53-5.33-4.53z"
-            />
-            <path
-              fill="currentColor"
-              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-            />
-          </svg>
-          Acessar com Google Workspace
-        </button>
+            <div className="space-y-3">
+              {/* Google Authentication */}
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+                className="w-full bg-zinc-900 border border-white/5 hover:bg-zinc-800 text-white rounded-xl py-2.5 text-xs font-bold transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path
+                    fill="currentColor"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="currentColor"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="currentColor"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.6-4.53-5.33-4.53z"
+                  />
+                  <path
+                    fill="currentColor"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>Acessar com Google Workspace</span>
+              </button>
+
+              {/* Microsoft Authentication */}
+              <button
+                type="button"
+                onClick={handleMicrosoftSignIn}
+                disabled={loading}
+                className="w-full bg-zinc-900 border border-white/5 hover:bg-zinc-800 text-white rounded-xl py-2.5 text-xs font-bold transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 23 23">
+                  <path fill="#f35022" d="M0 0h11v11H0z"/>
+                  <path fill="#80bb0a" d="M12 0h11v11H12z"/>
+                  <path fill="#00a1f1" d="M0 12h11v11H0z"/>
+                  <path fill="#ffb900" d="M12 12h11v11H12z"/>
+                </svg>
+                <span>Acessar com Microsoft 365</span>
+              </button>
+            </div>
+          </>
+        )}
 
       </motion.div>
     </div>

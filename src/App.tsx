@@ -1803,10 +1803,17 @@ export default function App() {
             <button
               onClick={() => setActiveTab("audit")}
               className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "audit" ? "active" : ""}`}
-              title="Auditoria Geral"
+              title="Auditoria & Aprovações"
             >
               <Shield size={11} />
-              <span className="truncate">Auditoria</span>
+              <span className="truncate flex items-center justify-between w-full">
+                <span>Auditoria</span>
+                {currentRole === UserRole.Admin && pendingUsers.length > 0 && (
+                  <span className="bg-amber-500 text-slate-900 text-[9px] font-black px-1.5 py-0.5 rounded-full animate-bounce ml-1">
+                    {pendingUsers.length}
+                  </span>
+                )}
+              </span>
             </button>
             <button
               onClick={() => setActiveTab("relatorios")}
@@ -1826,32 +1833,6 @@ export default function App() {
             </button>
           </div>
         </div>
-
-        {currentRole === UserRole.Admin && (
-          <div className="border border-white/5 bg-[#0b0b0f] rounded-lg p-1.5 flex flex-col gap-1.5 shadow-sm">
-            <div className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-mono font-black uppercase text-rose-500 tracking-wider">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-              Administração
-            </div>
-            <div className="grid grid-cols-1 gap-1">
-              <button
-                onClick={() => setActiveTab("aprovacoes")}
-                className={`nav-btn py-1 px-1 text-[10px] flex items-center justify-center gap-2 ${activeTab === "aprovacoes" ? "active" : ""}`}
-                title="Aprovações de Usuários"
-              >
-                <ShieldAlert size={11} className="text-rose-500" />
-                <span className="truncate flex items-center justify-between w-full">
-                  <span>Aprovações</span>
-                  {pendingUsers.length > 0 && (
-                    <span className="bg-amber-500 text-slate-900 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full animate-bounce">
-                      {pendingUsers.length}
-                    </span>
-                  )}
-                </span>
-              </button>
-            </div>
-          </div>
-        )}
 
       </nav>
 
@@ -2064,15 +2045,6 @@ export default function App() {
               onRestoreDefaultKPIs={handleRestoreDefaultKPIs}
               onBulkImportKPIs={handleBulkImportKPIs}
             />
-            </ProtectedRoute>
-          )}
-
-                    {activeTab === "aprovacoes" && (
-            <ProtectedRoute 
-              userRole={currentRole} 
-              allowedRoles={[UserRole.Admin]}
-            >
-              <AdminApprovalTab />
             </ProtectedRoute>
           )}
 
@@ -2592,7 +2564,7 @@ export default function App() {
             {/* FOOTER OF SCREENSAVER */}
             <footer className="flex justify-between items-center border-t border-white/5 pt-3 mt-1 relative z-10">
               <p className="text-[9px] text-zinc-600 font-mono tracking-widest uppercase">
-                SISTEMA OPERACIONAL COPIL LOGÍSTICA V4.2
+                SISTEMA OPERACIONAL COPIL LOGÍSTICA V4.3
               </p>
               <p className="text-[10px] text-indigo-400/80 font-black uppercase tracking-widest animate-pulse">
                 [ PRESSIONE QUALQUER TECLA OU MOVA O MOUSE PARA RETORNAR AO MÓDULO OPERACIONAL ]

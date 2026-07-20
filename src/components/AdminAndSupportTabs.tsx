@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
+import { AdminApprovalTab } from "./AdminApprovalTab";
 import {
   Colaborador,
   Setor,
@@ -53,6 +54,7 @@ import {
 import { SupabaseService as FirebaseService } from "../lib/supabaseService";
 import { IndexedDBService } from "../lib/indexedDb";
 import { ListaColetaItem, RadarLojaStatus } from "../types";
+import { ModalConfirmacao } from "./ModalConfirmacao";
 
 // ==========================================
 // EQUIPA TAB
@@ -500,7 +502,7 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full overflow-hidden border border-white/10 bg-zinc-900 flex items-center justify-center font-black text-[10px] text-zinc-400 flex-shrink-0">
                           {col.foto ? (
-                            <img src={col.foto} alt={col.nome} className="w-full h-full object-cover" />
+                            <img src={col.foto} alt={col.nome} className="w-full h-full object-cover" loading="lazy" />
                           ) : (
                             initials
                           )}
@@ -893,6 +895,7 @@ interface AuditoriaTabProps {
 }
 
 export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit, onClearAudit }) => {
+  const [subTab, setSubTab] = useState<"logs" | "aprovacoes">("logs");
   const [filterUser, setFilterUser] = useState("");
   const [filterField, setFilterField] = useState("");
   const [filterAction, setFilterAction] = useState("");
@@ -932,87 +935,117 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit, onClearAudit 
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap justify-between items-center gap-4 border-b border-white/5 pb-3">
-        <div>
-          <h2 className="text-xl font-black text-white uppercase tracking-widest">Trilha de Auditoria</h2>
-          <p className="text-xs text-zinc-500 mt-1">Trilha de modificações e segurança operacional em tempo real</p>
-        </div>
-        <div className="flex gap-2 flex-wrap items-center">
-          <input
-            type="text"
-            placeholder="Filtrar operador"
-            value={filterUser}
-            onChange={(e) => setFilterUser(e.target.value)}
-            className="inp py-1.5 text-xs w-32 focus:outline-none"
-          />
-          <input
-            type="text"
-            placeholder="Filtrar ação"
-            value={filterAction}
-            onChange={(e) => setFilterAction(e.target.value)}
-            className="inp py-1.5 text-xs w-32 focus:outline-none"
-          />
-          <input
-            type="text"
-            placeholder="Filtrar campo"
-            value={filterField}
-            onChange={(e) => setFilterField(e.target.value)}
-            className="inp py-1.5 text-xs w-32 focus:outline-none"
-          />
-          <button
-            onClick={handleExportCSV}
-            className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded text-xs font-bold uppercase transition cursor-pointer"
-          >
-            Exportar CSV
-          </button>
-          <button
-            onClick={onClearAudit}
-            className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-3 py-1.5 rounded text-xs font-bold uppercase transition cursor-pointer"
-          >
-            Limpar Registros (7d+)
-          </button>
-        </div>
+      {/* Subtabs Selector inside Auditoria */}
+      <div className="flex border-b border-white/5 pb-2 gap-4">
+        <button
+          onClick={() => setSubTab("logs")}
+          className={`pb-2 px-2 text-xs font-black uppercase tracking-widest transition flex items-center gap-2 cursor-pointer ${
+            subTab === "logs"
+              ? "text-indigo-400 border-b-2 border-indigo-500"
+              : "text-zinc-500 hover:text-zinc-300"
+          }`}
+        >
+          <span>📋 Trilha de Auditoria</span>
+        </button>
+        <button
+          onClick={() => setSubTab("aprovacoes")}
+          className={`pb-2 px-2 text-xs font-black uppercase tracking-widest transition flex items-center gap-2 cursor-pointer ${
+            subTab === "aprovacoes"
+              ? "text-rose-400 border-b-2 border-rose-500"
+              : "text-zinc-500 hover:text-zinc-300"
+          }`}
+        >
+          <span>✅ Controle de Acessos Pendentes</span>
+        </button>
       </div>
 
-      <div className="glass-card overflow-hidden">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="text-[0.55rem] uppercase tracking-widest text-zinc-500 border-b border-white/10 bg-black/20">
-                <th className="p-3 font-bold">Data/Hora</th>
-                <th className="p-3 font-bold">Usuário</th>
-                <th className="p-3 font-bold">Ação</th>
-                <th className="p-3 font-bold text-sky-400">Campo</th>
-                <th className="p-3 font-bold text-red-400">Valor Anterior</th>
-                <th className="p-3 font-bold text-emerald-400">Novo Valor</th>
-                <th className="p-3 font-bold text-right">Dispositivo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 font-mono text-zinc-300">
-              {[...filtered].reverse().map((a, i) => (
-                <tr key={i} className="hover:bg-white/[0.01]">
-                  <td className="p-3 text-zinc-400">
-                    {new Date(a.data).toLocaleString("pt-BR")}
-                  </td>
-                  <td className="p-3 font-bold text-indigo-400 font-sans">{a.usuario}</td>
-                  <td className="p-3 font-sans text-white">{a.acao}</td>
-                  <td className="p-3 text-sky-400 font-bold">{a.campo}</td>
-                  <td className="p-3 text-red-400">{String(a.valorAnterior ?? "—")}</td>
-                  <td className="p-3 text-emerald-400 font-bold">{String(a.valorNovo ?? "—")}</td>
-                  <td className="p-3 text-right text-[10px] text-zinc-600 font-sans uppercase">{a.dispositivo}</td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="text-center py-16 text-zinc-500 italic">
-                    Nenhum registro de auditoria encontrado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {subTab === "logs" ? (
+        <div className="space-y-6">
+          <div className="flex flex-wrap justify-between items-center gap-4 border-b border-white/5 pb-3">
+            <div>
+              <h2 className="text-xl font-black text-white uppercase tracking-widest">Trilha de Auditoria</h2>
+              <p className="text-xs text-zinc-500 mt-1">Trilha de modificações e segurança operacional em tempo real</p>
+            </div>
+            <div className="flex gap-2 flex-wrap items-center">
+              <input
+                type="text"
+                placeholder="Filtrar operador"
+                value={filterUser}
+                onChange={(e) => setFilterUser(e.target.value)}
+                className="inp py-1.5 text-xs w-32 focus:outline-none"
+              />
+              <input
+                type="text"
+                placeholder="Filtrar ação"
+                value={filterAction}
+                onChange={(e) => setFilterAction(e.target.value)}
+                className="inp py-1.5 text-xs w-32 focus:outline-none"
+              />
+              <input
+                type="text"
+                placeholder="Filtrar campo"
+                value={filterField}
+                onChange={(e) => setFilterField(e.target.value)}
+                className="inp py-1.5 text-xs w-32 focus:outline-none"
+              />
+              <button
+                onClick={handleExportCSV}
+                className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded text-xs font-bold uppercase transition cursor-pointer"
+              >
+                Exportar CSV
+              </button>
+              <button
+                onClick={onClearAudit}
+                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-3 py-1.5 rounded text-xs font-bold uppercase transition cursor-pointer"
+              >
+                Limpar Registros (7d+)
+              </button>
+            </div>
+          </div>
+
+          <div className="glass-card overflow-hidden">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="text-[0.55rem] uppercase tracking-widest text-zinc-500 border-b border-white/10 bg-black/20">
+                    <th className="p-3 font-bold">Data/Hora</th>
+                    <th className="p-3 font-bold">Usuário</th>
+                    <th className="p-3 font-bold">Ação</th>
+                    <th className="p-3 font-bold text-sky-400">Campo</th>
+                    <th className="p-3 font-bold text-red-400">Valor Anterior</th>
+                    <th className="p-3 font-bold text-emerald-400">Novo Valor</th>
+                    <th className="p-3 font-bold text-right">Dispositivo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 font-mono text-zinc-300">
+                  {[...filtered].reverse().map((a, i) => (
+                    <tr key={i} className="hover:bg-white/[0.01]">
+                      <td className="p-3 text-zinc-400">
+                        {new Date(a.data).toLocaleString("pt-BR")}
+                      </td>
+                      <td className="p-3 font-bold text-indigo-400 font-sans">{a.usuario}</td>
+                      <td className="p-3 font-sans text-white">{a.acao}</td>
+                      <td className="p-3 text-sky-400 font-bold">{a.campo}</td>
+                      <td className="p-3 text-red-400">{String(a.valorAnterior ?? "—")}</td>
+                      <td className="p-3 text-emerald-400 font-bold">{String(a.valorNovo ?? "—")}</td>
+                      <td className="p-3 text-right text-[10px] text-zinc-600 font-sans uppercase">{a.dispositivo}</td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="text-center py-16 text-zinc-500 italic">
+                        Nenhum registro de auditoria encontrado.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <AdminApprovalTab />
+      )}
     </div>
   );
 };
@@ -1132,6 +1165,22 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   onSaveRadar,
 }) => {
   const [subCat, setSubCat] = useState("geral");
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [totalImportedCount, setTotalImportedCount] = useState(0);
+
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const lists = await FirebaseService.fetchTable<ListaColetaItem>("lista_coleta");
+        setTotalImportedCount(lists.length);
+      } catch (err) {
+        console.warn("Could not fetch imported list count", err);
+      }
+    };
+    if (subCat === "importacao") {
+      fetchCount();
+    }
+  }, [subCat, isConfirmModalOpen]);
 
   // Custom feedback notification toast state
   const [feedback, setFeedback] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
@@ -1921,6 +1970,31 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
     }
   };
 
+  const handleDeleteAllImportedData = async () => {
+    try {
+      const existingLists = await FirebaseService.fetchTable<ListaColetaItem>("lista_coleta");
+      if (existingLists.length === 0) {
+        showFeedback("Não há dados de importação (lista_coleta) para apagar.", "error");
+        return;
+      }
+
+      await IndexedDBService.clear("lista_coleta");
+      await IndexedDBService.clear("radar_lojas_status");
+
+      let count = 0;
+      for (const item of existingLists) {
+        await FirebaseService.deleteRecord("lista_coleta", item.lista, "lista");
+        await FirebaseService.deleteRecord("radar_lojas_status", item.lista, "lista");
+        count++;
+      }
+
+      showFeedback(`Sucesso! ${count} listas importadas foram completamente apagadas de forma definitiva.`, "success");
+    } catch (err: any) {
+      console.error("[Delete All Import] Erro:", err);
+      showFeedback(`Erro ao apagar dados importados: ${err.message || err}`, "error");
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
       {/* Configuration Navigation */}
@@ -2275,12 +2349,20 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
           <div className="space-y-6">
             <div className="glass-card p-6 border-l-2 border-indigo-500/50 space-y-4">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-white/5 pb-4">
-                <div>
-                  <h3 className="text-base font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                    <span className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg">📥</span>
-                    Módulo de Importação de Dados
-                  </h3>
-                  <p className="text-[11px] text-zinc-500 mt-0.5">Sincronize planejamentos de coleta operacionais (Bolsão D+1) via planilhas Excel, arquivos CSV ou JSON.</p>
+                <div className="flex justify-between items-start w-full md:w-auto">
+                  <div>
+                    <h3 className="text-base font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                      <span className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg">📥</span>
+                      Módulo de Importação de Dados
+                    </h3>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">Sincronize planejamentos de coleta operacionais (Bolsão D+1) via planilhas Excel, arquivos CSV ou JSON.</p>
+                  </div>
+                  <button
+                    onClick={() => setIsConfirmModalOpen(true)}
+                    className="ml-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg py-1.5 px-3 text-[10px] font-bold font-mono uppercase transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    <span>🗑️</span> Apagar Todos os Dados
+                  </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-3 md:mt-0 bg-black/40 p-1 rounded-xl border border-white/5">
                   <button
@@ -2960,6 +3042,17 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
           </div>
         )}
       </div>
+
+      <ModalConfirmacao
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        onConfirm={handleDeleteAllImportedData}
+        title="⚠️ ATENÇÃO: APAGAR TODOS OS DADOS IMPORTADOS?"
+        description="Você está prestes a apagar permanentemente todas as listas importadas (lista_coleta) e seus respectivos status operacionais (radar_lojas_status). Esta ação não poderá ser desfeita!"
+        confirmLabel="Sim, Apagar Tudo"
+        cancelLabel="Cancelar"
+        recordCount={totalImportedCount}
+      />
     </div>
   );
 
