@@ -256,6 +256,16 @@ export class SupabaseService {
           const errMsg = error.message || '';
           if (error.code === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
             console.error(`[Supabase Sanitizer] [PGRST204] Erro de coluna inexistente ao salvar em ${tableName}. Abortando inserção.`, error);
+            const alertLog: AlertLog = {
+              id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              prioridade: 'alta',
+              titulo: 'Sincronização Descartada',
+              descricao: `Alteração na tabela "${tableName}" continha estrutura incompatível e foi descartada.`,
+              setor: 'Sistema',
+              hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+              lido: false
+            };
+            this.notifySyncError(alertLog);
           } else {
             throw error;
           }
@@ -266,6 +276,16 @@ export class SupabaseService {
         const errCode = String(errObj?.code || '');
         if (errCode === 'PGRST204' || errMsg.includes('PGRST204') || errMsg.includes('column') || errMsg.includes('does not exist')) {
           console.error(`[Supabase Sanitizer] Descartando inserção inválida devido a erro PGRST204 de coluna inexistente na tabela ${tableName}.`, err);
+          const alertLog: AlertLog = {
+            id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            prioridade: 'alta',
+            titulo: 'Sincronização Descartada',
+            descricao: `Alteração na tabela "${tableName}" continha estrutura incompatível e foi descartada.`,
+            setor: 'Sistema',
+            hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            lido: false
+          };
+          this.notifySyncError(alertLog);
         } else {
           console.warn(`[Supabase Offline Fallback] Erro ao enviar diretamente para ${tableName}:${docId}. Enfileirando.`, err);
           const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
