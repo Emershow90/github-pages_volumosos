@@ -52,7 +52,14 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   atividade_loja: ['id', 'programacaoId', 'lojaId', 'setor', 'tipoAtividade', 'colisProgramados', 'colisColetados', 'updated_at', 'created_at'],
   usuarios: ['id', 'email', 'nome', 'role', 'setoresAutorizados', 'situacao', 'cargo', 'unidade', 'avatar_url', 'aprovado_por', 'data_aprovacao', 'created_at', 'updated_at'],
   colaboradores: ['id', 'nome', 'setor', 'status', 'cargo', 'horas', 'foto', 'created_at', 'updated_at'],
-  escalas: ['id', 'colaborador_id', 'data', 'turno', 'status', 'created_at', 'updated_at']
+  escalas: ['id', 'colaborador_id', 'data', 'turno', 'status', 'created_at', 'updated_at'],
+  capacidade_operacional: ['id', 'setor_id', 'abertura', 'fechoHora', 'created_at', 'updated_at'],
+  universos_trabalho: ['id', 'setor_id', 'nome', 'meta', 'feito', 'created_at', 'updated_at'],
+  historico_consolidado: ['id', 'data', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota5s', 'erros', 'created_at', 'updated_at'],
+  copil_matriz: ['id', 'setor_id', 'grupo', 'kpi', 'comp', 'real', 'inverso', 'auto', 'tolerancia', 'regraCalculo', 'criterio', 'notaManual', 'calcNota', 'created_at', 'updated_at'],
+  escalas_referentes: ['id', 'dia', 'ref87', 'refVol', 'apoios', 'created_at', 'updated_at'],
+  alertas_operacionais: ['id', 'prioridade', 'titulo', 'descricao', 'setor', 'hora', 'lido', 'created_at', 'updated_at'],
+  audit_logs: ['id', 'data', 'hora', 'tipo', 'autor', 'acao', 'detalhes', 'usuario', 'campo', 'valorAnterior', 'valorNovo', 'dispositivo', 'created_at', 'updated_at']
 };
 
 export class SupabaseService {
@@ -417,4 +424,14 @@ export class SupabaseService {
       console.error("[Supabase Sync] Erro ao analisar fila offline:", e);
     }
   }
+
+  public static async syncOfflineQueue(): Promise<void> {
+    return this.flushOfflineQueue();
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    SupabaseService.syncOfflineQueue();
+  });
 }

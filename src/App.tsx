@@ -328,6 +328,9 @@ export default function App() {
     realtimeSync.startListeningAtividades(targetDate);
     realtimeSync.startListeningSetores();
     realtimeSync.startListeningColaboradores();
+    realtimeSync.startListeningEscalas();
+    realtimeSync.startListeningUniversos();
+    realtimeSync.startListeningCopil();
 
     return () => {
       realtimeSync.stopAll();

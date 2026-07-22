@@ -56,6 +56,40 @@ export interface ReferenteSemana {
   apoios?: string;
 }
 
+export interface EscalaColaborador {
+  id: string;
+  colaborador_id: string;
+  data: string;
+  turno: string;
+  status: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface UniversoMix {
+  id?: string;
+  setor_id: string;
+  nome: string;
+  meta: number;
+  feito: number;
+}
+
+export interface CopilMatrizRow {
+  id?: string;
+  setor_id: string;
+  grupo: 'operacionais' | 'economico' | 'seguranca';
+  kpi: string;
+  comp: string;
+  real: string;
+  inverso?: boolean;
+  auto?: boolean;
+  tolerancia?: string;
+  regraCalculo?: string;
+  criterio?: string;
+  notaManual?: string;
+  calcNota?: boolean;
+}
+
 export interface CapacidadeSetor {
   id: string;
   abertura: number;
@@ -179,7 +213,7 @@ export interface SystemState {
   setores: Setor[];
   colaboradores: Colaborador[];
   historico: HistoricoRegistro[];
-  universos: Record<string, { nome: string; meta: number; feito: number }[]>; // Mix activities by sector
+  universos: Record<string, UniversoMix[]>; // Mix activities by sector
   referentesSemana: ReferenteSemana[];
   copilData: Record<string, CopilSetor>;
   radar: RadarLoja[];

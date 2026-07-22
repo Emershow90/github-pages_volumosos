@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Setor, CapacidadeSetor, RadarLoja, ReaproData, BolsaoData, CopilSetor } from '../types';
+import { Setor, CapacidadeSetor, RadarLoja, ReaproData, BolsaoData, CopilSetor, UniversoMix } from '../types';
 import {
   initialSetores,
   initialCapacidade,
@@ -13,7 +13,7 @@ import {
 interface SectorStoreState {
   setores: Setor[];
   capacidade: CapacidadeSetor[];
-  universos: Record<string, { nome: string; meta: number; feito: number }[]>;
+  universos: Record<string, UniversoMix[]>;
   copilData: Record<string, CopilSetor>;
   radar: RadarLoja[];
   reaproData: ReaproData;
@@ -21,7 +21,7 @@ interface SectorStoreState {
 
   setSetores: (setores: Setor[] | ((prev: Setor[]) => Setor[])) => void;
   setCapacidade: (capacidade: CapacidadeSetor[] | ((prev: CapacidadeSetor[]) => CapacidadeSetor[])) => void;
-  setUniversos: (universos: Record<string, { nome: string; meta: number; feito: number }[]> | ((prev: Record<string, { nome: string; meta: number; feito: number }[]>) => Record<string, { nome: string; meta: number; feito: number }[]>)) => void;
+  setUniversos: (universos: Record<string, UniversoMix[]> | ((prev: Record<string, UniversoMix[]>) => Record<string, UniversoMix[]>)) => void;
   setCopilData: (copilData: Record<string, CopilSetor> | ((prev: Record<string, CopilSetor>) => Record<string, CopilSetor>)) => void;
   setRadar: (radar: RadarLoja[] | ((prev: RadarLoja[]) => RadarLoja[])) => void;
   setReaproData: (reaproData: ReaproData | ((prev: ReaproData) => ReaproData)) => void;

@@ -4,7 +4,74 @@ import { useStoreOperations } from '../stores/useStoreOperations';
 import { useAtividadeLoja } from '../stores/useAtividadeLoja';
 import { useSectorStore } from '../stores/useSectorStore';
 import { useCollaboratorStore } from '../stores/useCollaboratorStore';
-import { StoreOperation, AtividadeLoja, Setor, Colaborador } from '../types';
+import { 
+  StoreOperation, 
+  AtividadeLoja, 
+  Setor, 
+  Colaborador, 
+  EscalaColaborador, 
+  UniversoMix, 
+  CopilMatrizRow, 
+  CopilSetor, 
+  CopilKPI, 
+  RadarLoja 
+} from '../types';
+
+export function mapStoreOperationsToRadar(ops: StoreOperation[]): RadarLoja[] {
+  return ops.map(op => ({
+    corte: op.corte || '17:00',
+    loja: op.nomeLoja ? `${op.lojaId} - ${op.nomeLoja}` : (op.lojaId || 'Loja'),
+    vol: op.volumes || 0,
+    ativ: op.enderecos || 0,
+    prog: op.statusColeta === 'Coletada' ? 100 : (op.statusColeta === 'Em andamento' ? 50 : 0),
+    statusOCR: (op as any).statusOCR || 'registrada',
+    erroDesc: (op as any).erroDesc || ''
+  }));
+}
+
+export function transformUniversos(rows: UniversoMix[]): Record<string, UniversoMix[]> {
+  const map: Record<string, UniversoMix[]> = {};
+  for (const row of rows) {
+    const sid = row.setor_id || '87';
+    if (!map[sid]) map[sid] = [];
+    map[sid].push(row);
+  }
+  return map;
+}
+
+export function transformCopilMatriz(rows: CopilMatrizRow[]): Record<string, CopilSetor> {
+  const map: Record<string, CopilSetor> = {};
+  for (const row of rows) {
+    const sid = row.setor_id || '87';
+    if (!map[sid]) {
+      map[sid] = {
+        operacionais: [],
+        economico: [],
+        seguranca: []
+      };
+    }
+    const kpiObj: CopilKPI = {
+      kpi: row.kpi,
+      comp: row.comp,
+      real: row.real,
+      inverso: Boolean(row.inverso),
+      auto: Boolean(row.auto),
+      tolerancia: row.tolerancia,
+      regraCalculo: row.regraCalculo,
+      criterio: row.criterio,
+      notaManual: row.notaManual,
+      calcNota: Boolean(row.calcNota)
+    };
+    if (row.grupo === 'operacionais') {
+      map[sid].operacionais.push(kpiObj);
+    } else if (row.grupo === 'economico') {
+      map[sid].economico.push(kpiObj);
+    } else if (row.grupo === 'seguranca') {
+      map[sid].seguranca.push(kpiObj);
+    }
+  }
+  return map;
+}
 
 class RealtimeSyncService {
   private unsubscribes: Map<string, () => void> = new Map();
@@ -45,6 +112,8 @@ class RealtimeSyncService {
               opsMap[op.id] = op;
             });
             useStoreOperations.getState().setOperations(opsMap);
+            const radarData = mapStoreOperationsToRadar(filtered);
+            useSectorStore.getState().setRadar(radarData);
           }
 
           if (isStaticBuild || !supabase) return;
@@ -69,6 +138,9 @@ class RealtimeSyncService {
                     useStoreOperations.getState().removeOperation(oldId);
                   }
                 }
+                const allOps = Object.values(useStoreOperations.getState().operations);
+                const radarData = mapStoreOperationsToRadar(allOps);
+                useSectorStore.getState().setRadar(radarData);
               }
             )
             .subscribe();
@@ -299,6 +371,210 @@ class RealtimeSyncService {
         })
         .catch((err) => {
           console.error("[RealtimeSyncService] Falha ao sincronizar colaboradores iniciais:", err);
+        });
+
+      this.unsubscribes.set(key, () => {
+        cancelled = true;
+        if (channel) channel.unsubscribe();
+      });
+    });
+
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
+  /**
+   * Escuta em tempo real as mudanças na coleção de escalas.
+   */
+  public startListeningEscalas() {
+    const key = 'escalas_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) {
+          existing();
+          this.unsubscribes.delete(key);
+        }
+        return;
+      }
+
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: any = null;
+      let cancelled = false;
+
+      SupabaseService.fetchTable<EscalaColaborador>('escalas')
+        .then((dbEscalas) => {
+          if (cancelled) return;
+          if (dbEscalas && dbEscalas.length > 0) {
+            useCollaboratorStore.getState().setEscalas(dbEscalas);
+          }
+
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'escalas'
+              },
+              async () => {
+                const fresh = await SupabaseService.fetchTable<EscalaColaborador>('escalas');
+                if (fresh.length > 0) {
+                  useCollaboratorStore.getState().setEscalas(fresh);
+                }
+              }
+            )
+            .subscribe();
+
+          this.unsubscribes.set(key, () => {
+            cancelled = true;
+            if (channel) channel.unsubscribe();
+          });
+        })
+        .catch((err) => {
+          console.error("[RealtimeSyncService] Falha ao sincronizar escalas iniciais:", err);
+        });
+
+      this.unsubscribes.set(key, () => {
+        cancelled = true;
+        if (channel) channel.unsubscribe();
+      });
+    });
+
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
+  /**
+   * Escuta em tempo real universos de trabalho (Mix).
+   */
+  public startListeningUniversos() {
+    const key = 'universos_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) {
+          existing();
+          this.unsubscribes.delete(key);
+        }
+        return;
+      }
+
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: any = null;
+      let cancelled = false;
+
+      SupabaseService.fetchTable<UniversoMix>('universos_trabalho')
+        .then((rows) => {
+          if (cancelled) return;
+          if (rows && rows.length > 0) {
+            useSectorStore.getState().setUniversos(transformUniversos(rows));
+          }
+
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'universos_trabalho'
+              },
+              async () => {
+                const fresh = await SupabaseService.fetchTable<UniversoMix>('universos_trabalho');
+                if (fresh.length > 0) {
+                  useSectorStore.getState().setUniversos(transformUniversos(fresh));
+                }
+              }
+            )
+            .subscribe();
+
+          this.unsubscribes.set(key, () => {
+            cancelled = true;
+            if (channel) channel.unsubscribe();
+          });
+        })
+        .catch((err) => {
+          console.error("[RealtimeSyncService] Falha ao sincronizar universos iniciais:", err);
+        });
+
+      this.unsubscribes.set(key, () => {
+        cancelled = true;
+        if (channel) channel.unsubscribe();
+      });
+    });
+
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
+  /**
+   * Escuta em tempo real a matriz COPIL.
+   */
+  public startListeningCopil() {
+    const key = 'copil_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) {
+          existing();
+          this.unsubscribes.delete(key);
+        }
+        return;
+      }
+
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: any = null;
+      let cancelled = false;
+
+      SupabaseService.fetchTable<CopilMatrizRow>('copil_matriz')
+        .then((rows) => {
+          if (cancelled) return;
+          if (rows && rows.length > 0) {
+            useSectorStore.getState().setCopilData(transformCopilMatriz(rows));
+          }
+
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'copil_matriz'
+              },
+              async () => {
+                const fresh = await SupabaseService.fetchTable<CopilMatrizRow>('copil_matriz');
+                if (fresh.length > 0) {
+                  useSectorStore.getState().setCopilData(transformCopilMatriz(fresh));
+                }
+              }
+            )
+            .subscribe();
+
+          this.unsubscribes.set(key, () => {
+            cancelled = true;
+            if (channel) channel.unsubscribe();
+          });
+        })
+        .catch((err) => {
+          console.error("[RealtimeSyncService] Falha ao sincronizar copil_matriz inicial:", err);
         });
 
       this.unsubscribes.set(key, () => {

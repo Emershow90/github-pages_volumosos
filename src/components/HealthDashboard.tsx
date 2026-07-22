@@ -3,16 +3,13 @@ import { SupabaseService } from "../lib/supabaseService";
 import { 
   Activity, 
   RefreshCw, 
-  Layers, 
-  CheckCircle2, 
   AlertTriangle, 
   Clock, 
-  TrendingUp, 
-  ArrowUpRight,
-  Truck,
-  Box
+  ArrowRight,
+  Zap,
+  ShieldAlert,
+  CheckCircle
 } from "lucide-react";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 
 interface RadarCompletoRow {
   lista: string;
@@ -108,38 +105,75 @@ export const HealthDashboard: React.FC = () => {
   }, []);
 
   const totalListas = data.length;
-  const totalVolumes = data.reduce((sum, item) => sum + (item.volumes || 0), 0);
-  
   const soltas = data.filter(item => item.statusSoltura === "Solta").length;
-  const parcialSoltas = data.filter(item => item.statusSoltura === "Parcialmente Solta").length;
-  const naoSoltas = data.filter(item => !item.statusSoltura || item.statusSoltura === "Não Solta").length;
+  const naoSoltas = data.filter(item => !item.statusSoltura || item.statusSoltura === "Não Solta" || item.statusSoltura === "Parcialmente Solta").length;
   
   const coletaConcluida = data.filter(item => item.statusColeta === "Concluída").length;
   const coletaEmAndamento = data.filter(item => item.statusColeta === "Em andamento").length;
-  const coletaNaoIniciada = data.filter(item => !item.statusColeta || item.statusColeta === "Não iniciada").length;
 
   const carregamentoCarregada = data.filter(item => item.statusCarregamento === "Carregada").length;
   const carregamentoCarregando = data.filter(item => item.statusCarregamento === "Carregando").length;
-  const carregamentoNaoCarregada = data.filter(item => !item.statusCarregamento || item.statusCarregamento === "Não carregada").length;
 
   const expedidas = data.filter(item => item.statusExpedicao === "Expedida").length;
-  const expedicaoPendentes = data.filter(item => !item.statusExpedicao || item.statusExpedicao === "Pendente").length;
-  const expedicaoCanceladas = data.filter(item => item.statusExpedicao === "Cancelada").length;
-
-  const pctSoltas = totalListas ? Math.round((soltas / totalListas) * 100) : 0;
-  const pctExpedicoesPendentes = totalListas ? Math.round((expedicaoPendentes / totalListas) * 100) : 0;
-
-  const chartData = [
-    { name: "Soltas", qtd: soltas, color: "#a855f7" },
-    { name: "Coleta OK", qtd: coletaConcluida, color: "#10b981" },
-    { name: "Coleta Ativa", qtd: coletaEmAndamento, color: "#3b82f6" },
-    { name: "Carregadas", qtd: carregamentoCarregada, color: "#fbbf24" },
-    { name: "Expedidas", qtd: expedidas, color: "#06b6d4" },
-    { name: "Pendentes", qtd: expedicaoPendentes, color: "#ef4444" }
+  
+  // Calcula Gargalos e Taxas de Conversão
+  const rates = [
+    { 
+      id: 'liberacao', 
+      name: 'Liberação', 
+      rate: totalListas ? soltas / totalListas : 1, 
+      pending: naoSoltas, 
+      desc: "Listas retidas aguardando soltura",
+      action: `Liberar ${naoSoltas} listas`, 
+      color: 'text-purple-400',
+      bg: 'bg-purple-500/10',
+      border: 'border-purple-500/30'
+    },
+    { 
+      id: 'coleta', 
+      name: 'Coleta', 
+      rate: soltas ? coletaConcluida / soltas : 1, 
+      pending: soltas - coletaConcluida, 
+      desc: "Listas liberadas mas não coletadas",
+      action: `Acelerar ${coletaEmAndamento} ativas`, 
+      color: 'text-blue-400',
+      bg: 'bg-blue-500/10',
+      border: 'border-blue-500/30'
+    },
+    { 
+      id: 'carregamento', 
+      name: 'Carregamento', 
+      rate: coletaConcluida ? carregamentoCarregada / coletaConcluida : 1, 
+      pending: coletaConcluida - carregamentoCarregada, 
+      desc: "Coletas concluídas aguardando doca",
+      action: `Cobrar ${carregamentoCarregando} em doca`, 
+      color: 'text-amber-400',
+      bg: 'bg-amber-500/10',
+      border: 'border-amber-500/30'
+    },
+    { 
+      id: 'expedicao', 
+      name: 'Expedição', 
+      rate: carregamentoCarregada ? expedidas / carregamentoCarregada : 1, 
+      pending: carregamentoCarregada - expedidas, 
+      desc: "Caminhões carregados parados no pátio",
+      action: `Expedir ${carregamentoCarregada - expedidas} veículos`, 
+      color: 'text-cyan-400',
+      bg: 'bg-cyan-500/10',
+      border: 'border-cyan-500/30'
+    },
   ];
 
+  // Identifica o maior ofensor (menor taxa de conversão que tenha itens pendentes)
+  const sortedRates = [...rates]
+    .filter(r => r.pending > 0)
+    .sort((a, b) => a.rate - b.rate);
+  
+  const bottleneck = sortedRates.length > 0 ? sortedRates[0] : null;
+  const isHealthy = !bottleneck || bottleneck.rate > 0.85;
+
   return (
-    <div id="health_dashboard_root" className="glass-card p-6 space-y-6 border border-white/5 bg-[#0f0f11]/80 backdrop-blur-md rounded-xl">
+    <div id="health_dashboard_root" className="glass-card p-6 space-y-8 border border-white/5 bg-[#0f0f11]/80 backdrop-blur-md rounded-xl font-sans">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
         <div>
           <div className="flex items-center gap-2">
@@ -148,10 +182,10 @@ export const HealthDashboard: React.FC = () => {
             </div>
             <div>
               <h3 className="text-sm font-black text-white uppercase tracking-widest">
-                Painel de Operações Realtime (HealthDashboard)
+                Painel Direcional (Health Dashboard)
               </h3>
               <p className="text-[10px] text-zinc-500 mt-0.5">
-                Métricas agregadas da view_radar_completo de expedição física do Supabase
+                Monitoramento Ativo de Gargalos &amp; Ações Requeridas
               </p>
             </div>
           </div>
@@ -181,167 +215,184 @@ export const HealthDashboard: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-4 rounded-xl bg-black/30 border border-white/5 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 text-zinc-600 group-hover:text-zinc-500 transition-colors">
-            <Layers className="w-8 h-8 opacity-20" />
-          </div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Total de Listas</p>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-black text-white font-mono">{totalListas}</span>
-            <span className="text-[10px] text-zinc-500 font-mono">docs</span>
-          </div>
-          <div className="mt-3 flex items-center gap-1 text-[10px] text-zinc-500">
-            <Box className="w-3.5 h-3.5 text-zinc-600" />
-            <span>{totalVolumes.toLocaleString("pt-BR")} volumes totais</span>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-black/30 border border-white/5 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 text-purple-600/30 group-hover:text-purple-500/30 transition-colors">
-            <ArrowUpRight className="w-8 h-8 opacity-30" />
-          </div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Lojas Soltas</p>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-black text-purple-400 font-mono">{soltas}</span>
-            <span className="text-xs font-semibold text-purple-500">({pctSoltas}%)</span>
-          </div>
-          <div className="mt-3">
-            <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
-              <div className="bg-purple-500 h-1.5 rounded-full" style={{ width: `${pctSoltas}%` }}></div>
-            </div>
-            <div className="flex justify-between items-center text-[9px] text-zinc-500 mt-1">
-              <span>{parcialSoltas} parcial</span>
-              <span>{naoSoltas} pendentes</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-black/30 border border-white/5 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 text-blue-600/30 group-hover:text-blue-500/30 transition-colors">
-            <TrendingUp className="w-8 h-8 opacity-30" />
-          </div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Coleta Ativa</p>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-black text-blue-400 font-mono">{coletaEmAndamento}</span>
-            <span className="text-[10px] text-zinc-500 font-mono">em progresso</span>
-          </div>
-          <div className="mt-3 flex items-center justify-between text-[10px]">
-            <span className="text-emerald-500 font-bold flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              {coletaConcluida} concluídas
-            </span>
-            <span className="text-zinc-500 font-mono">
-              {coletaNaoIniciada} aguardando
-            </span>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-black/30 border border-white/5 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-3 text-red-600/30 group-hover:text-red-500/30 transition-colors">
-            <Truck className="w-8 h-8 opacity-30" />
-          </div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Expedidores Pendentes</p>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-2xl font-black text-red-400 font-mono">{expedicaoPendentes}</span>
-            <span className="text-xs font-semibold text-red-500">({pctExpedicoesPendentes}%)</span>
-          </div>
-          <div className="mt-3">
-            <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
-              <div className="bg-red-500 h-1.5 rounded-full" style={{ width: `${pctExpedicoesPendentes}%` }}></div>
-            </div>
-            <div className="flex justify-between items-center text-[9px] text-zinc-500 mt-1">
-              <span className="text-cyan-400">{expedidas} expedidas</span>
-              <span className="text-zinc-500">{expedicaoCanceladas} canceladas</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-7 bg-black/20 p-4 rounded-xl border border-white/5 flex flex-col justify-between">
-          <div>
-            <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider mb-2">
-              Volumetria Agregada por Etapa
-            </h4>
-            <p className="text-[9px] text-zinc-500 mb-4">
-              Distribuição de listas em tempo real nos estágios principais do CD
-            </p>
-          </div>
+      {/* SEÇÃO 1: O QUE ESTÁ ACONTECENDO? */}
+      <section className="space-y-3">
+        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+          1. O que está acontecendo?
+          <span className="h-px bg-white/10 flex-1"></span>
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
           
-          <div className="h-[180px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -25, bottom: 5 }}>
-                <XAxis dataKey="name" stroke="#52525b" fontSize={9} tickLine={false} />
-                <YAxis stroke="#52525b" fontSize={9} tickLine={false} allowDecimals={false} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: "#09090b", borderColor: "#27272a", borderRadius: "8px" }}
-                  labelStyle={{ color: "#a1a1aa", fontSize: "10px", fontWeight: "bold" }}
-                  itemStyle={{ color: "#ffffff", fontSize: "11px" }}
-                />
-                <Bar dataKey="qtd" radius={[4, 4, 0, 0]}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="lg:col-span-5 bg-black/20 p-4 rounded-xl border border-white/5 space-y-4 flex flex-col justify-between">
-          <div>
-            <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider mb-1">
-              Acompanhamento de Funil
-            </h4>
-            <p className="text-[9px] text-zinc-500 mb-4">
-              Porcentagem de conclusão para cada etapa da expedição
+          {/* Liberação */}
+          <div className="bg-black/30 border border-white/5 p-4 rounded-xl relative">
+            <div className="absolute top-4 right-4 text-purple-500/20">
+              <span className="font-black text-3xl">1</span>
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-purple-400 mb-2">Liberação</p>
+            <div className="flex items-end gap-2">
+              <span className="text-2xl font-black text-white font-mono leading-none">{soltas}</span>
+              <span className="text-[10px] text-zinc-500 font-mono mb-0.5">/ {totalListas} list</span>
+            </div>
+            <div className="mt-3 w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
+              <div className="bg-purple-500 h-1 rounded-full" style={{ width: `${totalListas ? (soltas / totalListas) * 100 : 0}%` }}></div>
+            </div>
+            <p className="text-[9px] text-zinc-400 mt-2 font-mono">
+              <span className="text-red-400 font-bold">{naoSoltas}</span> pendentes
             </p>
           </div>
 
-          <div className="space-y-3.5 flex-1 flex flex-col justify-center">
-            <div className="space-y-1">
-              <div className="flex justify-between items-center text-[10px] font-mono">
-                <span className="text-zinc-400 font-sans">1. Lojas Soltas</span>
-                <span className="text-purple-400 font-bold">{soltas} / {totalListas} list</span>
-              </div>
-              <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
-                <div className="bg-purple-500 h-2 rounded-full transition-all duration-500" style={{ width: `${pctSoltas}%` }}></div>
-              </div>
+          {/* Coleta */}
+          <div className="bg-black/30 border border-white/5 p-4 rounded-xl relative">
+            <div className="absolute top-4 right-4 text-blue-500/20">
+              <span className="font-black text-3xl">2</span>
             </div>
-
-            <div className="space-y-1">
-              <div className="flex justify-between items-center text-[10px] font-mono">
-                <span className="text-zinc-400 font-sans">2. Coletas Concluídas</span>
-                <span className="text-blue-400 font-bold">{coletaConcluida} / {totalListas} list</span>
-              </div>
-              <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
-                <div className="bg-blue-500 h-2 rounded-full transition-all duration-500" style={{ width: `${totalListas ? Math.round((coletaConcluida / totalListas) * 100) : 0}%` }}></div>
-              </div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400 mb-2">Coleta</p>
+            <div className="flex items-end gap-2">
+              <span className="text-2xl font-black text-white font-mono leading-none">{coletaConcluida}</span>
+              <span className="text-[10px] text-zinc-500 font-mono mb-0.5">/ {soltas} list</span>
             </div>
-
-            <div className="space-y-1">
-              <div className="flex justify-between items-center text-[10px] font-mono">
-                <span className="text-zinc-400 font-sans">3. Carregamentos Concluídos</span>
-                <span className="text-amber-500 font-bold">{carregamentoCarregada} / {totalListas} list</span>
-              </div>
-              <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
-                <div className="bg-amber-500 h-2 rounded-full transition-all duration-500" style={{ width: `${totalListas ? Math.round((carregamentoCarregada / totalListas) * 100) : 0}%` }}></div>
-              </div>
+            <div className="mt-3 w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
+              <div className="bg-blue-500 h-1 rounded-full" style={{ width: `${soltas ? (coletaConcluida / soltas) * 100 : 0}%` }}></div>
             </div>
-
-            <div className="space-y-1">
-              <div className="flex justify-between items-center text-[10px] font-mono">
-                <span className="text-zinc-400 font-sans">4. Expedição Confirmada</span>
-                <span className="text-cyan-400 font-bold">{expedidas} / {totalListas} list</span>
-              </div>
-              <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
-                <div className="bg-cyan-500 h-2 rounded-full transition-all duration-500" style={{ width: `${totalListas ? Math.round((expedidas / totalListas) * 100) : 0}%` }}></div>
-              </div>
-            </div>
+            <p className="text-[9px] text-zinc-400 mt-2 font-mono">
+              <span className="text-amber-400 font-bold">{coletaEmAndamento}</span> em andamento
+            </p>
           </div>
+
+          {/* Carregamento */}
+          <div className="bg-black/30 border border-white/5 p-4 rounded-xl relative">
+            <div className="absolute top-4 right-4 text-amber-500/20">
+              <span className="font-black text-3xl">3</span>
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-2">Carregamento</p>
+            <div className="flex items-end gap-2">
+              <span className="text-2xl font-black text-white font-mono leading-none">{carregamentoCarregada}</span>
+              <span className="text-[10px] text-zinc-500 font-mono mb-0.5">/ {coletaConcluida} list</span>
+            </div>
+            <div className="mt-3 w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
+              <div className="bg-amber-500 h-1 rounded-full" style={{ width: `${coletaConcluida ? (carregamentoCarregada / coletaConcluida) * 100 : 0}%` }}></div>
+            </div>
+            <p className="text-[9px] text-zinc-400 mt-2 font-mono">
+              <span className="text-amber-400 font-bold">{carregamentoCarregando}</span> nas docas
+            </p>
+          </div>
+
+          {/* Expedição */}
+          <div className="bg-black/30 border border-white/5 p-4 rounded-xl relative">
+            <div className="absolute top-4 right-4 text-cyan-500/20">
+              <span className="font-black text-3xl">4</span>
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 mb-2">Expedição</p>
+            <div className="flex items-end gap-2">
+              <span className="text-2xl font-black text-white font-mono leading-none">{expedidas}</span>
+              <span className="text-[10px] text-zinc-500 font-mono mb-0.5">/ {carregamentoCarregada} list</span>
+            </div>
+            <div className="mt-3 w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
+              <div className="bg-cyan-500 h-1 rounded-full" style={{ width: `${carregamentoCarregada ? (expedidas / carregamentoCarregada) * 100 : 0}%` }}></div>
+            </div>
+            <p className="text-[9px] text-zinc-400 mt-2 font-mono">
+              <span className="text-red-400 font-bold">{carregamentoCarregada - expedidas}</span> prontas/paradas
+            </p>
+          </div>
+
         </div>
+      </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* SEÇÃO 2: POR QUE ISSO ESTÁ ACONTECENDO? */}
+        <section className="space-y-3">
+          <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+            2. Por que está acontecendo?
+            <span className="h-px bg-white/10 flex-1"></span>
+          </h4>
+          
+          <div className={`p-6 rounded-xl border flex gap-4 h-full ${isHealthy ? 'bg-emerald-500/10 border-emerald-500/20' : bottleneck?.bg + ' ' + bottleneck?.border}`}>
+            {isHealthy ? (
+              <>
+                <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 text-emerald-400">
+                  <CheckCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className="text-sm font-black text-emerald-400 mb-1">Operação Fluindo</h5>
+                  <p className="text-xs text-emerald-500/80 leading-relaxed">
+                    As taxas de conversão entre etapas estão acima de 85%. Não há gargalos críticos identificados neste momento.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={`w-10 h-10 rounded-full bg-black/40 flex items-center justify-center flex-shrink-0 ${bottleneck?.color}`}>
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h5 className={`text-sm font-black mb-1 ${bottleneck?.color}`}>
+                    Gargalo Crítico: {bottleneck?.name}
+                  </h5>
+                  <p className="text-xs text-zinc-400 leading-relaxed mb-3">
+                    A conversão atual desta etapa é de apenas <strong className="text-white">{(bottleneck!.rate * 100).toFixed(0)}%</strong>. 
+                    Temos <strong className="text-white">{bottleneck?.pending}</strong> {bottleneck?.desc}.
+                  </p>
+                  <div className="flex gap-2 items-center text-[10px] font-mono text-zinc-500 bg-black/40 px-3 py-2 rounded-lg w-fit">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                    Isto está travando o fluxo das próximas etapas.
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+
+        {/* SEÇÃO 3: O QUE PRECISA SER FEITO AGORA? */}
+        <section className="space-y-3">
+          <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+            3. O que precisa ser feito agora?
+            <span className="h-px bg-white/10 flex-1"></span>
+          </h4>
+          
+          <div className="bg-black/30 border border-white/5 rounded-xl p-2 h-full flex flex-col gap-2">
+            {isHealthy ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-zinc-500">
+                <CheckCircle className="w-8 h-8 text-emerald-500/30 mb-3" />
+                <p className="text-xs font-bold uppercase tracking-widest text-zinc-400">Nenhuma Ação Imediata Necessária</p>
+                <p className="text-[10px] mt-1">Continue monitorando o painel direcional.</p>
+              </div>
+            ) : (
+              <>
+                {/* Ação Principal baseada no Gargalo */}
+                <button className={`w-full p-4 rounded-lg border border-white/5 flex items-center justify-between group hover:bg-white/5 transition-colors text-left`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg bg-black/50 ${bottleneck?.color}`}>
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-1">Ação Prioritária</p>
+                      <p className={`text-sm font-black ${bottleneck?.color}`}>{bottleneck?.action}</p>
+                    </div>
+                  </div>
+                  <ArrowRight className={`w-5 h-5 opacity-50 group-hover:opacity-100 transition-opacity ${bottleneck?.color}`} />
+                </button>
+                
+                {/* Outras Ações (se houver) */}
+                <div className="flex-1 flex flex-col gap-2 px-1">
+                  <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-widest px-2 pt-2">Próximos Passos Recomendados</p>
+                  {sortedRates.slice(1, 3).map(rate => (
+                    <div key={rate.id} className="flex items-center justify-between px-2 py-1.5 border-l-2 border-white/5 hover:border-zinc-500 transition-colors">
+                      <span className="text-[11px] text-zinc-400 font-medium">{rate.action}</span>
+                      <span className={`text-[10px] font-mono font-bold ${rate.color}`}>{Math.round(rate.rate * 100)}% fluidez</span>
+                    </div>
+                  ))}
+                  {sortedRates.length <= 1 && (
+                    <div className="px-2 py-1.5 text-[11px] text-zinc-600 italic">
+                      Nenhuma ação secundária pendente.
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
 };
+
