@@ -1,3 +1,4 @@
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, isStaticBuild } from '../lib/supabase';
 import { SupabaseService } from '../lib/supabaseService';
 import { useStoreOperations } from '../stores/useStoreOperations';
@@ -114,7 +115,7 @@ class RealtimeSyncService {
 
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       // Buscar operações iniciais para essa programação
@@ -200,7 +201,7 @@ class RealtimeSyncService {
 
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       // Buscar atividades iniciais de coleta para essa programação
@@ -279,7 +280,7 @@ class RealtimeSyncService {
 
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       const currentSetores = useSectorStore.getState().setores;
@@ -349,7 +350,7 @@ class RealtimeSyncService {
 
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       const currentColab = useCollaboratorStore.getState().colaboradores;
@@ -419,7 +420,7 @@ class RealtimeSyncService {
 
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       SupabaseService.fetchTable<EscalaColaborador>('escalas')
@@ -487,7 +488,7 @@ class RealtimeSyncService {
 
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       SupabaseService.fetchTable<UniversoMix>('universos_trabalho')
@@ -555,7 +556,7 @@ class RealtimeSyncService {
 
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       SupabaseService.fetchTable<CopilMatrizRow>('copil_matriz')
@@ -618,7 +619,7 @@ class RealtimeSyncService {
       }
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       SupabaseService.fetchTable<CapacidadeSetor>('capacidade_operacional')
@@ -661,7 +662,7 @@ class RealtimeSyncService {
       }
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       SupabaseService.fetchTable<ReferenteSemana>('escalas_referentes')
@@ -704,7 +705,7 @@ class RealtimeSyncService {
       }
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       SupabaseService.fetchTable<Usuario>('usuarios')
@@ -746,7 +747,7 @@ class RealtimeSyncService {
       }
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       SupabaseService.fetchTable<AlertLog>('alertas_operacionais')
@@ -789,7 +790,7 @@ class RealtimeSyncService {
       }
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       SupabaseService.fetchTable<HistoricoRegistro>('historico_consolidado')
@@ -832,7 +833,7 @@ class RealtimeSyncService {
       }
       if (this.unsubscribes.has(key)) return;
 
-      let channel: any = null;
+      let channel: RealtimeChannel | null = null;
       let cancelled = false;
 
       SupabaseService.fetchTable<AuditLog>('audit_logs')

@@ -1,6 +1,9 @@
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, isStaticBuild } from './supabase';
 import { auth, initAuth } from './supabaseAuth';
 import { IndexedDBService } from './indexedDb';
+import { useHistoryStore } from '../stores/useHistoryStore';
+import { AlertLog } from '../types';
 
 export enum OperationType {
   CREATE = 'create',
@@ -116,7 +119,7 @@ export class SupabaseService {
     });
   }
 
-  private static getDocId(record: any, keyField: string = 'id'): string {
+  private static getDocId(record: Record<string, unknown>, keyField: string = 'id'): string {
     const idVal = record[keyField] || record.id || record.lista || record.chave;
     return idVal ? String(idVal) : '';
   }
@@ -147,7 +150,7 @@ export class SupabaseService {
         if (error) throw error;
 
         if (data && data.length > 0) {
-          await IndexedDBService.putMany(tableName, data);
+          await IndexedDBService.putMany(tableName, data as unknown as T[]);
           return data as T[];
         }
       } catch (err) {
@@ -168,14 +171,15 @@ export class SupabaseService {
     return [];
   }
 
-  public static filterRecordColumns<T>(tableName: string, record: T): any {
+  public static filterRecordColumns<T>(tableName: string, record: T): Record<string, unknown> {
     const columns = TABLE_COLUMNS[tableName];
-    if (!columns) return record;
+    if (!columns) return record as Record<string, unknown>;
 
-    const filtered: any = {};
-    for (const key of Object.keys(record as any)) {
+    const filtered: Record<string, unknown> = {};
+    const rec = record as Record<string, unknown>;
+    for (const key of Object.keys(rec)) {
       if (columns.includes(key)) {
-        filtered[key] = (record as any)[key];
+        filtered[key] = rec[key];
       } else {
         console.warn(`[Supabase Sanitizer] Ignorando coluna inválida "${key}" para tabela "${tableName}".`);
       }
@@ -183,14 +187,14 @@ export class SupabaseService {
     return filtered;
   }
 
-  public static async upsertRecord<T extends { updated_at?: string; id?: any; lista?: string; key?: string; chave?: string }>(
+  public static async upsertRecord<T extends { updated_at?: string; id?: unknown; lista?: string; key?: string; chave?: string }>(
     tableName: string,
     record: T,
     keyField: keyof T = 'id' as keyof T
   ): Promise<T> {
     await this.garantirAuthPronto();
 
-    const docId = this.getDocId(record, keyField as string);
+    const docId = this.getDocId(record as Record<string, unknown>, keyField as string);
     if (!docId) {
       throw new Error(`Cannot upsert to ${tableName} without a valid unique key.`);
     }
@@ -207,7 +211,7 @@ export class SupabaseService {
     if (!auth.currentUser) {
       console.warn(`[Supabase Offline Fallback] Gravando em "${tableName}" no cache local sem usuário autenticado.`);
       await IndexedDBService.put(tableName, filteredRecord);
-      return filteredRecord;
+      return filteredRecord as unknown as T;
     }
 
     const localExisting = await IndexedDBService.get<T>(tableName, docId);
@@ -237,9 +241,10 @@ export class SupabaseService {
             throw error;
           }
         }
-      } catch (err: any) {
-        const errMsg = String(err?.message || err);
-        const errCode = String(err?.code || '');
+      } catch (err: unknown) {
+        const errObj = err as { message?: string; code?: string };
+        const errMsg = String(errObj?.message || err);
+        const errCode = String(errObj?.code || '');
         if (errCode === 'PGRST204' || errMsg.includes('PGRST204') || errMsg.includes('column') || errMsg.includes('does not exist')) {
           console.error(`[Supabase Sanitizer] Descartando inserção inválida devido a erro PGRST204 de coluna inexistente na tabela ${tableName}.`, err);
         } else {
@@ -296,9 +301,9 @@ export class SupabaseService {
 
   public static subscribe(
     tableName: string, 
-    callback: (payload: { table: string; event: 'INSERT' | 'UPDATE' | 'DELETE'; new: any; old?: any }) => void
+    callback: (payload: { table: string; event: 'INSERT' | 'UPDATE' | 'DELETE'; new: unknown; old?: unknown }) => void
   ): () => void {
-    let channel: any = null;
+    let channel: RealtimeChannel | null = null;
     let cancelado = false;
 
     const unsubscribeAuth = this.onAuthStateResolved((state) => {
@@ -335,10 +340,10 @@ export class SupabaseService {
                 new: newData
               });
             } else if (changeType === 'DELETE') {
-              const oldRecord = oldData as any;
+              const oldRecord = oldData as Record<string, unknown> | null;
               const docId = oldRecord?.id || oldRecord?.lista || oldRecord?.chave || payload.errors?.[0];
               if (docId) {
-                await IndexedDBService.delete(tableName, docId);
+                await IndexedDBService.delete(tableName, String(docId));
                 callback({
                   table: tableName,
                   event: 'DELETE',
@@ -393,7 +398,17 @@ export class SupabaseService {
             if (error) {
               const errMsg = error.message || '';
               if (error.code === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
-                console.error(`[Supabase Sync] [PGRST204] Coluna inexistente detectada na tabela ${tbl}. Removendo item inválido da fila de sincronização para evitar travamentos.`, error);
+                console.error(`[Supabase Sync] [PGRST204] Coluna inexistente detectada na tabela ${tbl}. Gerando alerta visual e removendo item inválido.`, error);
+                const alertLog: AlertLog = {
+                  id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                  prioridade: 'alta',
+                  titulo: 'Sincronização Descartada',
+                  descricao: `Alteração na tabela "${tbl}" continha estrutura incompatível e foi descartada da fila offline.`,
+                  setor: 'Sistema',
+                  hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                  lido: false
+                };
+                useHistoryStore.getState().setAlerts([alertLog, ...useHistoryStore.getState().alerts]);
                 continue; // Descarta da fila (não insere no remainingQueue)
               }
               throw error;
@@ -405,13 +420,25 @@ export class SupabaseService {
               .eq(pKey, item.keyVal);
             if (error) throw error;
           }
-        } catch (err: any) {
-          console.error(`[Supabase Sync] Erro ao sincronizar item offline para tabela "${item.table || item.tableName}":`, err);
+        } catch (err: unknown) {
+          const tblName = item.table || item.tableName;
+          console.error(`[Supabase Sync] Erro ao sincronizar item offline para tabela "${tblName}":`, err);
           
-          const errMsg = String(err?.message || err);
-          const errCode = String(err?.code || '');
+          const errObj = err as { message?: string; code?: string };
+          const errMsg = String(errObj?.message || err);
+          const errCode = String(errObj?.code || '');
           if (errCode === 'PGRST204' || errMsg.includes('PGRST204') || errMsg.includes('column') || errMsg.includes('does not exist')) {
-            console.warn(`[Supabase Sync] Ignorando e descartando alteração com coluna inválida de ${item.table || item.tableName} da fila para evitar travamentos.`);
+            console.warn(`[Supabase Sync] Ignorando e descartando alteração com coluna inválida de ${tblName} da fila para evitar travamentos.`);
+            const alertLog: AlertLog = {
+              id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              prioridade: 'alta',
+              titulo: 'Sincronização Descartada',
+              descricao: `Alteração na tabela "${tblName}" continha estrutura incompatível e foi descartada da fila offline.`,
+              setor: 'Sistema',
+              hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+              lido: false
+            };
+            useHistoryStore.getState().setAlerts([alertLog, ...useHistoryStore.getState().alerts]);
           } else {
             remainingQueue.push(item);
           }
