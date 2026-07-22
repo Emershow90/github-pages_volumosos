@@ -47,23 +47,33 @@ export const isOnline = (): boolean => {
 
 export type AuthState = 'loading' | 'authenticated' | 'unauthenticated';
 
+const TABLE_NAME_MAP: Record<string, string> = {
+  capacidade_operacional: 'capacidade',
+  escalas_referentes: 'escala_semanal',
+};
+
+const LOCAL_ONLY_TABLES = new Set([
+  'alertas_operacionais',
+  'copil_matriz',
+  'universos_trabalho'
+]);
+
 const TABLE_COLUMNS: Record<string, string[]> = {
-  store_master: ['id', 'nome', 'cidade', 'uf', 'transportadoraPadrao', 'observacoes', 'created_at', 'updated_at'],
-  setores: ['id', 'numero', 'nome', 'resp', 'fotoLider', 'meta', 'horario', 'situacao', 'ativ', 'promessa', 'varFin', 'bsi', 'nota5s', 'errosPicking', 'reproTotal', 'infracaoSeguranca', 'horasDKT', 'poliRec', 'rdl', 'poliSaid', 'coletado', 'uph', 'created_at', 'updated_at'],
-  lista_coleta: ['lista', 'loja', 'setor', 'corte', 'carregamento', 'transportadora', 'volumes', 'enderecos', 'atividadeRelacionada', 'created_at', 'updated_at'],
-  radar_lojas_status: ['lista', 'statusSoltura', 'horarioSoltura', 'soltoPor', 'statusColeta', 'horarioColeta', 'coletadoPor', 'statusCarregamento', 'horarioCarregamento', 'carregadoPor', 'statusExpedicao', 'created_at', 'updated_at', 'updated_by'],
-  store_operations: ['id', 'programacaoId', 'lojaId', 'nomeLoja', 'setor', 'transportadora', 'corte', 'carregamento', 'volumes', 'enderecos', 'atividadeRelacionada', 'statusSoltura', 'horarioSoltura', 'soltoPor', 'statusColeta', 'horarioColeta', 'coletadoPor', 'statusCarregamento', 'horarioCarregamento', 'carregadoPor', 'statusExpedicao', 'perdeuCorte', 'updated_at', 'updated_by', 'created_at'],
-  atividade_loja: ['id', 'programacaoId', 'lojaId', 'setor', 'tipoAtividade', 'colisProgramados', 'colisColetados', 'updated_at', 'created_at'],
-  usuarios: ['id', 'email', 'nome', 'role', 'setoresAutorizados', 'situacao', 'cargo', 'unidade', 'avatar_url', 'aprovado_por', 'data_aprovacao', 'created_at', 'updated_at'],
+  store_master: ['id', 'nome', 'cidade', 'uf', 'transportadoraPadrao', 'transportadorapadrao', 'observacoes', 'created_at', 'updated_at'],
+  setores: ['id', 'numero', 'nome', 'resp', 'fotoLider', 'fotolider', 'meta', 'horario', 'situacao', 'ativ', 'promessa', 'varFin', 'varfin', 'bsi', 'nota5s', 'errosPicking', 'errospicking', 'reproTotal', 'reprototal', 'infracaoSeguranca', 'infracaoseguranca', 'horasDKT', 'horasdkt', 'poliRec', 'polirec', 'rdl', 'poliSaid', 'polisaid', 'coletado', 'uph', 'created_at', 'updated_at'],
+  lista_coleta: ['lista', 'loja', 'setor', 'corte', 'carregamento', 'transportadora', 'volumes', 'enderecos', 'atividadeRelacionada', 'atividaderelacionada', 'created_at', 'updated_at'],
+  radar_lojas_status: ['lista', 'created_at', 'updated_at', 'updated_by'],
+  store_operations: ['id', 'programacaoId', 'programacao_id', 'lojaId', 'loja_id', 'nomeLoja', 'nome_loja', 'setor', 'transportadora', 'corte', 'carregamento', 'volumes', 'enderecos', 'atividadeRelacionada', 'atividade_relacionada', 'statusSoltura', 'status_soltura', 'horarioSoltura', 'horario_soltura', 'soltoPor', 'solto_por', 'statusColeta', 'status_coleta', 'horarioColeta', 'horario_coleta', 'coletadoPor', 'coletado_por', 'statusCarregamento', 'status_carregamento', 'horarioCarregamento', 'horario_carregamento', 'carregadoPor', 'carregado_por', 'statusExpedicao', 'status_expedicao', 'perdeuCorte', 'perdeu_corte', 'updated_at', 'updated_by', 'created_at'],
+  atividade_loja: ['id', 'setor', 'updated_at', 'created_at'],
+  usuarios: ['id', 'email', 'nome', 'role', 'setoresAutorizados', 'setoresautorizados', 'situacao', 'cargo', 'unidade', 'avatar_url', 'created_at', 'updated_at'],
   colaboradores: ['id', 'nome', 'setor', 'status', 'cargo', 'horas', 'foto', 'created_at', 'updated_at'],
   escalas: ['id', 'colaborador_id', 'data', 'turno', 'status', 'created_at', 'updated_at'],
-  capacidade_operacional: ['id', 'setor_id', 'abertura', 'fechoHora', 'created_at', 'updated_at'],
-  universos_trabalho: ['id', 'setor_id', 'nome', 'meta', 'feito', 'created_at', 'updated_at'],
-  historico_consolidado: ['id', 'data', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota5s', 'erros', 'created_at', 'updated_at'],
-  copil_matriz: ['id', 'setor_id', 'grupo', 'kpi', 'comp', 'real', 'inverso', 'auto', 'tolerancia', 'regraCalculo', 'criterio', 'notaManual', 'calcNota', 'created_at', 'updated_at'],
-  escalas_referentes: ['id', 'dia', 'ref87', 'refVol', 'apoios', 'created_at', 'updated_at'],
-  alertas_operacionais: ['id', 'prioridade', 'titulo', 'descricao', 'setor', 'hora', 'lido', 'created_at', 'updated_at'],
-  audit_logs: ['id', 'data', 'hora', 'tipo', 'autor', 'acao', 'detalhes', 'usuario', 'campo', 'valorAnterior', 'valorNovo', 'dispositivo', 'created_at', 'updated_at']
+  escala_semanal: ['id', 'dia', 'created_at', 'updated_at'],
+  capacidade: ['id', 'setor', 'abertura', 'fecho_hora', 'fechoHora', 'updated_at'],
+  capacidade_operacional: ['id', 'setor', 'abertura', 'fecho_hora', 'fechoHora', 'updated_at'],
+  escalas_referentes: ['id', 'dia', 'created_at', 'updated_at'],
+  historico_consolidado: ['id', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota5s', 'nota_5s', 'erros', 'created_at', 'updated_at'],
+  audit_logs: ['id', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at']
 };
 
 export class SupabaseService {
@@ -71,6 +81,108 @@ export class SupabaseService {
   private static authStateListeners: Set<(state: AuthState) => void> = new Set();
   private static initializedAuthObserver = false;
   private static syncErrorHandlers: SyncErrorHandler[] = [];
+
+  public static getRealTableName(tableName: string): string {
+    return TABLE_NAME_MAP[tableName] || tableName;
+  }
+
+  public static toDbRecord(tableName: string, record: Record<string, unknown>): Record<string, unknown> {
+    const realTable = this.getRealTableName(tableName);
+    const result: Record<string, unknown> = { ...record };
+
+    if (realTable === 'setores') {
+      if ('fotoLider' in result) { result.fotolider = result.fotoLider; delete result.fotoLider; }
+      if ('varFin' in result) { result.varfin = result.varFin; delete result.varFin; }
+      if ('errosPicking' in result) { result.errospicking = result.errosPicking; delete result.errosPicking; }
+      if ('reproTotal' in result) { result.reprototal = result.reproTotal; delete result.reproTotal; }
+      if ('infracaoSeguranca' in result) { result.infracaoseguranca = result.infracaoSeguranca; delete result.infracaoSeguranca; }
+      if ('horasDKT' in result) { result.horasdkt = result.horasDKT; delete result.horasDKT; }
+      if ('poliRec' in result) { result.polirec = result.poliRec; delete result.poliRec; }
+      if ('poliSaid' in result) { result.polisaid = result.poliSaid; delete result.poliSaid; }
+    } else if (realTable === 'usuarios') {
+      if ('setoresAutorizados' in result) { result.setoresautorizados = result.setoresAutorizados; delete result.setoresAutorizados; }
+      delete result.aprovado_por;
+      delete result.data_aprovacao;
+    } else if (realTable === 'store_master') {
+      if ('transportadoraPadrao' in result) { result.transportadorapadrao = result.transportadoraPadrao; delete result.transportadoraPadrao; }
+    } else if (realTable === 'lista_coleta') {
+      if ('atividadeRelacionada' in result) { result.atividaderelacionada = result.atividadeRelacionada; delete result.atividadeRelacionada; }
+    } else if (realTable === 'capacidade') {
+      if ('setor_id' in result) { result.setor = result.setor_id; delete result.setor_id; }
+      if ('fechoHora' in result) { result.fecho_hora = result.fechoHora; delete result.fechoHora; }
+    } else if (realTable === 'store_operations') {
+      if ('programacaoId' in result) { result.programacao_id = result.programacaoId; delete result.programacaoId; }
+      if ('lojaId' in result) { result.loja_id = result.lojaId; delete result.lojaId; }
+      if ('nomeLoja' in result) { result.nome_loja = result.nomeLoja; delete result.nomeLoja; }
+      if ('atividadeRelacionada' in result) { result.atividade_relacionada = result.atividadeRelacionada; delete result.atividadeRelacionada; }
+      if ('statusSoltura' in result) { result.status_soltura = result.statusSoltura; delete result.statusSoltura; }
+      if ('horarioSoltura' in result) { result.horario_soltura = result.horarioSoltura; delete result.horarioSoltura; }
+      if ('soltoPor' in result) { result.solto_por = result.soltoPor; delete result.soltoPor; }
+      if ('statusColeta' in result) { result.status_coleta = result.statusColeta; delete result.statusColeta; }
+      if ('horarioColeta' in result) { result.horario_coleta = result.horarioColeta; delete result.horarioColeta; }
+      if ('coletadoPor' in result) { result.coletado_por = result.coletadoPor; delete result.coletadoPor; }
+      if ('statusCarregamento' in result) { result.status_carregamento = result.statusCarregamento; delete result.statusCarregamento; }
+      if ('horarioCarregamento' in result) { result.horario_carregamento = result.horarioCarregamento; delete result.horarioCarregamento; }
+      if ('carregadoPor' in result) { result.carregado_por = result.carregadoPor; delete result.carregadoPor; }
+      if ('statusExpedicao' in result) { result.status_expedicao = result.statusExpedicao; delete result.statusExpedicao; }
+      if ('perdeuCorte' in result) { result.perdeu_corte = result.perdeuCorte; delete result.perdeuCorte; }
+    } else if (realTable === 'historico_consolidado') {
+      if ('nota5s' in result) { result.nota_5s = result.nota5s; delete result.nota5s; }
+    } else if (realTable === 'audit_logs') {
+      if ('valorAnterior' in result) { result.valor_anterior = result.valorAnterior; delete result.valorAnterior; }
+      if ('valorNovo' in result) { result.valor_novo = result.valorNovo; delete result.valorNovo; }
+    }
+
+    return result;
+  }
+
+  public static fromDbRecord(tableName: string, record: Record<string, unknown>): Record<string, unknown> {
+    const realTable = this.getRealTableName(tableName);
+    const result: Record<string, unknown> = { ...record };
+
+    if (realTable === 'setores') {
+      if ('fotolider' in result && !('fotoLider' in result)) result.fotoLider = result.fotolider;
+      if ('varfin' in result && !('varFin' in result)) result.varFin = result.varfin;
+      if ('errospicking' in result && !('errosPicking' in result)) result.errosPicking = result.errospicking;
+      if ('reprototal' in result && !('reproTotal' in result)) result.reproTotal = result.reprototal;
+      if ('infracaoseguranca' in result && !('infracaoSeguranca' in result)) result.infracaoSeguranca = result.infracaoseguranca;
+      if ('horasdkt' in result && !('horasDKT' in result)) result.horasDKT = result.horasdkt;
+      if ('polirec' in result && !('poliRec' in result)) result.poliRec = result.polirec;
+      if ('polisaid' in result && !('poliSaid' in result)) result.poliSaid = result.polisaid;
+    } else if (realTable === 'usuarios') {
+      if ('setoresautorizados' in result && !('setoresAutorizados' in result)) result.setoresAutorizados = result.setoresautorizados;
+    } else if (realTable === 'store_master') {
+      if ('transportadorapadrao' in result && !('transportadoraPadrao' in result)) result.transportadoraPadrao = result.transportadorapadrao;
+    } else if (realTable === 'lista_coleta') {
+      if ('atividaderelacionada' in result && !('atividadeRelacionada' in result)) result.atividadeRelacionada = result.atividaderelacionada;
+    } else if (realTable === 'capacidade') {
+      if ('setor' in result && !('setor_id' in result)) result.setor_id = result.setor;
+      if ('fecho_hora' in result && !('fechoHora' in result)) result.fechoHora = result.fecho_hora;
+    } else if (realTable === 'store_operations') {
+      if ('programacao_id' in result && !('programacaoId' in result)) result.programacaoId = result.programacao_id;
+      if ('loja_id' in result && !('lojaId' in result)) result.lojaId = result.lojaId;
+      if ('nome_loja' in result && !('nomeLoja' in result)) result.nomeLoja = result.nome_loja;
+      if ('atividade_relacionada' in result && !('atividadeRelacionada' in result)) result.atividadeRelacionada = result.atividade_relacionada;
+      if ('status_soltura' in result && !('statusSoltura' in result)) result.statusSoltura = result.status_soltura;
+      if ('horario_soltura' in result && !('horarioSoltura' in result)) result.horarioSoltura = result.horario_soltura;
+      if ('solto_por' in result && !('soltoPor' in result)) result.soltoPor = result.solto_por;
+      if ('status_coleta' in result && !('statusColeta' in result)) result.statusColeta = result.status_coleta;
+      if ('horario_coleta' in result && !('horarioColeta' in result)) result.horarioColeta = result.horario_coleta;
+      if ('coletado_por' in result && !('coletadoPor' in result)) result.coletadoPor = result.coletado_por;
+      if ('status_carregamento' in result && !('statusCarregamento' in result)) result.statusCarregamento = result.status_carregamento;
+      if ('horario_carregamento' in result && !('horarioCarregamento' in result)) result.horarioCarregamento = result.horario_carregamento;
+      if ('carregado_por' in result && !('carregadoPor' in result)) result.carregadoPor = result.carregado_por;
+      if ('status_expedicao' in result && !('statusExpedicao' in result)) result.statusExpedicao = result.status_expedicao;
+      if ('perdeu_corte' in result && !('perdeuCorte' in result)) result.perdeuCorte = result.perdeu_corte;
+    } else if (realTable === 'historico_consolidado') {
+      if ('nota_5s' in result && !('nota5s' in result)) result.nota5s = result.nota_5s;
+    } else if (realTable === 'audit_logs') {
+      if ('valor_anterior' in result && !('valorAnterior' in result)) result.valorAnterior = result.valor_anterior;
+      if ('valor_novo' in result && !('valorNovo' in result)) result.valorNovo = result.valor_novo;
+    }
+
+    return result;
+  }
 
   public static onSyncError(handler: SyncErrorHandler): () => void {
     this.syncErrorHandlers.push(handler);
@@ -146,6 +258,18 @@ export class SupabaseService {
   public static async fetchTable<T>(tableName: string, defaultData: T[] = []): Promise<T[]> {
     await this.garantirAuthPronto();
 
+    if (LOCAL_ONLY_TABLES.has(tableName)) {
+      const cached = await IndexedDBService.getAll<T>(tableName);
+      if (cached.length > 0) return cached;
+      if (defaultData.length > 0) {
+        await IndexedDBService.putMany(tableName, defaultData);
+        return defaultData;
+      }
+      return [];
+    }
+
+    const realTableName = this.getRealTableName(tableName);
+
     if (!auth.currentUser) {
       console.warn(`[Supabase] fetchTable(${tableName}) chamado sem usuário autenticado. Retornando cache local.`);
       const cached = await IndexedDBService.getAll<T>(tableName);
@@ -163,17 +287,18 @@ export class SupabaseService {
       try {
         const client = this.getClient();
         const { data, error } = await client
-          .from(tableName)
+          .from(realTableName)
           .select('*');
 
         if (error) throw error;
 
         if (data && data.length > 0) {
-          await IndexedDBService.putMany(tableName, data as unknown as T[]);
-          return data as T[];
+          const mapped = data.map((row) => this.fromDbRecord(tableName, row as Record<string, unknown>) as unknown as T);
+          await IndexedDBService.putMany(tableName, mapped);
+          return mapped;
         }
       } catch (err) {
-        console.warn(`[Supabase] Failed to fetch table ${tableName} online. Falling back to cache.`, err);
+        console.warn(`[Supabase] Failed to fetch table ${realTableName} (${tableName}) online. Falling back to cache.`, err);
       }
     }
 
@@ -224,13 +349,23 @@ export class SupabaseService {
       updated_at: record.updated_at || now
     };
 
-    // Filtrar colunas inválidas antes de prosseguir
-    const filteredRecord = this.filterRecordColumns(tableName, finalizedRecord);
+    if (LOCAL_ONLY_TABLES.has(tableName)) {
+      await IndexedDBService.put(tableName, finalizedRecord);
+      return finalizedRecord as unknown as T;
+    }
+
+    const realTableName = this.getRealTableName(tableName);
+
+    // Converte record do formato do App para o formato do DB e filtra colunas válidas
+    const dbRecord = this.toDbRecord(tableName, finalizedRecord as Record<string, unknown>);
+    const filteredRecord = this.filterRecordColumns(realTableName, dbRecord);
+
+    // Salva record local no formato do App para a UI
+    await IndexedDBService.put(tableName, finalizedRecord);
 
     if (!auth.currentUser) {
-      console.warn(`[Supabase Offline Fallback] Gravando em "${tableName}" no cache local sem usuário autenticado.`);
-      await IndexedDBService.put(tableName, filteredRecord);
-      return filteredRecord as unknown as T;
+      console.warn(`[Supabase Offline Fallback] Gravando em "${tableName}" (${realTableName}) no cache local sem usuário autenticado.`);
+      return finalizedRecord as unknown as T;
     }
 
     const localExisting = await IndexedDBService.get<T>(tableName, docId);
@@ -243,24 +378,22 @@ export class SupabaseService {
       }
     }
 
-    await IndexedDBService.put(tableName, filteredRecord);
-
     if (isOnline()) {
       try {
         const client = this.getClient();
         const { error } = await client
-          .from(tableName)
+          .from(realTableName)
           .upsert(filteredRecord);
 
         if (error) {
           const errMsg = error.message || '';
           if (error.code === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
-            console.error(`[Supabase Sanitizer] [PGRST204] Erro de coluna inexistente ao salvar em ${tableName}. Abortando inserção.`, error);
+            console.error(`[Supabase Sanitizer] [PGRST204] Erro de coluna inexistente ao salvar em ${realTableName}. Abortando inserção.`, error);
             const alertLog: AlertLog = {
               id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
               prioridade: 'alta',
               titulo: 'Sincronização Descartada',
-              descricao: `Alteração na tabela "${tableName}" continha estrutura incompatível e foi descartada.`,
+              descricao: `Alteração na tabela "${realTableName}" continha estrutura incompatível e foi descartada.`,
               setor: 'Sistema',
               hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
               lido: false
@@ -275,32 +408,32 @@ export class SupabaseService {
         const errMsg = String(errObj?.message || err);
         const errCode = String(errObj?.code || '');
         if (errCode === 'PGRST204' || errMsg.includes('PGRST204') || errMsg.includes('column') || errMsg.includes('does not exist')) {
-          console.error(`[Supabase Sanitizer] Descartando inserção inválida devido a erro PGRST204 de coluna inexistente na tabela ${tableName}.`, err);
+          console.error(`[Supabase Sanitizer] Descartando inserção inválida devido a erro PGRST204 de coluna inexistente na tabela ${realTableName}.`, err);
           const alertLog: AlertLog = {
             id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
             prioridade: 'alta',
             titulo: 'Sincronização Descartada',
-            descricao: `Alteração na tabela "${tableName}" continha estrutura incompatível e foi descartada.`,
+            descricao: `Alteração na tabela "${realTableName}" continha estrutura incompatível e foi descartada.`,
             setor: 'Sistema',
             hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
             lido: false
           };
           this.notifySyncError(alertLog);
         } else {
-          console.warn(`[Supabase Offline Fallback] Erro ao enviar diretamente para ${tableName}:${docId}. Enfileirando.`, err);
+          console.warn(`[Supabase Offline Fallback] Erro ao enviar diretamente para ${realTableName}:${docId}. Enfileirando.`, err);
           const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
-          queue.push({ table: tableName, record: filteredRecord, primaryKey: keyField, action: 'upsert' });
+          queue.push({ table: tableName, realTable: realTableName, record: filteredRecord, primaryKey: keyField, action: 'upsert' });
           localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
         }
       }
     } else {
       console.log(`[Supabase Offline] Queued update for ${tableName}:${docId}`);
       const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
-      queue.push({ table: tableName, record: filteredRecord, primaryKey: keyField, action: 'upsert' });
+      queue.push({ table: tableName, realTable: realTableName, record: filteredRecord, primaryKey: keyField, action: 'upsert' });
       localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
     }
 
-    return finalizedRecord;
+    return finalizedRecord as unknown as T;
   }
 
   public static async deleteRecord(tableName: string, keyVal: unknown, keyField: string = 'id'): Promise<void> {
@@ -308,32 +441,37 @@ export class SupabaseService {
 
     const docId = String(keyVal);
     
-    if (!auth.currentUser) {
-      console.warn(`[Supabase Offline Fallback] Removendo de "${tableName}" no cache local sem usuário autenticado.`);
-      await IndexedDBService.delete(tableName, docId);
+    await IndexedDBService.delete(tableName, docId);
+
+    if (LOCAL_ONLY_TABLES.has(tableName)) {
       return;
     }
 
-    await IndexedDBService.delete(tableName, docId);
+    const realTableName = this.getRealTableName(tableName);
+
+    if (!auth.currentUser) {
+      console.warn(`[Supabase Offline Fallback] Removendo de "${tableName}" (${realTableName}) no cache local sem usuário autenticado.`);
+      return;
+    }
 
     if (isOnline()) {
       try {
         const client = this.getClient();
         const { error } = await client
-          .from(tableName)
+          .from(realTableName)
           .delete()
           .eq(keyField, keyVal);
 
         if (error) throw error;
       } catch (err) {
-        console.warn(`[Supabase Offline Fallback] Erro ao deletar diretamente de ${tableName}:${docId}. Enfileirando.`, err);
+        console.warn(`[Supabase Offline Fallback] Erro ao deletar diretamente de ${realTableName}:${docId}. Enfileirando.`, err);
         const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
-        queue.push({ table: tableName, keyVal, primaryKey: keyField, action: 'delete' });
+        queue.push({ table: tableName, realTable: realTableName, keyVal, primaryKey: keyField, action: 'delete' });
         localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
       }
     } else {
       const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
-      queue.push({ table: tableName, keyVal, primaryKey: keyField, action: 'delete' });
+      queue.push({ table: tableName, realTable: realTableName, keyVal, primaryKey: keyField, action: 'delete' });
       localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
     }
   }
@@ -344,6 +482,12 @@ export class SupabaseService {
   ): () => void {
     let channel: RealtimeChannel | null = null;
     let cancelado = false;
+
+    if (LOCAL_ONLY_TABLES.has(tableName)) {
+      return () => {};
+    }
+
+    const realTableName = this.getRealTableName(tableName);
 
     const unsubscribeAuth = this.onAuthStateResolved((state) => {
       if (state === 'loading') return;
@@ -359,25 +503,28 @@ export class SupabaseService {
       if (cancelado || channel) return;
 
       if (!isOnline() || !supabase) {
-        console.log(`[Supabase] Offline mode or client uninitialized: Real-time subscription to ${tableName} will fall back to local changes.`);
+        console.log(`[Supabase] Offline mode or client uninitialized: Real-time subscription to ${tableName} (${realTableName}) will fall back to local changes.`);
         return;
       }
 
       try {
         const client = this.getClient();
-        channel = client.channel(`public:${tableName}`)
-          .on('postgres_changes', { event: '*', schema: 'public', table: tableName }, async (payload) => {
+        channel = client.channel(`public:${realTableName}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: realTableName }, async (payload) => {
             const changeType = payload.eventType;
-            const newData = payload.new;
+            const rawNewData = payload.new as Record<string, unknown> | null;
             const oldData = payload.old;
             
             if (changeType === 'INSERT' || changeType === 'UPDATE') {
-              await IndexedDBService.put(tableName, newData);
-              callback({
-                table: tableName,
-                event: changeType,
-                new: newData
-              });
+              if (rawNewData) {
+                const newData = SupabaseService.fromDbRecord(tableName, rawNewData);
+                await IndexedDBService.put(tableName, newData);
+                callback({
+                  table: tableName,
+                  event: changeType,
+                  new: newData
+                });
+              }
             } else if (changeType === 'DELETE') {
               const oldRecord = oldData as Record<string, unknown> | null;
               const docId = oldRecord?.id || oldRecord?.lista || oldRecord?.chave || payload.errors?.[0];
@@ -393,7 +540,7 @@ export class SupabaseService {
           })
           .subscribe();
       } catch (err) {
-        console.warn(`[Supabase] Failed to subscribe to ${tableName}:`, err);
+        console.warn(`[Supabase] Failed to subscribe to ${tableName} (${realTableName}):`, err);
       }
     });
 
@@ -428,38 +575,42 @@ export class SupabaseService {
             };
           };
           const tbl = item.table || item.tableName;
+          if (LOCAL_ONLY_TABLES.has(tbl)) {
+            continue;
+          }
+          const realTbl = item.realTable || this.getRealTableName(tbl);
           const pKey = item.primaryKey || item.keyField || 'id';
           const act = String(item.action || '').toLowerCase();
 
           if (act === 'upsert') {
-            // Filtrar colunas inválidas antes de enviar para o Supabase
-            const filteredRecord = this.filterRecordColumns(tbl, item.record);
+            const dbRecord = this.toDbRecord(tbl, item.record);
+            const filteredRecord = this.filterRecordColumns(realTbl, dbRecord);
 
             const { error } = await client
-              .from(tbl)
+              .from(realTbl)
               .upsert(filteredRecord);
 
             if (error) {
               const errMsg = error.message || '';
               if (error.code === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
-                console.error(`[Supabase Sync] [PGRST204] Coluna inexistente detectada na tabela ${tbl}. Gerando alerta visual e removendo item inválido.`, error);
+                console.error(`[Supabase Sync] [PGRST204] Coluna inexistente detectada na tabela ${realTbl}. Gerando alerta visual e removendo item inválido.`, error);
                 const alertLog: AlertLog = {
                   id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                   prioridade: 'alta',
                   titulo: 'Sincronização Descartada',
-                  descricao: `Alteração na tabela "${tbl}" continha estrutura incompatível e foi descartada da fila offline.`,
+                  descricao: `Alteração na tabela "${realTbl}" continha estrutura incompatível e foi descartada da fila offline.`,
                   setor: 'Sistema',
                   hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
                   lido: false
                 };
                 this.notifySyncError(alertLog);
-                continue; // Descarta da fila (não insere no remainingQueue)
+                continue;
               }
               throw error;
             }
           } else if (act === 'delete') {
             const { error } = await client
-              .from(tbl)
+              .from(realTbl)
               .delete()
               .eq(pKey, item.keyVal);
             if (error) throw error;
