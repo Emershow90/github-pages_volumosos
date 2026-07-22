@@ -1,21 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 
-const metaEnv = (import.meta as any).env || {};
+// Valores padrão do projeto Supabase para conexões estáticas/deploy
+const DEFAULT_SUPABASE_URL = "https://ojuewwutcymfqxzpdtci.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_CgGDu_1Z6Bptd4mA3Ri33w_v0KuKcW7";
+
+const env = ((import.meta as unknown as { env?: Record<string, string> }).env) || {};
 
 export const SUPABASE_URL = 
-  metaEnv.VITE_SUPABASE_URL || 
-  metaEnv.NEXT_PUBLIC_SUPABASE_URL || 
-  metaEnv.SUPABASE_URL || 
-  "";
+  env.VITE_SUPABASE_URL || 
+  env.NEXT_PUBLIC_SUPABASE_URL || 
+  env.SUPABASE_URL || 
+  DEFAULT_SUPABASE_URL;
 
 export const SUPABASE_ANON_KEY = 
-  metaEnv.VITE_SUPABASE_ANON_KEY || 
-  metaEnv.VITE_SUPABASE_PUBLISHABLE_KEY || 
-  metaEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
-  metaEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-  metaEnv.SUPABASE_PUBLISHABLE_KEY || 
-  metaEnv.SUPABASE_ANON_KEY || 
-  "";
+  env.VITE_SUPABASE_ANON_KEY || 
+  env.VITE_SUPABASE_PUBLISHABLE_KEY || 
+  env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
+  env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
+  env.SUPABASE_PUBLISHABLE_KEY || 
+  env.SUPABASE_ANON_KEY || 
+  DEFAULT_SUPABASE_ANON_KEY;
 
 export const isStaticBuild = !SUPABASE_URL || !SUPABASE_ANON_KEY;
 
