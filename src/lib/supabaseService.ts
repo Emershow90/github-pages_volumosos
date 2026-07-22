@@ -2,8 +2,9 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, isStaticBuild } from './supabase';
 import { auth, initAuth } from './supabaseAuth';
 import { IndexedDBService } from './indexedDb';
-import { useHistoryStore } from '../stores/useHistoryStore';
 import { AlertLog } from '../types';
+
+export type SyncErrorHandler = (alert: AlertLog) => void;
 
 export enum OperationType {
   CREATE = 'create',
@@ -69,6 +70,24 @@ export class SupabaseService {
   private static authState: AuthState = 'loading';
   private static authStateListeners: Set<(state: AuthState) => void> = new Set();
   private static initializedAuthObserver = false;
+  private static syncErrorHandlers: SyncErrorHandler[] = [];
+
+  public static onSyncError(handler: SyncErrorHandler): () => void {
+    this.syncErrorHandlers.push(handler);
+    return () => {
+      this.syncErrorHandlers = this.syncErrorHandlers.filter(h => h !== handler);
+    };
+  }
+
+  private static notifySyncError(alert: AlertLog): void {
+    for (const handler of this.syncErrorHandlers) {
+      try {
+        handler(alert);
+      } catch (err) {
+        console.error('[SupabaseService] Erro ao disparar handler de syncError:', err);
+      }
+    }
+  }
 
   public static initAuthObserver(): void {
     if (this.initializedAuthObserver) return;
@@ -408,7 +427,7 @@ export class SupabaseService {
                   hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
                   lido: false
                 };
-                useHistoryStore.getState().setAlerts([alertLog, ...useHistoryStore.getState().alerts]);
+                this.notifySyncError(alertLog);
                 continue; // Descarta da fila (não insere no remainingQueue)
               }
               throw error;
@@ -438,7 +457,7 @@ export class SupabaseService {
               hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
               lido: false
             };
-            useHistoryStore.getState().setAlerts([alertLog, ...useHistoryStore.getState().alerts]);
+            this.notifySyncError(alertLog);
           } else {
             remainingQueue.push(item);
           }

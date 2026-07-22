@@ -315,6 +315,14 @@ export default function App() {
   // Zustand Operations Store for Radar live sync
   const operations = useStoreOperations((state) => state.operations);
 
+  // Registrar handler de erros de sincronização offline para injetar alertas na store desacoplada
+  useEffect(() => {
+    const unsub = FirebaseService.onSyncError((alertLog) => {
+      useHistoryStore.getState().setAlerts([alertLog, ...useHistoryStore.getState().alerts]);
+    });
+    return () => unsub();
+  }, []);
+
   // Real-time synchronization for store operations, sectors, collaborators & live radar syncing
   useEffect(() => {
     if (!fbUser?.uid) {
