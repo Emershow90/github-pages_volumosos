@@ -68,12 +68,14 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   usuarios: ['id', 'email', 'nome', 'role', 'setoresAutorizados', 'setoresautorizados', 'situacao', 'cargo', 'unidade', 'avatar_url', 'created_at', 'updated_at'],
   colaboradores: ['id', 'nome', 'setor', 'status', 'cargo', 'horas', 'foto', 'created_at', 'updated_at'],
   escalas: ['id', 'colaborador_id', 'data', 'turno', 'status', 'created_at', 'updated_at'],
-  escala_semanal: ['id', 'dia', 'created_at', 'updated_at'],
+  escala_semanal: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'ref87', 'refVol', 'apoios', 'updated_at', 'updated_by'],
   capacidade: ['id', 'setor', 'abertura', 'fecho_hora', 'fechoHora', 'updated_at'],
   capacidade_operacional: ['id', 'setor', 'abertura', 'fecho_hora', 'fechoHora', 'updated_at'],
-  escalas_referentes: ['id', 'dia', 'created_at', 'updated_at'],
+  escalas_referentes: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'ref87', 'refVol', 'apoios', 'updated_at', 'updated_by'],
   historico_consolidado: ['id', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota5s', 'nota_5s', 'erros', 'created_at', 'updated_at'],
-  audit_logs: ['id', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at']
+  audit_logs: ['id', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at'],
+  lideranca: ['id', 'nome', 'cargo', 'setor', 'contato', 'foto', 'created_at', 'updated_at'],
+  override_operacional: ['chave', 'valor', 'created_at', 'updated_at']
 };
 
 export class SupabaseService {
@@ -164,6 +166,13 @@ export class SupabaseService {
       if ('perdeuCorte' in result) { result.perdeu_corte = result.perdeuCorte; delete result.perdeuCorte; }
     } else if (realTable === 'historico_consolidado') {
       if ('nota5s' in result) { result.nota_5s = result.nota5s; delete result.nota5s; }
+    } else if (realTable === 'escala_semanal') {
+      if ('ref87' in result) { result.referente_sb7 = result.ref87; delete result.ref87; }
+      if ('referenteSB7' in result) { result.referente_sb7 = result.referenteSB7; delete result.referenteSB7; }
+      if ('refVol' in result) { result.referente_volumosos = result.refVol; delete result.refVol; }
+      if ('referenteVolumosos' in result) { result.referente_volumosos = result.referenteVolumosos; delete result.referenteVolumosos; }
+      if ('apoios' in result) { result.apoio = result.apoios; delete result.apoios; }
+      if ('updated_at' in result) { result.atualizado_em = result.updated_at; delete result.updated_at; }
     } else if (realTable === 'audit_logs') {
       if ('valorAnterior' in result) { result.valor_anterior = result.valorAnterior; delete result.valorAnterior; }
       if ('valorNovo' in result) { result.valor_novo = result.valorNovo; delete result.valorNovo; }
@@ -212,6 +221,11 @@ export class SupabaseService {
       if ('perdeu_corte' in result && !('perdeuCorte' in result)) result.perdeuCorte = result.perdeu_corte;
     } else if (realTable === 'historico_consolidado') {
       if ('nota_5s' in result && !('nota5s' in result)) result.nota5s = result.nota_5s;
+    } else if (realTable === 'escala_semanal') {
+      if ('referente_sb7' in result) { result.ref87 = result.referente_sb7; result.referenteSB7 = result.referente_sb7; }
+      if ('referente_volumosos' in result) { result.refVol = result.referente_volumosos; result.referenteVolumosos = result.referente_volumosos; }
+      if ('apoio' in result) { result.apoios = result.apoio; }
+      if ('atualizado_em' in result) { result.updated_at = result.atualizado_em; }
     } else if (realTable === 'audit_logs') {
       if ('valor_anterior' in result && !('valorAnterior' in result)) result.valorAnterior = result.valor_anterior;
       if ('valor_novo' in result && !('valorNovo' in result)) result.valorNovo = result.valor_novo;

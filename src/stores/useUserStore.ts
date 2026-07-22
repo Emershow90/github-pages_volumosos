@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { UserRole, Usuario } from '../types';
 import { supabase, isStaticBuild } from '../lib/supabase';
+import { SupabaseService } from '../lib/supabaseService';
 
 export interface ToastMessage {
   id: string;
@@ -140,13 +141,14 @@ export const useUserStore = create<UserState>((set, get) => ({
     
     if (!isStaticBuild && supabase) {
       try {
+        const payload = SupabaseService.filterRecordColumns('usuarios', {
+          situacao: 'Ativo',
+          aprovado_por: approvedBy,
+          data_aprovacao: now
+        });
         const { error } = await supabase
           .from('usuarios')
-          .update({
-            situacao: 'Ativo',
-            aprovado_por: approvedBy,
-            data_aprovacao: now
-          })
+          .update(payload)
           .eq('id', uid);
           
         if (error) throw error;

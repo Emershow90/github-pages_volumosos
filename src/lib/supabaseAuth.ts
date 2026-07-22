@@ -536,21 +536,23 @@ export const signUpWithEmail = async (
     unidade: "CD Principal"
   };
 
+  const rawUserRecord = {
+    id: u.id,
+    email: userProfile.email,
+    nome: userProfile.nome,
+    role: userProfile.role,
+    setoresAutorizados: userProfile.setoresAutorizados,
+    situacao: userProfile.situacao,
+    cargo: userProfile.cargo,
+    unidade: userProfile.unidade || 'CD Principal',
+    avatar_url: userProfile.foto || ''
+  };
+  const dbRecord = SupabaseService.toDbRecord('usuarios', rawUserRecord);
+  const filteredRecord = SupabaseService.filterRecordColumns('usuarios', dbRecord);
+
   await supabase!
     .from('usuarios')
-    .upsert({
-      id: u.id,
-      email: userProfile.email,
-      nome: userProfile.nome,
-      role: userProfile.role,
-      setoresAutorizados: userProfile.setoresAutorizados,
-      situacao: userProfile.situacao,
-      cargo: userProfile.cargo,
-      unidade: userProfile.unidade || 'CD Principal',
-      avatar_url: userProfile.foto || '',
-      aprovado_por: userProfile.aprovado_por || null,
-      data_aprovacao: userProfile.data_aprovacao || null
-    });
+    .upsert(filteredRecord);
 
   localStorage.setItem(`sys_cached_profile_${u.id}`, JSON.stringify(userProfile));
   return { user: mappedUser, profile: userProfile };
