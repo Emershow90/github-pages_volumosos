@@ -110,7 +110,7 @@ export class SupabaseService {
 
   private static getClient() {
     if (!supabase) {
-      throw new Error("Supabase client is not initialized. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables are defined.");
+      throw new Error("Supabase client is not initialized. Make sure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (or VITE_SUPABASE_PUBLISHABLE_KEY) environment variables are defined.");
     }
     return supabase;
   }
