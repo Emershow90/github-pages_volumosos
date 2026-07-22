@@ -421,7 +421,12 @@ export class SupabaseService {
 
       for (const item of queue) {
         try {
-          const client = this.getClient() as any;
+          const client = this.getClient() as unknown as {
+            from: (table: string) => {
+              upsert: (data: unknown) => Promise<{ error: { code?: string; message?: string } | null }>;
+              delete: () => { eq: (col: string, val: unknown) => Promise<{ error: { code?: string; message?: string } | null }> };
+            };
+          };
           const tbl = item.table || item.tableName;
           const pKey = item.primaryKey || item.keyField || 'id';
           const act = String(item.action || '').toLowerCase();
