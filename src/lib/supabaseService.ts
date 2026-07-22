@@ -82,6 +82,20 @@ export class SupabaseService {
   private static initializedAuthObserver = false;
   private static syncErrorHandlers: SyncErrorHandler[] = [];
 
+  public static logSchema404Error(tableName: string, error: unknown): void {
+    const realTable = this.getRealTableName(tableName);
+    const errObj = error as { status?: number; code?: string; message?: string };
+    const msg = String(errObj?.message || error || '');
+    const code = String(errObj?.code || '');
+    const is404 = errObj?.status === 404 || code === 'PGRST204' || code === '42P01' || msg.includes('404') || msg.includes('Could not find');
+    
+    if (is404) {
+      console.error(`[Supabase 404 Schema Inspector] Tabela "${tableName}" (mapeada para "${realTable}") retornou ERRO 404 / Tabela ou Coluna Inexistente.`);
+      console.error(`[Supabase 404 Schema Inspector] Mapeamento atual: ${tableName} -> ${realTable}. Colunas conhecidas no cliente:`, TABLE_COLUMNS[realTable] || TABLE_COLUMNS[tableName] || []);
+      console.error(`[Supabase 404 Schema Inspector] Detalhes do Erro Supabase:`, error);
+    }
+  }
+
   public static getRealTableName(tableName: string): string {
     return TABLE_NAME_MAP[tableName] || tableName;
   }
@@ -298,6 +312,7 @@ export class SupabaseService {
           return mapped;
         }
       } catch (err) {
+        this.logSchema404Error(tableName, err);
         console.warn(`[Supabase] Failed to fetch table ${realTableName} (${tableName}) online. Falling back to cache.`, err);
       }
     }
