@@ -1278,8 +1278,6 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
           vol,
           ativ,
           prog,
-          statusOCR,
-          erroDesc,
         });
       }
     });

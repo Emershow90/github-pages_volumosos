@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Setor, CapacidadeSetor, RadarLoja, ReaproData, BolsaoData, CopilSetor, UniversoMix } from '../types';
+import { Setor, CapacidadeSetor, RadarLoja, ReaproData, BolsaoData, CopilSetor, UniversoMix, ReferenteSemana } from '../types';
 import {
   initialSetores,
   initialCapacidade,
@@ -7,12 +7,14 @@ import {
   initialCopil,
   initialRadar,
   initialReapro,
-  initialBolsao
+  initialBolsao,
+  initialReferentesSemana
 } from '../initialData';
 
 interface SectorStoreState {
   setores: Setor[];
   capacidade: CapacidadeSetor[];
+  referentesSemana: ReferenteSemana[];
   universos: Record<string, UniversoMix[]>;
   copilData: Record<string, CopilSetor>;
   radar: RadarLoja[];
@@ -21,6 +23,7 @@ interface SectorStoreState {
 
   setSetores: (setores: Setor[] | ((prev: Setor[]) => Setor[])) => void;
   setCapacidade: (capacidade: CapacidadeSetor[] | ((prev: CapacidadeSetor[]) => CapacidadeSetor[])) => void;
+  setReferentesSemana: (referentes: ReferenteSemana[] | ((prev: ReferenteSemana[]) => ReferenteSemana[])) => void;
   setUniversos: (universos: Record<string, UniversoMix[]> | ((prev: Record<string, UniversoMix[]>) => Record<string, UniversoMix[]>)) => void;
   setCopilData: (copilData: Record<string, CopilSetor> | ((prev: Record<string, CopilSetor>) => Record<string, CopilSetor>)) => void;
   setRadar: (radar: RadarLoja[] | ((prev: RadarLoja[]) => RadarLoja[])) => void;
@@ -31,6 +34,7 @@ interface SectorStoreState {
 export const useSectorStore = create<SectorStoreState>((set) => ({
   setores: initialSetores,
   capacidade: initialCapacidade,
+  referentesSemana: initialReferentesSemana || [],
   universos: initialUniversos,
   copilData: initialCopil,
   radar: initialRadar,
@@ -45,6 +49,11 @@ export const useSectorStore = create<SectorStoreState>((set) => ({
   setCapacidade: (val) => set((state) => {
     const next = typeof val === 'function' ? val(state.capacidade) : val;
     return { capacidade: next };
+  }),
+
+  setReferentesSemana: (val) => set((state) => {
+    const next = typeof val === 'function' ? val(state.referentesSemana) : val;
+    return { referentesSemana: next };
   }),
 
   setUniversos: (val) => set((state) => {

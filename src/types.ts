@@ -102,8 +102,6 @@ export interface RadarLoja {
   vol: number;
   ativ: number;
   prog: number; // percentage
-  statusOCR?: "registrada" | "pendente" | "divergente" | "nao_cadastrada";
-  erroDesc?: string;
 }
 
 export interface MasterLoja {

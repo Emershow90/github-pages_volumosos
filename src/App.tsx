@@ -331,6 +331,12 @@ export default function App() {
     realtimeSync.startListeningEscalas();
     realtimeSync.startListeningUniversos();
     realtimeSync.startListeningCopil();
+    realtimeSync.startListeningCapacidade();
+    realtimeSync.startListeningReferentes();
+    realtimeSync.startListeningUsuarios();
+    realtimeSync.startListeningAlertas();
+    realtimeSync.startListeningHistorico();
+    realtimeSync.startListeningAudit();
 
     return () => {
       realtimeSync.stopAll();

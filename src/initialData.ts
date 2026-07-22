@@ -195,9 +195,9 @@ export const masterCadastroLojas: MasterLoja[] = [
 ];
 
 export const initialRadar: RadarLoja[] = [
-  { corte: "07:00", loja: "2722 - FLORIPA CONTINENTE", vol: 3787, ativ: 52700, prog: 52, statusOCR: "registrada" },
-  { corte: "08:00", loja: "2360 - OSASCO", vol: 6817, ativ: 5750, prog: 72, statusOCR: "divergente", erroDesc: "Volume real de 6817 difere do cadastrado de 6800" },
-  { corte: "10:00", loja: "1250 - SÃO JOSÉ DOS CAMPOS", vol: 0, ativ: 0, prog: 0, statusOCR: "pendente", erroDesc: "Aguardando início da expedição" },
+  { corte: "07:00", loja: "2722 - FLORIPA CONTINENTE", vol: 3787, ativ: 52700, prog: 52 },
+  { corte: "08:00", loja: "2360 - OSASCO", vol: 6817, ativ: 5750, prog: 72 },
+  { corte: "10:00", loja: "1250 - SÃO JOSÉ DOS CAMPOS", vol: 0, ativ: 0, prog: 0 },
 ];
 
 export const initialReapro: ReaproData = {

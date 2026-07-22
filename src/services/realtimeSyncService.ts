@@ -4,6 +4,8 @@ import { useStoreOperations } from '../stores/useStoreOperations';
 import { useAtividadeLoja } from '../stores/useAtividadeLoja';
 import { useSectorStore } from '../stores/useSectorStore';
 import { useCollaboratorStore } from '../stores/useCollaboratorStore';
+import { useHistoryStore } from '../stores/useHistoryStore';
+import { useUserStore } from '../stores/useUserStore';
 import { 
   StoreOperation, 
   AtividadeLoja, 
@@ -14,7 +16,13 @@ import {
   CopilMatrizRow, 
   CopilSetor, 
   CopilKPI, 
-  RadarLoja 
+  RadarLoja,
+  CapacidadeSetor,
+  ReferenteSemana,
+  AlertLog,
+  HistoricoRegistro,
+  AuditLog,
+  Usuario
 } from '../types';
 
 export function mapStoreOperationsToRadar(ops: StoreOperation[]): RadarLoja[] {
@@ -23,16 +31,18 @@ export function mapStoreOperationsToRadar(ops: StoreOperation[]): RadarLoja[] {
     loja: op.nomeLoja ? `${op.lojaId} - ${op.nomeLoja}` : (op.lojaId || 'Loja'),
     vol: op.volumes || 0,
     ativ: op.enderecos || 0,
-    prog: op.statusColeta === 'Coletada' ? 100 : (op.statusColeta === 'Em andamento' ? 50 : 0),
-    statusOCR: (op as any).statusOCR || 'registrada',
-    erroDesc: (op as any).erroDesc || ''
+    prog: op.statusColeta === 'Coletada' ? 100 : (op.statusColeta === 'Em andamento' ? 50 : 0)
   }));
 }
 
 export function transformUniversos(rows: UniversoMix[]): Record<string, UniversoMix[]> {
   const map: Record<string, UniversoMix[]> = {};
   for (const row of rows) {
-    const sid = row.setor_id || '87';
+    if (!row.setor_id) {
+      console.warn("[realtimeSyncService] UniversoMix sem setor_id ignorado:", row);
+      continue;
+    }
+    const sid = row.setor_id;
     if (!map[sid]) map[sid] = [];
     map[sid].push(row);
   }
@@ -42,7 +52,11 @@ export function transformUniversos(rows: UniversoMix[]): Record<string, Universo
 export function transformCopilMatriz(rows: CopilMatrizRow[]): Record<string, CopilSetor> {
   const map: Record<string, CopilSetor> = {};
   for (const row of rows) {
-    const sid = row.setor_id || '87';
+    if (!row.setor_id) {
+      console.warn("[realtimeSyncService] CopilMatrizRow sem setor_id ignorada:", row);
+      continue;
+    }
+    const sid = row.setor_id;
     if (!map[sid]) {
       map[sid] = {
         operacionais: [],
@@ -72,6 +86,8 @@ export function transformCopilMatriz(rows: CopilMatrizRow[]): Record<string, Cop
   }
   return map;
 }
+
+export const buildCopilSetorMap = transformCopilMatriz;
 
 class RealtimeSyncService {
   private unsubscribes: Map<string, () => void> = new Map();
@@ -583,6 +599,263 @@ class RealtimeSyncService {
       });
     });
 
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
+  /**
+   * Escuta em tempo real capacidade operacional dos setores.
+   */
+  public startListeningCapacidade() {
+    const key = 'capacidade_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) { existing(); this.unsubscribes.delete(key); }
+        return;
+      }
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: any = null;
+      let cancelled = false;
+
+      SupabaseService.fetchTable<CapacidadeSetor>('capacidade_operacional')
+        .then((rows) => {
+          if (cancelled) return;
+          if (rows && rows.length > 0) {
+            useSectorStore.getState().setCapacidade(rows);
+          }
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'capacidade_operacional' }, async () => {
+              const fresh = await SupabaseService.fetchTable<CapacidadeSetor>('capacidade_operacional');
+              if (fresh.length > 0) useSectorStore.getState().setCapacidade(fresh);
+            })
+            .subscribe();
+
+          this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+        })
+        .catch((err) => console.error("[RealtimeSyncService] Erro capacidade:", err));
+
+      this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+    });
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
+  /**
+   * Escuta em tempo real escalas referentes da semana.
+   */
+  public startListeningReferentes() {
+    const key = 'referentes_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) { existing(); this.unsubscribes.delete(key); }
+        return;
+      }
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: any = null;
+      let cancelled = false;
+
+      SupabaseService.fetchTable<ReferenteSemana>('escalas_referentes')
+        .then((rows) => {
+          if (cancelled) return;
+          if (rows && rows.length > 0) {
+            useSectorStore.getState().setReferentesSemana(rows);
+          }
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'escalas_referentes' }, async () => {
+              const fresh = await SupabaseService.fetchTable<ReferenteSemana>('escalas_referentes');
+              if (fresh.length > 0) useSectorStore.getState().setReferentesSemana(fresh);
+            })
+            .subscribe();
+
+          this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+        })
+        .catch((err) => console.error("[RealtimeSyncService] Erro referentes:", err));
+
+      this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+    });
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
+  /**
+   * Escuta em tempo real cadastros de usuários (aprovações de admin).
+   */
+  public startListeningUsuarios() {
+    const key = 'usuarios_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) { existing(); this.unsubscribes.delete(key); }
+        return;
+      }
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: any = null;
+      let cancelled = false;
+
+      SupabaseService.fetchTable<Usuario>('usuarios')
+        .then((rows) => {
+          if (cancelled) return;
+          if (rows && rows.length > 0) {
+            useUserStore.getState().loadPendingUsers();
+          }
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'usuarios' }, async () => {
+              useUserStore.getState().loadPendingUsers();
+            })
+            .subscribe();
+
+          this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+        })
+        .catch((err) => console.error("[RealtimeSyncService] Erro usuarios:", err));
+
+      this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+    });
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
+  /**
+   * Escuta em tempo real alertas operacionais (visibilidade simultânea).
+   */
+  public startListeningAlertas() {
+    const key = 'alertas_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) { existing(); this.unsubscribes.delete(key); }
+        return;
+      }
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: any = null;
+      let cancelled = false;
+
+      SupabaseService.fetchTable<AlertLog>('alertas_operacionais')
+        .then((rows) => {
+          if (cancelled) return;
+          if (rows && rows.length > 0) {
+            useHistoryStore.getState().setAlerts(rows);
+          }
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'alertas_operacionais' }, async () => {
+              const fresh = await SupabaseService.fetchTable<AlertLog>('alertas_operacionais');
+              if (fresh.length > 0) useHistoryStore.getState().setAlerts(fresh);
+            })
+            .subscribe();
+
+          this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+        })
+        .catch((err) => console.error("[RealtimeSyncService] Erro alertas:", err));
+
+      this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+    });
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
+  /**
+   * Escuta em tempo real histórico consolidado.
+   */
+  public startListeningHistorico() {
+    const key = 'historico_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) { existing(); this.unsubscribes.delete(key); }
+        return;
+      }
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: any = null;
+      let cancelled = false;
+
+      SupabaseService.fetchTable<HistoricoRegistro>('historico_consolidado')
+        .then((rows) => {
+          if (cancelled) return;
+          if (rows && rows.length > 0) {
+            useHistoryStore.getState().setHistorico(rows);
+          }
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'historico_consolidado' }, async () => {
+              const fresh = await SupabaseService.fetchTable<HistoricoRegistro>('historico_consolidado');
+              if (fresh.length > 0) useHistoryStore.getState().setHistorico(fresh);
+            })
+            .subscribe();
+
+          this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+        })
+        .catch((err) => console.error("[RealtimeSyncService] Erro historico:", err));
+
+      this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+    });
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
+  /**
+   * Escuta em tempo real logs de auditoria.
+   */
+  public startListeningAudit() {
+    const key = 'audit_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) { existing(); this.unsubscribes.delete(key); }
+        return;
+      }
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: any = null;
+      let cancelled = false;
+
+      SupabaseService.fetchTable<AuditLog>('audit_logs')
+        .then((rows) => {
+          if (cancelled) return;
+          if (rows && rows.length > 0) {
+            useHistoryStore.getState().setAudit(rows);
+          }
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, async () => {
+              const fresh = await SupabaseService.fetchTable<AuditLog>('audit_logs');
+              if (fresh.length > 0) useHistoryStore.getState().setAudit(fresh);
+            })
+            .subscribe();
+
+          this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+        })
+        .catch((err) => console.error("[RealtimeSyncService] Erro audit:", err));
+
+      this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+    });
     this.authObservers.set(key, unsubscribeAuth);
   }
 
