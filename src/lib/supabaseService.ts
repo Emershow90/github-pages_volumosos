@@ -82,18 +82,40 @@ export class SupabaseService {
   private static initializedAuthObserver = false;
   private static syncErrorHandlers: SyncErrorHandler[] = [];
 
-  public static logSchema404Error(tableName: string, error: unknown): void {
+  public static logDatabaseDiagnostics(tableName: string, operation: 'fetch' | 'upsert' | 'delete', error: unknown, payload?: Record<string, unknown>): void {
     const realTable = this.getRealTableName(tableName);
-    const errObj = error as { status?: number; code?: string; message?: string };
-    const msg = String(errObj?.message || error || '');
+    const errObj = error as { status?: number; code?: string; message?: string; details?: string; hint?: string };
     const code = String(errObj?.code || '');
-    const is404 = errObj?.status === 404 || code === 'PGRST204' || code === '42P01' || msg.includes('404') || msg.includes('Could not find');
-    
-    if (is404) {
-      console.error(`[Supabase 404 Schema Inspector] Tabela "${tableName}" (mapeada para "${realTable}") retornou ERRO 404 / Tabela ou Coluna Inexistente.`);
-      console.error(`[Supabase 404 Schema Inspector] Mapeamento atual: ${tableName} -> ${realTable}. Colunas conhecidas no cliente:`, TABLE_COLUMNS[realTable] || TABLE_COLUMNS[tableName] || []);
-      console.error(`[Supabase 404 Schema Inspector] Detalhes do Erro Supabase:`, error);
+    const status = errObj?.status;
+    const msg = String(errObj?.message || error || '');
+    const details = errObj?.details || null;
+    const hint = errObj?.hint || null;
+
+    let errorCategory = 'ERRO DE OPERAÇÃO';
+    if (code === 'PGRST205' || code === '42P01' || status === 404 || msg.includes('404') || msg.includes('Could not find')) {
+      errorCategory = 'PGRST205 (TABELA INEXISTENTE NO SUPABASE)';
+    } else if (code === 'PGRST204' || msg.includes('column') || msg.includes('does not exist')) {
+      errorCategory = 'PGRST204 (COLUNA INEXISTENTE NA TABELA)';
+    } else if (code === '22P02' || msg.includes('uuid') || msg.includes('invalid input syntax')) {
+      errorCategory = '22P02 (TIPO DE DADO INCOMPATÍVEL / SINTAXE DE COLUNA INVALIDA - Ex: UUID)';
+    } else if (code === '42501' || msg.includes('row-level security') || msg.includes('RLS')) {
+      errorCategory = '42501 (REGRAS RLS DE SEGURANÇA BLOQUEARAM O ACESSO)';
     }
+
+    console.error(`🚨 [Supabase Diagnostic Log] ${errorCategory} na operação "${operation}" na tabela "${tableName}" (DB table: "${realTable}")`);
+    console.error(`  📌 Código do Erro: ${code || 'N/A'} | HTTP Status: ${status || 'N/A'}`);
+    console.error(`  📌 Mensagem: ${msg}`);
+    if (details) console.error(`  📌 Detalhes: ${details}`);
+    if (hint) console.error(`  📌 Dica (Hint): ${hint}`);
+    console.error(`  📌 Colunas permitidas no mapa local:`, TABLE_COLUMNS[realTable] || TABLE_COLUMNS[tableName] || []);
+    if (payload) {
+      console.error(`  📌 Chaves enviadas no Payload:`, Object.keys(payload));
+      console.error(`  📌 Conteúdo do Payload enviado:`, payload);
+    }
+  }
+
+  public static logSchema404Error(tableName: string, error: unknown): void {
+    this.logDatabaseDiagnostics(tableName, 'fetch', error);
   }
 
   public static getRealTableName(tableName: string): string {
@@ -401,6 +423,7 @@ export class SupabaseService {
           .upsert(filteredRecord);
 
         if (error) {
+          this.logDatabaseDiagnostics(tableName, 'upsert', error, filteredRecord);
           const errMsg = error.message || '';
           if (error.code === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
             console.error(`[Supabase Sanitizer] [PGRST204] Erro de coluna inexistente ao salvar em ${realTableName}. Abortando inserção.`, error);
@@ -419,6 +442,7 @@ export class SupabaseService {
           }
         }
       } catch (err: unknown) {
+        this.logDatabaseDiagnostics(tableName, 'upsert', err, filteredRecord);
         const errObj = err as { message?: string; code?: string };
         const errMsg = String(errObj?.message || err);
         const errCode = String(errObj?.code || '');

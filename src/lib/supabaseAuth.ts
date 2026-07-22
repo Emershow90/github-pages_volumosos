@@ -60,6 +60,7 @@ if (typeof window !== 'undefined') {
 import { supabase, isStaticBuild } from './supabase';
 import { UserRole, Usuario } from '../types/Usuario';
 import { IndexedDBService } from './indexedDb';
+import { SupabaseService } from './supabaseService';
 
 // Define a safe mock user interface
 export interface SupabaseUser {
@@ -240,21 +241,22 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
         };
         if (!isStaticBuild) {
           try {
+            const rawUserRecord = {
+              id: user.uid,
+              email: existing.email,
+              nome: existing.nome,
+              role: existing.role,
+              setoresAutorizados: existing.setoresAutorizados,
+              situacao: existing.situacao,
+              cargo: existing.cargo,
+              unidade: existing.unidade || 'CD Principal',
+              avatar_url: existing.foto || ''
+            };
+            const dbRecord = SupabaseService.toDbRecord('usuarios', rawUserRecord);
+            const filteredRecord = SupabaseService.filterRecordColumns('usuarios', dbRecord);
             await supabase!
               .from('usuarios')
-              .upsert({
-                id: user.uid,
-                email: existing.email,
-                nome: existing.nome,
-                role: existing.role,
-                setoresAutorizados: existing.setoresAutorizados,
-                situacao: existing.situacao,
-                cargo: existing.cargo,
-                unidade: existing.unidade || 'CD Principal',
-                avatar_url: existing.foto || '',
-                aprovado_por: existing.aprovado_por || null,
-                data_aprovacao: existing.data_aprovacao || null
-              });
+              .upsert(filteredRecord);
           } catch (e) {
             console.warn("Could not elevate to admin online", e);
           }
@@ -276,21 +278,22 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
 
     if (!isStaticBuild) {
       try {
+        const rawUserRecord = {
+          id: user.uid,
+          email: defaultProfile.email,
+          nome: defaultProfile.nome,
+          role: defaultProfile.role,
+          setoresAutorizados: defaultProfile.setoresAutorizados,
+          situacao: defaultProfile.situacao,
+          cargo: defaultProfile.cargo,
+          unidade: defaultProfile.unidade || 'CD Principal',
+          avatar_url: defaultProfile.foto || ''
+        };
+        const dbRecord = SupabaseService.toDbRecord('usuarios', rawUserRecord);
+        const filteredRecord = SupabaseService.filterRecordColumns('usuarios', dbRecord);
         await supabase!
           .from('usuarios')
-          .upsert({
-            id: user.uid,
-            email: defaultProfile.email,
-            nome: defaultProfile.nome,
-            role: defaultProfile.role,
-            setoresAutorizados: defaultProfile.setoresAutorizados,
-            situacao: defaultProfile.situacao,
-            cargo: defaultProfile.cargo,
-            unidade: defaultProfile.unidade || 'CD Principal',
-            avatar_url: defaultProfile.foto || '',
-            aprovado_por: defaultProfile.aprovado_por || null,
-            data_aprovacao: defaultProfile.data_aprovacao || null
-          });
+          .upsert(filteredRecord);
       } catch (upsertErr: any) {
         console.warn('⚠️ [Supabase Auth] Não foi possível salvar o perfil online (Erro de rede). Armazenando apenas localmente.', upsertErr.message || upsertErr);
       }
