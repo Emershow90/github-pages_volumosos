@@ -224,12 +224,15 @@ export const getUserProfile = async (uid: string): Promise<Usuario | null> => {
 };
 
 export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
+  const userId = user?.id || user?.uid;
+  if (!userId) return null;
+
   const email = user.email || '';
   const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com' || email.toLowerCase() === 'emerson.oliveira@decathlon.com';
-  const localKey = `sys_cached_profile_${user.uid}`;
+  const localKey = `sys_cached_profile_${userId}`;
 
   try {
-    let existing = await getUserProfile(user.uid);
+    let existing = await getUserProfile(userId);
     if (existing) {
       if (isOwner && existing.role !== UserRole.Admin) {
         existing = {
@@ -242,7 +245,7 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
         if (!isStaticBuild) {
           try {
             const rawUserRecord = {
-              id: user.uid,
+              id: userId,
               email: existing.email,
               nome: existing.nome,
               role: existing.role,
@@ -267,6 +270,7 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
     }
 
     const defaultProfile: Usuario = {
+      uid: userId,
       email,
       nome: user.displayName || user.user_metadata?.full_name || 'Usuário',
       role: isOwner ? UserRole.Admin : UserRole.Consulta,
@@ -279,7 +283,7 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
     if (!isStaticBuild) {
       try {
         const rawUserRecord = {
-          id: user.uid,
+          id: userId,
           email: defaultProfile.email,
           nome: defaultProfile.nome,
           role: defaultProfile.role,
