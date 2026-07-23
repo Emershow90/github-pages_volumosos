@@ -600,6 +600,9 @@ export const fetchWithAuth = async (input: RequestInfo | URL, init?: RequestInit
 };
 
 async function simulateBackendRequest(url: string, init?: RequestInit): Promise<Response> {
+  if (init?.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
   const method = init?.method || 'GET';
   const urlObj = new URL(url, window.location.origin);
   const pathParts = urlObj.pathname.split('/api/');
@@ -610,11 +613,13 @@ async function simulateBackendRequest(url: string, init?: RequestInit): Promise<
   try {
     if (method === 'GET') {
       const data = await IndexedDBService.getAll(tableName);
+      if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       return new Response(JSON.stringify(data), { status: 200, headers: {'Content-Type': 'application/json'} });
     }
     if (method === 'POST') {
       const body = JSON.parse(init?.body as string);
       const saved = await IndexedDBService.put(tableName, body);
+      if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       return new Response(JSON.stringify(saved), { status: 200, headers: {'Content-Type': 'application/json'} });
     }
     if (method === 'PUT') {
@@ -624,6 +629,7 @@ async function simulateBackendRequest(url: string, init?: RequestInit): Promise<
       } else {
         await IndexedDBService.put(tableName, body);
       }
+      if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       return new Response(JSON.stringify(body), { status: 200, headers: {'Content-Type': 'application/json'} });
     }
     if (method === 'DELETE') {
@@ -633,10 +639,12 @@ async function simulateBackendRequest(url: string, init?: RequestInit): Promise<
       } else {
          await IndexedDBService.clear(tableName);
       }
+      if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       return new Response(JSON.stringify({ success: true }), { status: 200 });
     }
     return new Response("Method Not Allowed", { status: 405 });
   } catch (err: any) {
+    if (err.name === 'AbortError') throw err;
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
 }

@@ -593,27 +593,35 @@ export default function App() {
   // ---------------------------------------------------------------------------
   // DATABASE SYNCHRONIZATION (PostgreSQL Cloud SQL)
   // ---------------------------------------------------------------------------
+  // DATABASE SYNCHRONIZATION (PostgreSQL Cloud SQL)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (authLoading || !fbUser) {
       return;
     }
 
     let active = true;
-    let abortController: AbortController | null = null;
+    let syncController: AbortController | null = null;
 
     const fetchFromDb = async () => {
-      // Cancel previous pending requests if they exist
-      if (abortController) {
-        abortController.abort();
+      // Cancel any previous pending synchronization requests immediately
+      if (syncController) {
+        syncController.abort();
       }
-      abortController = new AbortController();
-      const signal = abortController.signal;
+      syncController = new AbortController();
+      const signal = syncController.signal;
 
       try {
+        if (signal.aborted || !active) return;
+
         // 1. Fetch weekly schedule
         const resEscala = await fetchWithAuth("/api/escala_semanal", { signal });
-        if (resEscala.ok && active) {
+        if (signal.aborted || !active) return;
+
+        if (resEscala.ok) {
           const dbEscala = await resEscala.json();
+          if (signal.aborted || !active) return;
+
           if (dbEscala && dbEscala.length > 0) {
             const mappedEscala = dbEscala.map((item: any) => ({
               dia: item.dia,
@@ -630,10 +638,16 @@ export default function App() {
           }
         }
 
+        if (signal.aborted || !active) return;
+
         // 2. Fetch coordinator / leadership
         const resLideranca = await fetchWithAuth("/api/lideranca", { signal });
-        if (resLideranca.ok && active) {
+        if (signal.aborted || !active) return;
+
+        if (resLideranca.ok) {
           const dbLider = await resLideranca.json();
+          if (signal.aborted || !active) return;
+
           if (dbLider && dbLider.nome) {
             if (currentUser !== dbLider.nome) {
               setCurrentUser(dbLider.nome);
@@ -641,10 +655,16 @@ export default function App() {
           }
         }
 
+        if (signal.aborted || !active) return;
+
         // 3. Fetch audit logs from database
         const resAudit = await fetchWithAuth("/api/audit_logs", { signal });
-        if (resAudit.ok && active) {
+        if (signal.aborted || !active) return;
+
+        if (resAudit.ok) {
           const dbAudit = await resAudit.json();
+          if (signal.aborted || !active) return;
+
           if (dbAudit) {
             const mappedAudit = dbAudit.map((a: any) => {
               let campo = "";
@@ -689,10 +709,16 @@ export default function App() {
           }
         }
 
+        if (signal.aborted || !active) return;
+
         // 4. Fetch consolidated history from database
         const resConsolidado = await fetchWithAuth("/api/historico_consolidado", { signal });
-        if (resConsolidado.ok && active) {
+        if (signal.aborted || !active) return;
+
+        if (resConsolidado.ok) {
           const dbConsolidado = await resConsolidado.json();
+          if (signal.aborted || !active) return;
+
           if (dbConsolidado) {
             const mappedConsolidado = dbConsolidado.map((h: any) => ({
               data: h.dataRegistro,
@@ -717,7 +743,7 @@ export default function App() {
           }
         }
       } catch (err: any) {
-        if (err.name === 'AbortError') {
+        if (err.name === 'AbortError' || signal.aborted) {
           return; // Silent on Abort
         }
         console.error("Database sync fetch failed:", err);
@@ -726,13 +752,13 @@ export default function App() {
 
     fetchFromDb();
 
-    // Poll every 5 seconds for real-time synchronization across devices (with AbortController cancellation)
+    // Poll every 30 seconds for real-time synchronization across devices (with AbortController cancellation)
     const interval = setInterval(fetchFromDb, 30000);
     return () => {
       active = false;
       clearInterval(interval);
-      if (abortController) {
-        abortController.abort();
+      if (syncController) {
+        syncController.abort();
       }
     };
   }, [fbUser, authLoading]);
@@ -743,13 +769,20 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("current_user", currentUser);
     if (authLoading || !fbUser) return;
+    const controller = new AbortController();
     if (currentUser) {
       fetchWithAuth("/api/lideranca", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nome: currentUser, foto: "" }),
-      }).catch((err) => console.error("Failed to push coordinator to DB:", err));
+        signal: controller.signal,
+      }).catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.error("Failed to push coordinator to DB:", err);
+        }
+      });
     }
+    return () => controller.abort();
   }, [currentUser, fbUser, authLoading]);
 
   useEffect(() => {
@@ -772,13 +805,20 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("sys_setores", JSON.stringify(setores));
     if (authLoading || !fbUser) return;
+    const controller = new AbortController();
     if (setores && setores.length > 0) {
       fetchWithAuth("/api/setores", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(setores),
-      }).catch((err) => console.error("Failed to push sectors to DB:", err));
+        signal: controller.signal,
+      }).catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.error("Failed to push sectors to DB:", err);
+        }
+      });
     }
+    return () => controller.abort();
   }, [setores, fbUser, authLoading]);
 
   useEffect(() => {
@@ -796,13 +836,20 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("sys_referentes", JSON.stringify(referentesSemana));
     if (authLoading || !fbUser) return;
+    const controller = new AbortController();
     if (referentesSemana && referentesSemana.length > 0) {
       fetchWithAuth("/api/escala_semanal", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(referentesSemana),
-      }).catch((err) => console.error("Failed to push schedule to DB:", err));
+        signal: controller.signal,
+      }).catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.error("Failed to push schedule to DB:", err);
+        }
+      });
     }
+    return () => controller.abort();
   }, [referentesSemana, fbUser, authLoading]);
 
   useEffect(() => {
