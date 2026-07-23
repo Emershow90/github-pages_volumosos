@@ -3,7 +3,7 @@
  */
 
 const DB_NAME = "tower_os_offline_v1";
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 export class IndexedDBService {
   private static db: IDBDatabase | null = null;
@@ -38,7 +38,7 @@ export class IndexedDBService {
           
           // Define stores for offline caching
           const stores = [
-            "setores", "colaboradores", "escala_semanal", "escalas", "lideranca",
+            "setores", "colaboradores", "escala_semanal", "escalas", "escalas_referentes", "lideranca",
             "override_operacional", "audit_logs", "historico_consolidado",
             "lista_coleta", "radar_lojas_status", "store_master",
             "store_operations", "atividade_loja", "universos_trabalho",

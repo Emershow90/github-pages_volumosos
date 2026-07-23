@@ -139,6 +139,13 @@ export class SupabaseService {
       if ('poliSaid' in result) { result.polisaid = result.poliSaid; delete result.poliSaid; }
     } else if (realTable === 'usuarios') {
       if ('setoresAutorizados' in result) { result.setoresautorizados = result.setoresAutorizados; delete result.setoresAutorizados; }
+      if (!Array.isArray(result.setoresautorizados)) {
+        if (typeof result.setoresautorizados === 'string' && (result.setoresautorizados as string).trim() !== '') {
+          result.setoresautorizados = [(result.setoresautorizados as string).trim()];
+        } else {
+          result.setoresautorizados = [];
+        }
+      }
       if ('role' in result && typeof result.role === 'string') {
         result.role = String(result.role).toLowerCase();
       }
