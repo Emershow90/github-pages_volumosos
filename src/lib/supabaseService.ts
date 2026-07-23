@@ -139,6 +139,9 @@ export class SupabaseService {
       if ('poliSaid' in result) { result.polisaid = result.poliSaid; delete result.poliSaid; }
     } else if (realTable === 'usuarios') {
       if ('setoresAutorizados' in result) { result.setoresautorizados = result.setoresAutorizados; delete result.setoresAutorizados; }
+      if ('role' in result && typeof result.role === 'string') {
+        result.role = String(result.role).toLowerCase();
+      }
       delete result.aprovado_por;
       delete result.data_aprovacao;
     } else if (realTable === 'store_master') {
