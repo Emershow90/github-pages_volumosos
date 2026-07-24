@@ -392,6 +392,17 @@ export class SupabaseService {
     return filtered;
   }
 
+  public static async upsert<T>(
+    tableName: string,
+    recordOrRecords: T | T[],
+    keyField: string = 'id'
+  ): Promise<any> {
+    if (Array.isArray(recordOrRecords)) {
+      return Promise.all(recordOrRecords.map((r) => this.upsertRecord(tableName, r as any, keyField as any)));
+    }
+    return this.upsertRecord(tableName, recordOrRecords as any, keyField as any);
+  }
+
   public static async upsertRecord<T extends { updated_at?: string; id?: unknown; lista?: string; key?: string; chave?: string }>(
     tableName: string,
     record: T,

@@ -692,13 +692,37 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 );
               }
 
-            case "setores":
+            case "setores": {
+              const DIAS_LISTA = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+              const hojeIdx = new Date().getDay();
+              const nomeHoje = DIAS_LISTA[hojeIdx];
+              const plantaoHoje = referentesSemana.find(
+                r => r.dia?.toLowerCase().trim().startsWith(nomeHoje.toLowerCase().slice(0, 3)) ||
+                     r.dia?.toLowerCase().trim() === nomeHoje.toLowerCase()
+              ) || referentesSemana[hojeIdx] || referentesSemana[0];
+
               return renderWidget(
                 "setores",
                 "Monitor de Setores Ativos",
                 <Activity size={14} className="text-indigo-400" />,
                 `Avg SLA: ${mediaSLA}% | Ativos: ${totalVolume}`,
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                <div className="w-full space-y-4">
+                  {plantaoHoje && (
+                    <div className="w-full flex flex-wrap items-center justify-between bg-indigo-950/40 border border-indigo-500/20 rounded-xl px-4 py-2.5 text-xs gap-2">
+                      <div className="flex items-center gap-2 text-indigo-300 font-bold uppercase tracking-wider">
+                        <Users size={14} className="text-indigo-400" />
+                        <span>Plantão Ativo ({plantaoHoje.dia || nomeHoje}):</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-4 text-zinc-300 font-mono text-[11px]">
+                        <span><strong className="text-indigo-300 font-sans">SB7 (S87):</strong> {plantaoHoje.ref87 || (plantaoHoje as any).referente_sb7 || "—"}</span>
+                        <span><strong className="text-amber-300 font-sans">Volumosos:</strong> {plantaoHoje.refVol || (plantaoHoje as any).referente_volumosos || "—"}</span>
+                        {(plantaoHoje.apoios || (plantaoHoje as any).apoio) && (
+                          <span><strong className="text-sky-300 font-sans">Apoio:</strong> {plantaoHoje.apoios || (plantaoHoje as any).apoio}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
                   {setores.map((s, idx) => {
                     const isDanger = s.bsi < 99 || s.infracaoSeguranca;
                     const dangerClasses = isDanger
@@ -706,6 +730,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       : "";
                     const borderTopColor = isDanger ? "#ef4444" : "#6366f1";
                     const unitText = s.id === "87" ? "CAIXAS" : "COLIS";
+
+                    const plantaoLider = s.id === "87" 
+                      ? (plantaoHoje?.ref87 || (plantaoHoje as any)?.referente_sb7 || s.resp) 
+                      : (plantaoHoje?.refVol || (plantaoHoje as any)?.referente_volumosos || s.resp);
 
                     return (
                       <div
@@ -727,14 +755,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-full border border-white/10 overflow-hidden bg-black/50 flex items-center justify-center text-sm font-black text-zinc-300">
-                              {s.resp[0]}
+                              {(plantaoLider || s.resp)[0]}
                             </div>
                             <div>
                               <p className="text-sm font-black text-white leading-none uppercase tracking-wider">
                                 SETOR {s.id} • {unitText}
                               </p>
-                              <p className="text-[0.6rem] font-bold text-zinc-400 mt-1 uppercase tracking-widest truncate max-w-[80px]">
-                                {s.resp.split(" ")[0]}
+                              <p className="text-[0.6rem] font-bold text-indigo-300 mt-1 uppercase tracking-widest truncate max-w-[120px]" title={`Plantão: ${plantaoLider}`}>
+                                Plantão: {plantaoLider.split(" ")[0]}
                               </p>
                             </div>
                           </div>
@@ -1068,9 +1096,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       </div>
                     );
                   })}
+                </div>
                 </div>,
                 "border-t-2 border-indigo-500"
               );
+            }
 
             case "copil":
               return renderWidget(

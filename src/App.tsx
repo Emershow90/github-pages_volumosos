@@ -345,6 +345,7 @@ export default function App() {
     realtimeSync.startListeningAlertas();
     realtimeSync.startListeningHistorico();
     realtimeSync.startListeningAudit();
+    realtimeSync.startListeningLideranca((nome) => setCurrentUser(nome));
 
     return () => {
       realtimeSync.stopAll();
@@ -590,199 +591,16 @@ export default function App() {
   }, [screensaver, isScreensaverActive]);
 
   // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // DATABASE SYNCHRONIZATION (PostgreSQL Cloud SQL)
-  // ---------------------------------------------------------------------------
-  // DATABASE SYNCHRONIZATION (PostgreSQL Cloud SQL)
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (authLoading || !fbUser) {
-      return;
-    }
-
-    let active = true;
-    let syncController: AbortController | null = null;
-
-    const fetchFromDb = async () => {
-      // Cancel any previous pending synchronization requests immediately
-      if (syncController) {
-        syncController.abort();
-      }
-      syncController = new AbortController();
-      const signal = syncController.signal;
-
-      try {
-        if (signal.aborted || !active) return;
-
-        // 1. Fetch weekly schedule
-        const resEscala = await fetchWithAuth("/api/escala_semanal", { signal });
-        if (signal.aborted || !active) return;
-
-        if (resEscala.ok) {
-          const dbEscala = await resEscala.json();
-          if (signal.aborted || !active) return;
-
-          if (dbEscala && dbEscala.length > 0) {
-            const mappedEscala = dbEscala.map((item: any) => ({
-              dia: item.dia,
-              ref87: item.referente_sb7 || "",
-              refVol: item.referente_volumosos || "",
-              apoios: item.apoio || "",
-            }));
-            setReferentesSemana((prev) => {
-              if (JSON.stringify(prev) !== JSON.stringify(mappedEscala)) {
-                return mappedEscala;
-              }
-              return prev;
-            });
-          }
-        }
-
-        if (signal.aborted || !active) return;
-
-        // 2. Fetch coordinator / leadership
-        const resLideranca = await fetchWithAuth("/api/lideranca", { signal });
-        if (signal.aborted || !active) return;
-
-        if (resLideranca.ok) {
-          const dbLider = await resLideranca.json();
-          if (signal.aborted || !active) return;
-
-          if (dbLider && dbLider.nome) {
-            if (currentUser !== dbLider.nome) {
-              setCurrentUser(dbLider.nome);
-            }
-          }
-        }
-
-        if (signal.aborted || !active) return;
-
-        // 3. Fetch audit logs from database
-        const resAudit = await fetchWithAuth("/api/audit_logs", { signal });
-        if (signal.aborted || !active) return;
-
-        if (resAudit.ok) {
-          const dbAudit = await resAudit.json();
-          if (signal.aborted || !active) return;
-
-          if (dbAudit) {
-            const mappedAudit = dbAudit.map((a: any) => {
-              let campo = "";
-              let valorAnterior: any = null;
-              let valorNovo: any = null;
-              let dispositivo = "TOWER_OS_CONSOLE";
-
-              try {
-                if (a.alteracao && a.alteracao.startsWith("{")) {
-                  const parsed = JSON.parse(a.alteracao);
-                  campo = parsed.campo || "";
-                  valorAnterior = parsed.valorAnterior;
-                  valorNovo = parsed.valorNovo;
-                  dispositivo = parsed.dispositivo || "TOWER_OS_CONSOLE";
-                } else {
-                  campo = "Ação Geral";
-                  valorNovo = a.alteracao || "";
-                }
-              } catch {
-                campo = "Ação Geral";
-                valorNovo = a.alteracao || "";
-              }
-
-              return {
-                id: `aud-db-${a.id}`,
-                data: a.data || new Date().toISOString(),
-                usuario: a.usuario || "Sistema",
-                acao: a.tabela || "Geral",
-                campo,
-                valorAnterior,
-                valorNovo,
-                dispositivo,
-              };
-            });
-
-            setAudit((prev) => {
-              if (JSON.stringify(prev) !== JSON.stringify(mappedAudit)) {
-                return mappedAudit;
-              }
-              return prev;
-            });
-          }
-        }
-
-        if (signal.aborted || !active) return;
-
-        // 4. Fetch consolidated history from database
-        const resConsolidado = await fetchWithAuth("/api/historico_consolidado", { signal });
-        if (signal.aborted || !active) return;
-
-        if (resConsolidado.ok) {
-          const dbConsolidado = await resConsolidado.json();
-          if (signal.aborted || !active) return;
-
-          if (dbConsolidado) {
-            const mappedConsolidado = dbConsolidado.map((h: any) => ({
-              data: h.dataRegistro,
-              hora: h.hora,
-              semana: h.semana,
-              turno: h.turno,
-              setor: h.setor,
-              ativ: h.ativ,
-              uph: h.uph,
-              repro: h.repro,
-              promessa: parseFloat(h.promessa),
-              nota5s: parseFloat(h.nota5s),
-              erros: parseFloat(h.erros),
-            }));
-
-            setHistorico((prev) => {
-              if (JSON.stringify(prev) !== JSON.stringify(mappedConsolidado)) {
-                return mappedConsolidado;
-              }
-              return prev;
-            });
-          }
-        }
-      } catch (err: any) {
-        if (err.name === 'AbortError' || signal.aborted) {
-          return; // Silent on Abort
-        }
-        console.error("Database sync fetch failed:", err);
-      }
-    };
-
-    fetchFromDb();
-
-    // Poll every 30 seconds for real-time synchronization across devices (with AbortController cancellation)
-    const interval = setInterval(fetchFromDb, 30000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-      if (syncController) {
-        syncController.abort();
-      }
-    };
-  }, [fbUser, authLoading]);
-
-  // ---------------------------------------------------------------------------
-  // AUTO PERSISTENCE SYNC EFFECTS
+  // AUTO PERSISTENCE SYNC EFFECTS (SUPABASE REALTIME DRIVEN)
   // ---------------------------------------------------------------------------
   useEffect(() => {
     localStorage.setItem("current_user", currentUser);
     if (authLoading || !fbUser) return;
-    const controller = new AbortController();
     if (currentUser) {
-      fetchWithAuth("/api/lideranca", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome: currentUser, foto: "" }),
-        signal: controller.signal,
-      }).catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.error("Failed to push coordinator to DB:", err);
-        }
+      FirebaseService.upsert("lideranca", { id: "lideranca_atual", nome: currentUser, foto: "" }).catch((err) => {
+        console.error("Failed to push coordinator to DB:", err);
       });
     }
-    return () => controller.abort();
   }, [currentUser, fbUser, authLoading]);
 
   useEffect(() => {
@@ -805,20 +623,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("sys_setores", JSON.stringify(setores));
     if (authLoading || !fbUser) return;
-    const controller = new AbortController();
     if (setores && setores.length > 0) {
-      fetchWithAuth("/api/setores", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(setores),
-        signal: controller.signal,
-      }).catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.error("Failed to push sectors to DB:", err);
-        }
+      FirebaseService.upsert("setores", setores).catch((err) => {
+        console.error("Failed to push sectors to DB:", err);
       });
     }
-    return () => controller.abort();
   }, [setores, fbUser, authLoading]);
 
   useEffect(() => {
@@ -836,20 +645,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("sys_referentes", JSON.stringify(referentesSemana));
     if (authLoading || !fbUser) return;
-    const controller = new AbortController();
     if (referentesSemana && referentesSemana.length > 0) {
-      fetchWithAuth("/api/escala_semanal", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(referentesSemana),
-        signal: controller.signal,
-      }).catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.error("Failed to push schedule to DB:", err);
-        }
+      FirebaseService.upsert("escalas_referentes", referentesSemana).catch((err) => {
+        console.error("Failed to push schedule to DB:", err);
       });
     }
-    return () => controller.abort();
   }, [referentesSemana, fbUser, authLoading]);
 
   useEffect(() => {
@@ -902,11 +702,7 @@ export default function App() {
 
     // Save to PostgreSQL automatically if authenticated
     if (authLoading || !fbUser) return;
-    fetchWithAuth("/api/audit_logs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(logData)
-    }).catch(err => console.error("Failed to automatically save audit log to DB:", err));
+    FirebaseService.upsert("audit_logs", logData).catch(err => console.error("Failed to automatically save audit log to DB:", err));
   };
 
   const handleUpdateCapacidade = (sid: string, field: "abertura" | "fechoHora", value: number) => {
@@ -1071,20 +867,16 @@ export default function App() {
       return;
     }
 
-    fetchWithAuth("/api/historico_consolidado", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newReg)
-    })
-    .then(() => {
-      addAudit(currentUser, "Consolidação Turno", `Setor ${s.id}`, s.ativ);
-      alert(`Turno S${s.id} gravado no histórico com sucesso!`);
-    })
-    .catch(err => {
-      console.error("Failed to automatically save turn consolidation to DB:", err);
-      addAudit(currentUser, "Consolidação Turno", `Setor ${s.id}`, s.ativ);
-      alert(`Turno S${s.id} gravado localmente (erro ao sincronizar com banco de dados).`);
-    });
+    FirebaseService.upsert("historico_consolidado", newReg)
+      .then(() => {
+        addAudit(currentUser, "Consolidação Turno", `Setor ${s.id}`, s.ativ);
+        alert(`Turno S${s.id} gravado no histórico com sucesso!`);
+      })
+      .catch(err => {
+        console.error("Failed to automatically save turn consolidation to DB:", err);
+        addAudit(currentUser, "Consolidação Turno", `Setor ${s.id}`, s.ativ);
+        alert(`Turno S${s.id} gravado localmente (erro ao sincronizar com banco de dados).`);
+      });
   };
 
   // ---------------------------------------------------------------------------
@@ -1277,22 +1069,18 @@ export default function App() {
         const calculatedNota = calcCopilNota(newKpiObj);
 
         if (authLoading || !fbUser) return;
-        fetchWithAuth("/api/historico_consolidado", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            data: recordDate,
-            hora: new Date().toLocaleTimeString("pt-BR"),
-            semana: recordSemana,
-            setorId: sid,
-            capacidadeAbertura: 1000,
-            eficienciaSla: 95,
-            auditoria5s: 90,
-            reprocessoRate: 0.5,
-            segurancaBsi: 100,
-            statusGeral: calculatedNota,
-            obs: row.obs || `Importado via planilha. KPI: ${row.kpi}`
-          })
+        FirebaseService.upsert("historico_consolidado", {
+          data: recordDate,
+          hora: new Date().toLocaleTimeString("pt-BR"),
+          semana: recordSemana,
+          setorId: sid,
+          capacidadeAbertura: 1000,
+          eficienciaSla: 95,
+          auditoria5s: 90,
+          reprocessoRate: 0.5,
+          segurancaBsi: 100,
+          statusGeral: calculatedNota,
+          obs: row.obs || `Importado via planilha. KPI: ${row.kpi}`
         }).catch(err => console.error("Database save failed:", err));
       });
 
@@ -2142,7 +1930,7 @@ export default function App() {
                 setHistorico([]);
                 // Save to PostgreSQL automatically if authenticated
                 if (authLoading || !fbUser) return;
-                fetchWithAuth("/api/historico_consolidado", { method: "DELETE" })
+                FirebaseService.deleteRecord("historico_consolidado", {})
                   .then(() => {
                     addAudit(currentUser, "Limpar Histórico", "Todos", "Apagados");
                   })
