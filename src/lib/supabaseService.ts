@@ -65,7 +65,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   radar_lojas_status: ['lista', 'created_at', 'updated_at', 'updated_by'],
   store_operations: ['id', 'programacaoId', 'programacao_id', 'lojaId', 'loja_id', 'nomeLoja', 'nome_loja', 'setor', 'transportadora', 'corte', 'carregamento', 'volumes', 'enderecos', 'atividadeRelacionada', 'atividade_relacionada', 'statusSoltura', 'status_soltura', 'horarioSoltura', 'horario_soltura', 'soltoPor', 'solto_por', 'statusColeta', 'status_coleta', 'horarioColeta', 'horario_coleta', 'coletadoPor', 'coletado_por', 'statusCarregamento', 'status_carregamento', 'horarioCarregamento', 'horario_carregamento', 'carregadoPor', 'carregado_por', 'statusExpedicao', 'status_expedicao', 'perdeuCorte', 'perdeu_corte', 'updated_at', 'updated_by', 'created_at'],
   atividade_loja: ['id', 'setor', 'updated_at', 'created_at'],
-  usuarios: ['id', 'email', 'nome', 'role', 'setoresAutorizados', 'setoresautorizados', 'situacao', 'cargo', 'unidade', 'avatar_url', 'created_at', 'updated_at'],
+  usuarios: ['id', 'email', 'nome', 'role', 'setoresAutorizados', 'setoresautorizados', 'situacao', 'cargo', 'unidade', 'avatar_url', 'aprovado_por', 'data_aprovacao', 'created_at', 'updated_at'],
   colaboradores: ['id', 'nome', 'setor', 'status', 'cargo', 'horas', 'foto', 'created_at', 'updated_at'],
   escalas: ['id', 'colaborador_id', 'data', 'turno', 'status', 'created_at', 'updated_at'],
   escala_semanal: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'ref87', 'refVol', 'apoios', 'updated_at', 'updated_by'],
@@ -138,19 +138,21 @@ export class SupabaseService {
       if ('poliRec' in result) { result.polirec = result.poliRec; delete result.poliRec; }
       if ('poliSaid' in result) { result.polisaid = result.poliSaid; delete result.poliSaid; }
     } else if (realTable === 'usuarios') {
-      if ('setoresAutorizados' in result) { result.setoresautorizados = result.setoresAutorizados; delete result.setoresAutorizados; }
-      if (!Array.isArray(result.setoresautorizados)) {
-        if (typeof result.setoresautorizados === 'string' && (result.setoresautorizados as string).trim() !== '') {
-          result.setoresautorizados = [(result.setoresautorizados as string).trim()];
+      if (!Array.isArray(result.setoresAutorizados)) {
+        if (typeof result.setoresAutorizados === 'string' && (result.setoresAutorizados as string).trim() !== '') {
+          result.setoresAutorizados = [(result.setoresAutorizados as string).trim()];
         } else {
-          result.setoresautorizados = [];
+          result.setoresAutorizados = [];
         }
       }
       if ('role' in result && typeof result.role === 'string') {
-        result.role = String(result.role).toLowerCase();
+        let roleLower = String(result.role).toLowerCase();
+        if (roleLower === 'consulta') {
+          result.role = 'Consulta';
+        } else {
+          result.role = roleLower;
+        }
       }
-      delete result.aprovado_por;
-      delete result.data_aprovacao;
     } else if (realTable === 'store_master') {
       if ('transportadoraPadrao' in result) { result.transportadorapadrao = result.transportadoraPadrao; delete result.transportadoraPadrao; }
     } else if (realTable === 'lista_coleta') {
@@ -206,6 +208,9 @@ export class SupabaseService {
       if ('polisaid' in result && !('poliSaid' in result)) result.poliSaid = result.polisaid;
     } else if (realTable === 'usuarios') {
       if ('setoresautorizados' in result && !('setoresAutorizados' in result)) result.setoresAutorizados = result.setoresautorizados;
+      if ('role' in result && typeof result.role === 'string') {
+        result.role = String(result.role).toLowerCase();
+      }
     } else if (realTable === 'store_master') {
       if ('transportadorapadrao' in result && !('transportadoraPadrao' in result)) result.transportadoraPadrao = result.transportadorapadrao;
     } else if (realTable === 'lista_coleta') {

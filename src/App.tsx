@@ -398,7 +398,15 @@ export default function App() {
       const sCopil = localStorage.getItem(`sys_copil_${site}`);
       
       if (sSetores) {
-        setSetores(JSON.parse(sSetores));
+        const parsedSetores = JSON.parse(sSetores) as Setor[];
+        const sanitized = parsedSetores.map(s => ({
+          ...s,
+          numero: s.numero ?? (parseInt(s.id.replace(/\D/g, '')) || 0),
+          varFin: Math.round(Number(s.varFin) || 0),
+          errosPicking: Math.round(Number(s.errosPicking) || 0),
+          horasDKT: Math.round(Number(s.horasDKT) || 0)
+        }));
+        setSetores(sanitized);
       } else {
         let baseSetores = JSON.parse(JSON.stringify(initialSetores)) as Setor[];
         if (site === "Extrema") {
@@ -1997,7 +2005,8 @@ export default function App() {
                 setReferentesSemana((prev) => prev.filter((_, i) => i !== idx));
               }}
               onAddSetor={(id, resp, foto) => {
-                const newSec: Setor = { id, resp, ativ: 0, uph: 0, promessa: 100, nota5s: 100, bsi: 100, reproTotal: 0, errosPicking: 0, horasDKT: 0, poliRec: 0, rdl: 0, poliSaid: 0, coletado: 0, varFin: 0, infracaoSeguranca: false, fotoLider: foto };
+                const numero = parseInt(id.replace(/\D/g, '')) || 0;
+                const newSec: Setor = { id, numero, nome: `Setor ${id}`, resp, ativ: 0, uph: 0, promessa: 100, nota5s: 100, bsi: 100, reproTotal: 0, errosPicking: 0, horasDKT: 0, poliRec: 0, rdl: 0, poliSaid: 0, coletado: 0, varFin: 0, infracaoSeguranca: false, fotoLider: foto, situacao: 'Ativo', meta: 0 };
                 setSetores((prev) => [...prev, newSec]);
               }}
               onRemoveSetor={(idx) => {
