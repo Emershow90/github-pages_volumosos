@@ -891,10 +891,9 @@ export const AlertasTab: React.FC<AlertasTabProps> = ({
 // ==========================================
 interface AuditoriaTabProps {
   audit: AuditLog[];
-  onClearAudit: () => void;
 }
 
-export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit, onClearAudit }) => {
+export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
   const [subTab, setSubTab] = useState<"logs" | "aprovacoes">("logs");
   const [filterUser, setFilterUser] = useState("");
   const [filterField, setFilterField] = useState("");
@@ -993,12 +992,6 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit, onClearAudit 
                 className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded text-xs font-bold uppercase transition cursor-pointer"
               >
                 Exportar CSV
-              </button>
-              <button
-                onClick={onClearAudit}
-                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-3 py-1.5 rounded text-xs font-bold uppercase transition cursor-pointer"
-              >
-                Limpar Registros (7d+)
               </button>
             </div>
           </div>

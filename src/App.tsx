@@ -2173,16 +2173,6 @@ export default function App() {
             >
               <AuditoriaTab
               audit={audit}
-              onClearAudit={() => {
-                setAudit([]);
-                // Save to PostgreSQL automatically if authenticated
-                if (authLoading || !fbUser) return;
-                fetchWithAuth("/api/audit_logs", { method: "DELETE" })
-                  .then(() => {
-                    addAudit(currentUser, "Limpar Auditoria", "Todos", "Apagados");
-                  })
-                  .catch(err => console.error("Failed to clear audit logs on DB:", err));
-              }}
             />
             </ProtectedRoute>
           )}

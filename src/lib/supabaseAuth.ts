@@ -184,11 +184,11 @@ export const getUserProfile = async (uid: string): Promise<Usuario | null> => {
       .from('usuarios')
       .select('*')
       .eq('id', uid)
-      .single();
+      .limit(1);
 
     if (error) throw error;
-    if (data) {
-      const dbRecord = data as any;
+    if (data && data.length > 0) {
+      const dbRecord = data[0] as any;
       const profile: Usuario = {
         uid: dbRecord.id,
         email: dbRecord.email,
