@@ -1569,21 +1569,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                       className="inp py-1 text-[10px] font-mono"
                                       placeholder="D-ALL"
                                     />
-                                    <input
-                                      type="number"
-                                      value={sectorData.feitoElog}
-                                      onChange={(e) => {
-                                        const copy = { ...localReapro };
-                                        copy.setores[s.id] = {
-                                          ...sectorData,
-                                          feitoElog:
-                                            parseInt(e.target.value) || 0,
-                                        };
-                                        setLocalReapro(copy);
-                                      }}
-                                      className="inp py-1 text-[10px] font-mono"
-                                      placeholder="Elog"
-                                    />
                                   </div>
                                 ) : (
                                   <div className="mt-2 text-xs font-mono">
@@ -1593,14 +1578,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                       </span>
                                       <b className="text-white">
                                         {sectorData.feitoDAll}
-                                      </b>
-                                    </div>
-                                    <div className="flex justify-between mt-1">
-                                      <span className="text-zinc-500">
-                                        ELOG:
-                                      </span>
-                                      <b className="text-emerald-400">
-                                        {sectorData.feitoElog}
                                       </b>
                                     </div>
                                   </div>

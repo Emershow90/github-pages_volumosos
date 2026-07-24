@@ -295,6 +295,9 @@ export const ProdutividadeTab: React.FC<ProdutividadeTabProps> = ({
                           <option value={ColaboradorStatus.Poli}>Poli</option>
                           <option value={ColaboradorStatus.BH}>BH</option>
                           <option value={ColaboradorStatus.Ausente}>Ausente</option>
+                          <option value={ColaboradorStatus.Apoio}>Apoio Geral</option>
+                          <option value={ColaboradorStatus.GestaoEstoque}>Gestão de Estoque</option>
+                          <option value={ColaboradorStatus.Reabastecimento}>Reabastecimento</option>
                         </select>
                       </td>
                       <td className="p-3 text-center">

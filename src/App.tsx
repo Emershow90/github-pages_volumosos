@@ -345,7 +345,6 @@ export default function App() {
     realtimeSync.startListeningAlertas();
     realtimeSync.startListeningHistorico();
     realtimeSync.startListeningAudit();
-    realtimeSync.startListeningLideranca((nome) => setCurrentUser(nome));
 
     return () => {
       realtimeSync.stopAll();
@@ -595,13 +594,7 @@ export default function App() {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     localStorage.setItem("current_user", currentUser);
-    if (authLoading || !fbUser) return;
-    if (currentUser) {
-      FirebaseService.upsert("lideranca", { id: "lideranca_atual", nome: currentUser, foto: "" }).catch((err) => {
-        console.error("Failed to push coordinator to DB:", err);
-      });
-    }
-  }, [currentUser, fbUser, authLoading]);
+  }, [currentUser]);
 
   useEffect(() => {
     localStorage.setItem("current_role", currentRole);
@@ -646,7 +639,7 @@ export default function App() {
     localStorage.setItem("sys_referentes", JSON.stringify(referentesSemana));
     if (authLoading || !fbUser) return;
     if (referentesSemana && referentesSemana.length > 0) {
-      FirebaseService.upsert("escalas_referentes", referentesSemana).catch((err) => {
+      FirebaseService.upsert("escalas_referentes", referentesSemana, "dia").catch((err) => {
         console.error("Failed to push schedule to DB:", err);
       });
     }
@@ -702,7 +695,7 @@ export default function App() {
 
     // Save to PostgreSQL automatically if authenticated
     if (authLoading || !fbUser) return;
-    FirebaseService.upsert("audit_logs", logData).catch(err => console.error("Failed to automatically save audit log to DB:", err));
+    FirebaseService.upsert("audit_logs", newLog).catch(err => console.error("Failed to automatically save audit log to DB:", err));
   };
 
   const handleUpdateCapacidade = (sid: string, field: "abertura" | "fechoHora", value: number) => {

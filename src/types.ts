@@ -8,6 +8,9 @@ export enum ColaboradorStatus {
   Poli = "Poli",
   BH = "BH",
   Ausente = "Ausente",
+  Apoio = "Apoio",
+  GestaoEstoque = "Gestão de Estoque",
+  Reabastecimento = "Reabastecimento",
 }
 import { UserRole } from './types/Usuario';
 

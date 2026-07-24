@@ -1179,11 +1179,6 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   // Custom feedback notification toast state
   const [feedback, setFeedback] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
 
-  const { allUsers, loadAllUsers } = useUserStore();
-
-  useEffect(() => {
-    loadAllUsers();
-  }, [loadAllUsers]);
   const showFeedback = (text: string, type: "success" | "error" | "info" = "success") => {
     setFeedback({ text, type });
     setTimeout(() => setFeedback(null), 4000);
@@ -2067,13 +2062,22 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-[0.65rem] text-zinc-500 uppercase block mb-2 font-bold">Nome Coordenador</label>
-                  <input
-                    type="text"
+                  <select
                     value={coordNome}
                     onChange={(e) => setCoordNome(e.target.value)}
-                    className="inp py-2 text-sm focus:outline-none"
+                    className="inp py-2 text-sm focus:outline-none cursor-pointer"
                     required
-                  />
+                  >
+                    <option value="">Selecione...</option>
+                    {colaboradores
+                      .filter(c => c.lider || c.cargo?.toLowerCase().includes('coordenador') || c.cargo?.toLowerCase().includes('líder'))
+                      .map(c => (
+                        <option key={c.id} value={c.nome}>{c.nome}</option>
+                      ))}
+                    {coordNome && !colaboradores.some(c => c.nome === coordNome && (c.lider || c.cargo?.toLowerCase().includes('coordenador') || c.cargo?.toLowerCase().includes('líder'))) && (
+                      <option value={coordNome}>{coordNome} (Inativo)</option>
+                    )}
+                  </select>
                 </div>
                 <div>
                   <label className="text-[0.65rem] text-zinc-500 uppercase block mb-2 font-bold">URL da Foto (Opcional)</label>
@@ -2129,10 +2133,10 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                         className="inp py-1.5 text-xs focus:outline-none cursor-pointer"
                       >
                         <option value="">Selecione...</option>
-                        {allUsers.map(u => (
-                          <option key={u.uid} value={u.nome}>{u.nome}</option>
+                        {colaboradores.map(c => (
+                          <option key={c.id} value={c.nome}>{c.nome}</option>
                         ))}
-                        {r.ref87 && !allUsers.some(u => u.nome === r.ref87) && (
+                        {r.ref87 && !colaboradores.some(c => c.nome === r.ref87) && (
                           <option value={r.ref87}>{r.ref87} (Inativo)</option>
                         )}
                       </select>
@@ -2145,22 +2149,29 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                         className="inp py-1.5 text-xs focus:outline-none cursor-pointer"
                       >
                         <option value="">Selecione...</option>
-                        {allUsers.map(u => (
-                          <option key={u.uid} value={u.nome}>{u.nome}</option>
+                        {colaboradores.map(c => (
+                          <option key={c.id} value={c.nome}>{c.nome}</option>
                         ))}
-                        {r.refVol && !allUsers.some(u => u.nome === r.refVol) && (
+                        {r.refVol && !colaboradores.some(c => c.nome === r.refVol) && (
                           <option value={r.refVol}>{r.refVol} (Inativo)</option>
                         )}
                       </select>
                     </div>
                     <div className="flex-1 min-w-[100px]">
                       <label className="text-[0.5rem] text-zinc-500 uppercase block mb-1">Apoios</label>
-                      <input
-                        type="text"
+                      <select
                         value={r.apoios || ""}
                         onChange={(e) => onUpdateReferente(i, "apoios", e.target.value)}
-                        className="inp py-1.5 text-xs focus:outline-none"
-                      />
+                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer"
+                      >
+                        <option value="">Nenhum...</option>
+                        {colaboradores.map(c => (
+                          <option key={c.id} value={c.nome}>{c.nome}</option>
+                        ))}
+                        {r.apoios && !colaboradores.some(c => c.nome === r.apoios) && (
+                          <option value={r.apoios}>{r.apoios} (Inativo)</option>
+                        )}
+                      </select>
                     </div>
                     <button
                       onClick={() => onRemoveReferente(i)}
