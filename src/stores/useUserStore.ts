@@ -15,6 +15,7 @@ interface UserState {
   currentStatus: string;
   currentUserUid: string;
   pendingUsers: Usuario[];
+  allUsers: Usuario[];
   toasts: ToastMessage[];
   
   setCurrentUser: (user: string) => void;
@@ -28,6 +29,7 @@ interface UserState {
   
   // Admin approval operations
   loadPendingUsers: () => Promise<void>;
+  loadAllUsers: () => Promise<void>;
   approveUser: (uid: string, approvedBy: string) => Promise<void>;
   
   // Listener for user status change
@@ -46,6 +48,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   currentStatus: initialStatus,
   currentUserUid: initialUid,
   pendingUsers: [],
+  allUsers: [],
   toasts: [],
   
   setCurrentUser: (user) => set(() => {
@@ -83,6 +86,53 @@ export const useUserStore = create<UserState>((set, get) => ({
   })),
   
   // Admin approval operations
+  loadAllUsers: async () => {
+    if (!isStaticBuild && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('usuarios')
+          .select('*');
+        if (error) throw error;
+        if (data) {
+          const mapped: Usuario[] = data.map((dbRecord: any) => ({
+            uid: dbRecord.id,
+            email: dbRecord.email,
+            nome: dbRecord.nome,
+            role: dbRecord.role as UserRole,
+            setoresAutorizados: dbRecord.setoresAutorizados || [],
+            foto: dbRecord.avatar_url,
+            cargo: dbRecord.cargo,
+            unidade: dbRecord.unidade,
+            situacao: dbRecord.situacao,
+            aprovado_por: dbRecord.aprovado_por,
+            data_aprovacao: dbRecord.data_aprovacao,
+          }));
+          set({ allUsers: mapped });
+          return;
+        }
+      } catch (err: any) {
+        console.error('Error loading all users:', err.message);
+      }
+    }
+    
+    // Offline / Fallback scanning of localStorage
+    const mapped: Usuario[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('sys_cached_profile_')) {
+        try {
+          const cached = localStorage.getItem(key);
+          if (cached) {
+            mapped.push(JSON.parse(cached) as Usuario);
+          }
+        } catch (e) {
+          console.error('Error parsing local cached profile during scan:', e);
+        }
+      }
+    }
+    set({ allUsers: mapped });
+  },
+  
   loadPendingUsers: async () => {
     if (!isStaticBuild && supabase) {
       try {

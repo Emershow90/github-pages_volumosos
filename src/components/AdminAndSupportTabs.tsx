@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
+import { useUserStore } from "../stores/useUserStore";
 import { AdminApprovalTab } from "./AdminApprovalTab";
 import {
   Colaborador,
@@ -1177,6 +1178,12 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
   // Custom feedback notification toast state
   const [feedback, setFeedback] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
+
+  const { allUsers, loadAllUsers } = useUserStore();
+
+  useEffect(() => {
+    loadAllUsers();
+  }, [loadAllUsers]);
   const showFeedback = (text: string, type: "success" | "error" | "info" = "success") => {
     setFeedback({ text, type });
     setTimeout(() => setFeedback(null), 4000);
@@ -2116,21 +2123,35 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                     </div>
                     <div className="flex-2 min-w-[150px]">
                       <label className="text-[0.5rem] text-zinc-500 uppercase block mb-1">Ref. S87</label>
-                      <input
-                        type="text"
+                      <select
                         value={r.ref87}
                         onChange={(e) => onUpdateReferente(i, "ref87", e.target.value)}
-                        className="inp py-1.5 text-xs focus:outline-none"
-                      />
+                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer"
+                      >
+                        <option value="">Selecione...</option>
+                        {allUsers.map(u => (
+                          <option key={u.uid} value={u.nome}>{u.nome}</option>
+                        ))}
+                        {r.ref87 && !allUsers.some(u => u.nome === r.ref87) && (
+                          <option value={r.ref87}>{r.ref87} (Inativo)</option>
+                        )}
+                      </select>
                     </div>
                     <div className="flex-2 min-w-[150px]">
                       <label className="text-[0.5rem] text-zinc-500 uppercase block mb-1">Ref. Volumosos</label>
-                      <input
-                        type="text"
+                      <select
                         value={r.refVol}
                         onChange={(e) => onUpdateReferente(i, "refVol", e.target.value)}
-                        className="inp py-1.5 text-xs focus:outline-none"
-                      />
+                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer"
+                      >
+                        <option value="">Selecione...</option>
+                        {allUsers.map(u => (
+                          <option key={u.uid} value={u.nome}>{u.nome}</option>
+                        ))}
+                        {r.refVol && !allUsers.some(u => u.nome === r.refVol) && (
+                          <option value={r.refVol}>{r.refVol} (Inativo)</option>
+                        )}
+                      </select>
                     </div>
                     <div className="flex-1 min-w-[100px]">
                       <label className="text-[0.5rem] text-zinc-500 uppercase block mb-1">Apoios</label>
