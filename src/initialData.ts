@@ -22,6 +22,8 @@ export const initialSetores: Setor[] = [
   {
     id: "87",
     numero: 87,
+    nome: "Setor 87",
+    meta: 100,
     resp: "HELOISA GONGALVES DE SALES",
     ativ: 15899,
     promessa: 100.0,
@@ -42,6 +44,8 @@ export const initialSetores: Setor[] = [
   {
     id: "88",
     numero: 88,
+    nome: "Setor 88",
+    meta: 100,
     resp: "MATHEUS PINHEIRO",
     ativ: 5965,
     promessa: 99.5,
@@ -62,6 +66,8 @@ export const initialSetores: Setor[] = [
   {
     id: "89",
     numero: 89,
+    nome: "Setor 89",
+    meta: 100,
     resp: "JOSE ANDRE DEODATO DA SILVA",
     ativ: 84,
     promessa: 98.0,
@@ -82,6 +88,8 @@ export const initialSetores: Setor[] = [
   {
     id: "90",
     numero: 90,
+    nome: "Setor 90",
+    meta: 100,
     resp: "DIEGO GONCALVES",
     ativ: 591,
     promessa: 98.0,

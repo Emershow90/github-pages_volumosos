@@ -148,7 +148,10 @@ export class SupabaseService {
       if ('setoresAutorizados' in result) { result.setoresautorizados = result.setoresAutorizados; delete result.setoresAutorizados; }
       if ('role' in result && typeof result.role === 'string') {
         const r = String(result.role).trim().toLowerCase();
-        result.role = (r === 'consulta') ? 'Consulta' : r;
+        if (r === 'admin' || r === 'admin') result.role = 'Admin';
+        else if (r === 'coordenador' || r === 'supervisor') result.role = 'Supervisor';
+        else if (r === 'operador' || r === 'referente' || r === 'operacao' || r === 'expedicao') result.role = 'Operador';
+        else result.role = 'Consulta';
       }
     } else if (realTable === 'audit_logs') {
       if ('id' in result && typeof result.id === 'string' && result.id.startsWith('aud-')) {
@@ -213,7 +216,10 @@ export class SupabaseService {
       if ('setoresautorizados' in result && !('setoresAutorizados' in result)) result.setoresAutorizados = result.setoresautorizados;
       if ('role' in result && typeof result.role === 'string') {
         const r = String(result.role).trim().toLowerCase();
-        result.role = (r === 'consulta') ? 'Consulta' : r;
+        if (r === 'admin') result.role = 'admin';
+        else if (r === 'supervisor' || r === 'coordenador') result.role = 'coordenador';
+        else if (r === 'operador') result.role = 'operador';
+        else result.role = 'consulta';
       }
     } else if (realTable === 'audit_logs') {
       if ('valor_anterior' in result && !('valorAnterior' in result)) result.valorAnterior = result.valor_anterior;

@@ -402,6 +402,8 @@ export default function App() {
         const sanitized = parsedSetores.map(s => ({
           ...s,
           numero: s.numero ?? (parseInt(s.id.replace(/\D/g, '')) || 0),
+          nome: s.nome || ("Setor " + (s.numero || s.id)),
+          meta: s.meta ?? 100,
           varFin: Math.round(Number(s.varFin) || 0),
           errosPicking: Math.round(Number(s.errosPicking) || 0),
           horasDKT: Math.round(Number(s.horasDKT) || 0)
