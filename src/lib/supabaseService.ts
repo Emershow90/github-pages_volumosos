@@ -153,6 +153,12 @@ export class SupabaseService {
           result.role = roleLower;
         }
       }
+    } else if (realTable === 'audit_logs') {
+      if ('id' in result && typeof result.id === 'string' && result.id.startsWith('aud-')) {
+        delete result.id;
+      }
+      if ('valorAnterior' in result) { result.valor_anterior = result.valorAnterior; delete result.valorAnterior; }
+      if ('valorNovo' in result) { result.valor_novo = result.valorNovo; delete result.valorNovo; }
     } else if (realTable === 'store_master') {
       if ('transportadoraPadrao' in result) { result.transportadorapadrao = result.transportadoraPadrao; delete result.transportadoraPadrao; }
     } else if (realTable === 'lista_coleta') {
@@ -211,6 +217,9 @@ export class SupabaseService {
       if ('role' in result && typeof result.role === 'string') {
         result.role = String(result.role).toLowerCase();
       }
+    } else if (realTable === 'audit_logs') {
+      if ('valor_anterior' in result && !('valorAnterior' in result)) result.valorAnterior = result.valor_anterior;
+      if ('valor_novo' in result && !('valorNovo' in result)) result.valorNovo = result.valor_novo;
     } else if (realTable === 'store_master') {
       if ('transportadorapadrao' in result && !('transportadoraPadrao' in result)) result.transportadoraPadrao = result.transportadorapadrao;
     } else if (realTable === 'lista_coleta') {
@@ -458,9 +467,10 @@ export class SupabaseService {
     if (isOnline()) {
       try {
         const client = this.getClient();
+        const conflictKey = realTableName === 'escala_semanal' ? 'escala_semanal_dia_key' : String(keyField);
         const { error } = await client
           .from(realTableName)
-          .upsert(filteredRecord);
+          .upsert(filteredRecord, { onConflict: conflictKey });
 
         if (error) {
           this.logDatabaseDiagnostics(tableName, 'upsert', error, filteredRecord);
@@ -665,9 +675,10 @@ export class SupabaseService {
             const dbRecord = this.toDbRecord(tbl, item.record);
             const filteredRecord = this.filterRecordColumns(realTbl, dbRecord);
 
+            const conflictKey = realTbl === 'escala_semanal' ? 'escala_semanal_dia_key' : pKey;
             const { error } = await client
               .from(realTbl)
-              .upsert(filteredRecord);
+              .upsert(filteredRecord, { onConflict: conflictKey });
 
             if (error) {
               const errMsg = error.message || '';
