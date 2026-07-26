@@ -147,12 +147,8 @@ export class SupabaseService {
       }
       if ('setoresAutorizados' in result) { result.setoresautorizados = result.setoresAutorizados; delete result.setoresAutorizados; }
       if ('role' in result && typeof result.role === 'string') {
-        let roleLower = String(result.role).trim().toLowerCase();
-        if (roleLower === 'consulta') {
-          result.role = 'Consulta';
-        } else {
-          result.role = roleLower;
-        }
+        const r = String(result.role).trim().toLowerCase();
+        result.role = (r === 'consulta') ? 'Consulta' : r;
       }
     } else if (realTable === 'audit_logs') {
       if ('id' in result && typeof result.id === 'string' && result.id.startsWith('aud-')) {
@@ -216,12 +212,8 @@ export class SupabaseService {
     } else if (realTable === 'usuarios') {
       if ('setoresautorizados' in result && !('setoresAutorizados' in result)) result.setoresAutorizados = result.setoresautorizados;
       if ('role' in result && typeof result.role === 'string') {
-        let roleLower = String(result.role).trim().toLowerCase();
-        if (roleLower === 'consulta') {
-          result.role = 'Consulta';
-        } else {
-          result.role = roleLower;
-        }
+        const r = String(result.role).trim().toLowerCase();
+        result.role = (r === 'consulta') ? 'Consulta' : r;
       }
     } else if (realTable === 'audit_logs') {
       if ('valor_anterior' in result && !('valorAnterior' in result)) result.valorAnterior = result.valor_anterior;
