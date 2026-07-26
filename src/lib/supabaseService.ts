@@ -145,6 +145,7 @@ export class SupabaseService {
           result.setoresAutorizados = [];
         }
       }
+      if ('setoresAutorizados' in result) { result.setoresautorizados = result.setoresAutorizados; delete result.setoresAutorizados; }
       if ('role' in result && typeof result.role === 'string') {
         let roleLower = String(result.role).toLowerCase();
         if (roleLower === 'consulta') {
@@ -467,10 +468,9 @@ export class SupabaseService {
     if (isOnline()) {
       try {
         const client = this.getClient();
-        const conflictKey = realTableName === 'escala_semanal' ? 'escala_semanal_dia_key' : String(keyField);
         const { error } = await client
           .from(realTableName)
-          .upsert(filteredRecord, { onConflict: conflictKey });
+          .upsert(filteredRecord, { onConflict: String(keyField) });
 
         if (error) {
           this.logDatabaseDiagnostics(tableName, 'upsert', error, filteredRecord);
@@ -675,10 +675,9 @@ export class SupabaseService {
             const dbRecord = this.toDbRecord(tbl, item.record);
             const filteredRecord = this.filterRecordColumns(realTbl, dbRecord);
 
-            const conflictKey = realTbl === 'escala_semanal' ? 'escala_semanal_dia_key' : pKey;
             const { error } = await client
               .from(realTbl)
-              .upsert(filteredRecord, { onConflict: conflictKey });
+              .upsert(filteredRecord, { onConflict: pKey });
 
             if (error) {
               const errMsg = error.message || '';
