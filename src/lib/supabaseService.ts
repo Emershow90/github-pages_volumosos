@@ -75,7 +75,8 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   historico_consolidado: ['id', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota5s', 'nota_5s', 'erros', 'created_at', 'updated_at'],
   audit_logs: ['id', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at'],
   lideranca: ['id', 'nome', 'cargo', 'setor', 'contato', 'foto', 'created_at', 'updated_at'],
-  override_operacional: ['chave', 'valor', 'created_at', 'updated_at']
+  override_operacional: ['chave', 'valor', 'created_at', 'updated_at'],
+  activity_entries: ['id', 'sector_id', 'activity_date', 'user_id', 'alimento', 'montanha', 'l7_mochila', 'elog', 'reapro', 'colis', 'adhoc_categories', 'created_at', 'updated_at']
 };
 
 export class SupabaseService {
@@ -194,6 +195,14 @@ export class SupabaseService {
     } else if (realTable === 'audit_logs') {
       if ('valorAnterior' in result) { result.valor_anterior = result.valorAnterior; delete result.valorAnterior; }
       if ('valorNovo' in result) { result.valor_novo = result.valorNovo; delete result.valorNovo; }
+    } else if (realTable === 'activity_entries') {
+      if ('sectorId' in result) { result.sector_id = result.sectorId; delete result.sectorId; }
+      if ('activityDate' in result) { result.activity_date = result.activityDate; delete result.activityDate; }
+      if ('userId' in result) { result.user_id = result.userId; delete result.userId; }
+      if ('l7Mochila' in result) { result.l7_mochila = result.l7Mochila; delete result.l7Mochila; }
+      if ('adhocCategories' in result) { result.adhoc_categories = result.adhocCategories; delete result.adhocCategories; }
+      if ('createdAt' in result) { result.created_at = result.createdAt; delete result.createdAt; }
+      if ('updatedAt' in result) { result.updated_at = result.updatedAt; delete result.updatedAt; }
     }
 
     return result;
@@ -224,6 +233,14 @@ export class SupabaseService {
     } else if (realTable === 'audit_logs') {
       if ('valor_anterior' in result && !('valorAnterior' in result)) result.valorAnterior = result.valor_anterior;
       if ('valor_novo' in result && !('valorNovo' in result)) result.valorNovo = result.valor_novo;
+    } else if (realTable === 'activity_entries') {
+      if ('sector_id' in result && !('sectorId' in result)) result.sectorId = result.sector_id;
+      if ('activity_date' in result && !('activityDate' in result)) result.activityDate = result.activity_date;
+      if ('user_id' in result && !('userId' in result)) result.userId = result.user_id;
+      if ('l7_mochila' in result && !('l7Mochila' in result)) result.l7Mochila = result.l7_mochila;
+      if ('adhoc_categories' in result && !('adhocCategories' in result)) result.adhocCategories = result.adhoc_categories;
+      if ('created_at' in result && !('createdAt' in result)) result.createdAt = result.created_at;
+      if ('updated_at' in result && !('updatedAt' in result)) result.updatedAt = result.updated_at;
     } else if (realTable === 'store_master') {
       if ('transportadorapadrao' in result && !('transportadoraPadrao' in result)) result.transportadoraPadrao = result.transportadorapadrao;
     } else if (realTable === 'lista_coleta') {
@@ -257,6 +274,14 @@ export class SupabaseService {
     } else if (realTable === 'audit_logs') {
       if ('valor_anterior' in result && !('valorAnterior' in result)) result.valorAnterior = result.valor_anterior;
       if ('valor_novo' in result && !('valorNovo' in result)) result.valorNovo = result.valor_novo;
+    } else if (realTable === 'activity_entries') {
+      if ('sector_id' in result && !('sectorId' in result)) result.sectorId = result.sector_id;
+      if ('activity_date' in result && !('activityDate' in result)) result.activityDate = result.activity_date;
+      if ('user_id' in result && !('userId' in result)) result.userId = result.user_id;
+      if ('l7_mochila' in result && !('l7Mochila' in result)) result.l7Mochila = result.l7_mochila;
+      if ('adhoc_categories' in result && !('adhocCategories' in result)) result.adhocCategories = result.adhoc_categories;
+      if ('created_at' in result && !('createdAt' in result)) result.createdAt = result.created_at;
+      if ('updated_at' in result && !('updatedAt' in result)) result.updatedAt = result.updated_at;
     }
 
     return result;
@@ -329,6 +354,11 @@ export class SupabaseService {
   }
 
   private static getDocId(record: Record<string, unknown>, keyField: string = 'id'): string {
+    if (keyField.includes(',')) {
+      const keys = keyField.split(',').map(k => k.trim());
+      const vals = keys.map(k => record[k] || '');
+      return vals.join('_');
+    }
     const idVal = record[keyField] || record.id || record.lista || record.chave;
     return idVal ? String(idVal) : '';
   }
@@ -471,9 +501,17 @@ export class SupabaseService {
     if (isOnline()) {
       try {
         const client = this.getClient();
-        const { error } = await client
+        const { data, error } = await client
           .from(realTableName)
-          .upsert(filteredRecord, { onConflict: String(keyField) });
+          .upsert(filteredRecord, { onConflict: String(keyField) })
+          .select()
+          .maybeSingle();
+        
+        if (data) {
+          const dbRet = this.fromDbRecord(tableName, data) as unknown as T;
+          await IndexedDBService.put(tableName, dbRet);
+          return dbRet;
+        }
 
         if (error) {
           this.logDatabaseDiagnostics(tableName, 'upsert', error, filteredRecord);

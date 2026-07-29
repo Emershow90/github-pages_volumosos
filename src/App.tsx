@@ -34,6 +34,7 @@ import {
 } from "./initialData";
 
 // Components
+import { ApresentacaoAtividadeTab } from "./components/ApresentacaoAtividadeTab";
 import { DashboardTab } from "./components/DashboardTab";
 import { ExecutivoTab, AnalyticsTab } from "./components/ExecutiveAndAnalyticsTabs";
 import {
@@ -82,7 +83,7 @@ import {
   UserCheck,
   RotateCcw,
   Radio,
-  ShieldAlert,
+  ShieldAlert, ClipboardList,
 } from "lucide-react";
 
 export default function App() {
@@ -345,6 +346,7 @@ export default function App() {
     realtimeSync.startListeningAlertas();
     realtimeSync.startListeningHistorico();
     realtimeSync.startListeningAudit();
+    realtimeSync.startListeningActivityEntries();
 
     return () => {
       realtimeSync.stopAll();
@@ -1570,7 +1572,7 @@ export default function App() {
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
             Logística
           </div>
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid grid-cols-6 gap-1">
             <button
               onClick={() => setActiveTab("capacidade")}
               className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "capacidade" ? "active" : ""}`}
@@ -1586,6 +1588,14 @@ export default function App() {
             >
               <Activity size={10} />
               <span className="truncate">Prod</span>
+            </button>
+                        <button
+              onClick={() => setActiveTab("apresentacao")}
+              className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "apresentacao" ? "active" : ""}`}
+              title="Apresentação de Atividade"
+            >
+              <ClipboardList size={10} />
+              <span className="truncate">Ativid.</span>
             </button>
             <button
               onClick={() => setActiveTab("mix")}
@@ -1794,7 +1804,20 @@ export default function App() {
             </ProtectedRoute>
           )}
 
-                    {activeTab === "mix" && (
+                              {activeTab === "apresentacao" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Operador, UserRole.Operacao, UserRole.Expedicao, UserRole.Consulta, UserRole.Guest]}
+            >
+              <ApresentacaoAtividadeTab
+                setores={setores}
+                activeSectorId={activeSectorId}
+                onChangeSector={setActiveSectorId}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "mix" && (
             <ProtectedRoute 
               userRole={currentRole} 
               allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Operador, UserRole.Operacao, UserRole.Expedicao]}

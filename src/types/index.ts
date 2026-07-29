@@ -5,3 +5,4 @@ export * from './Setor';
 export * from './Usuario';
 export * from './OCR';
 export * from './COPIL';
+export * from './ActivityEntry';

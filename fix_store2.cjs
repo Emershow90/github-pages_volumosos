@@ -1,37 +1,9 @@
-import { create } from 'zustand';
-import { Setor, CapacidadeSetor, RadarLoja, ReaproData, BolsaoData, CopilSetor, UniversoMix, ReferenteSemana, ActivityEntry } from '../types';
-import {
-  initialSetores,
-  initialCapacidade,
-  initialUniversos,
-  initialCopil,
-  initialRadar,
-  initialReapro,
-  initialBolsao,
-  initialReferentesSemana
-} from '../initialData';
+const fs = require('fs');
+let content = fs.readFileSync('src/stores/useSectorStore.ts', 'utf8');
 
-interface SectorStoreState {
-  setores: Setor[];
-  capacidade: CapacidadeSetor[];
-  referentesSemana: ReferenteSemana[];
-  universos: Record<string, UniversoMix[]>;
-  copilData: Record<string, CopilSetor>;
-  radar: RadarLoja[];
-  reaproData: ReaproData;
-  bolsaoData: BolsaoData;
-  activityEntries: ActivityEntry[];
+const typeRegex = /incrementActivityCategory: \(\s+sectorId: string,\s+activityDate: string,\s+userId: string,\s+category: keyof Omit<ActivityEntry, [^>]+>,\s+quantity: number\s+\) => Promise<void>;/;
 
-  setSetores: (setores: Setor[] | ((prev: Setor[]) => Setor[])) => void;
-  setCapacidade: (capacidade: CapacidadeSetor[] | ((prev: CapacidadeSetor[]) => CapacidadeSetor[])) => void;
-  setReferentesSemana: (referentes: ReferenteSemana[] | ((prev: ReferenteSemana[]) => ReferenteSemana[])) => void;
-  setUniversos: (universos: Record<string, UniversoMix[]> | ((prev: Record<string, UniversoMix[]>) => Record<string, UniversoMix[]>)) => void;
-  setCopilData: (copilData: Record<string, CopilSetor> | ((prev: Record<string, CopilSetor>) => Record<string, CopilSetor>)) => void;
-  setRadar: (radar: RadarLoja[] | ((prev: RadarLoja[]) => RadarLoja[])) => void;
-  setReaproData: (reaproData: ReaproData | ((prev: ReaproData) => ReaproData)) => void;
-  setBolsaoData: (bolsaoData: BolsaoData | ((prev: BolsaoData) => BolsaoData)) => void;
-  setActivityEntries: (entries: ActivityEntry[] | ((prev: ActivityEntry[]) => ActivityEntry[])) => void;
-  incrementActivityCategory: (
+const newType = `incrementActivityCategory: (
     sectorId: string,
     activityDate: string,
     userId: string,
@@ -51,66 +23,15 @@ interface SectorStoreState {
     userId: string,
     categoryName: string,
     value: string | number
-  ) => Promise<void>;
-}
+  ) => Promise<void>;`;
 
-export const useSectorStore = create<SectorStoreState>((set, get) => ({
-  setores: initialSetores,
-  capacidade: initialCapacidade,
-  referentesSemana: initialReferentesSemana || [],
-  universos: initialUniversos,
-  copilData: initialCopil,
-  radar: initialRadar,
-  reaproData: initialReapro,
-  bolsaoData: initialBolsao,
-  activityEntries: [],
+content = content.replace(typeRegex, newType);
 
-  setSetores: (val) => set((state) => {
-    const next = typeof val === 'function' ? val(state.setores) : val;
-    return { setores: next };
-  }),
+const endOfFileRegex = /incrementActivityCategory: async \([\s\S]*\}\)\);/m;
 
-  setCapacidade: (val) => set((state) => {
-    const next = typeof val === 'function' ? val(state.capacidade) : val;
-    return { capacidade: next };
-  }),
+let match = content.match(/incrementActivityCategory: async \([\s\S]*\}\)\);/m);
 
-  setReferentesSemana: (val) => set((state) => {
-    const next = typeof val === 'function' ? val(state.referentesSemana) : val;
-    return { referentesSemana: next };
-  }),
-
-  setUniversos: (val) => set((state) => {
-    const next = typeof val === 'function' ? val(state.universos) : val;
-    return { universos: next };
-  }),
-
-  setCopilData: (val) => set((state) => {
-    const next = typeof val === 'function' ? val(state.copilData) : val;
-    return { copilData: next };
-  }),
-
-  setRadar: (val) => set((state) => {
-    const next = typeof val === 'function' ? val(state.radar) : val;
-    return { radar: next };
-  }),
-
-  setReaproData: (val) => set((state) => {
-    const next = typeof val === 'function' ? val(state.reaproData) : val;
-    return { reaproData: next };
-  }),
-
-  setBolsaoData: (val) => set((state) => {
-    const next = typeof val === 'function' ? val(state.bolsaoData) : val;
-    return { bolsaoData: next };
-  }),
-
-  setActivityEntries: (val) => set((state) => {
-    const next = typeof val === 'function' ? val(state.activityEntries) : val;
-    return { activityEntries: next };
-  }),
-
-  incrementActivityCategory: async (sectorId, activityDate, userId, category, quantity) => {
+const newImpl = `incrementActivityCategory: async (sectorId, activityDate, userId, category, quantity) => {
     const { SupabaseService } = await import('../lib/supabaseService');
     const existing = get().activityEntries.find(
       e => e.sectorId === sectorId && e.activityDate === activityDate && e.userId === userId
@@ -264,4 +185,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
       get().setActivityEntries((prev) => [...prev, result]);
     }
   }
-}));
+}));`;
+
+content = content.replace(endOfFileRegex, newImpl);
+fs.writeFileSync('src/stores/useSectorStore.ts', content);
