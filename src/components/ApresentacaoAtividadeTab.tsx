@@ -209,37 +209,79 @@ export const ApresentacaoAtividadeTab: React.FC<ApresentacaoAtividadeTabProps> =
     return `Operador (${uid.substring(0, 6)}...)`;
   };
 
+  // TV Submode configuration: COPIL Completo (default) vs Resumo de Atividades
+  const [tvSubMode, setTvSubMode] = useState<'copil' | 'resumo'>('copil');
+  const [burnInOffset, setBurnInOffset] = useState({ x: 0, y: 0 });
+
+  // Burn-in protection pixel-shift effect for 24/7 TV displays
+  useEffect(() => {
+    if (!isTvMode) return;
+    const interval = setInterval(() => {
+      const offsets = [
+        { x: 0, y: 0 },
+        { x: 2, y: 2 },
+        { x: -2, y: 1 },
+        { x: 1, y: -2 },
+        { x: -1, y: -1 }
+      ];
+      const randomOffset = offsets[Math.floor(Math.random() * offsets.length)];
+      setBurnInOffset(randomOffset);
+    }, 180000); // 3 minutes
+    return () => clearInterval(interval);
+  }, [isTvMode]);
+
   // =========================================================================
-  // MODO APRESENTAÇÃO (TV MONITOR COMMAND CENTER)
+  // MODO APRESENTAÇÃO (TV MONITOR COMMAND CENTER / FULL SCREEN DEDICATED)
   // =========================================================================
   if (isTvMode) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#031427] text-slate-100 flex flex-col p-6 gap-6 overflow-hidden select-none font-sans">
+      <div 
+        className="fixed inset-0 z-[999999] bg-[#031427] text-slate-100 flex flex-col p-5 gap-4 overflow-hidden select-none font-sans w-screen h-screen m-0 border-none rounded-none shadow-2xl"
+        style={{ transform: `translate(${burnInOffset.x}px, ${burnInOffset.y}px)`, transition: 'transform 1s ease-in-out' }}
+      >
         {/* TV HEADER */}
-        <header className="flex justify-between items-center border-l-8 border-orange-500 bg-[#0b1c30] pl-6 pr-8 py-4 rounded-xl shadow-2xl border border-slate-700/50">
-          <div className="flex items-center gap-6">
+        <header className="flex justify-between items-center bg-[#0b1c30] border-[1.5px] border-[#1E293B] px-6 py-3 rounded-xl shadow-lg relative overflow-hidden shrink-0">
+          <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-400"></div>
+          
+          <div className="flex items-center gap-5">
             <div className="flex flex-col">
-              <span className="text-orange-500 font-extrabold tracking-widest text-xs uppercase flex items-center gap-2">
-                <Radio size={14} className="animate-pulse text-emerald-400" />
-                Torre de Comando — TV Monitor
+              <span className="text-indigo-400 font-extrabold tracking-widest text-[10px] uppercase flex items-center gap-1.5 mb-0.5">
+                <Radio size={13} className="animate-pulse text-emerald-400" />
+                Torre de Comando — TV Operating Console
               </span>
-              <h1 className="text-white text-3xl font-black uppercase tracking-tight flex items-center gap-3">
-                S{activeSector?.numero || '00'} {activeSector?.nome || 'COMMAND'}
+              <h1 className="text-white text-2xl font-black uppercase tracking-tight flex items-center gap-2">
+                S{activeSector?.numero || '00'} — {activeSector?.nome || 'COMMAND'}
               </h1>
             </div>
 
-            <div className="h-12 w-[1px] bg-slate-700/60 hidden sm:block"></div>
+            <div className="h-10 w-[1px] bg-[#1E293B] hidden sm:block"></div>
 
-            <div className="hidden sm:flex flex-col">
-              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Status do Turno</span>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping"></span>
-                <span className="text-emerald-400 font-black text-sm uppercase">Shift Alpha — Ativo</span>
-              </div>
+            {/* Mode Switcher: COPIL Completo vs Resumo de Atividades */}
+            <div className="hidden sm:flex items-center gap-1 bg-[#031427] p-1 rounded-lg border-[1.5px] border-[#1E293B]">
+              <button
+                onClick={() => setTvSubMode('copil')}
+                className={`px-3 py-1 rounded text-[11px] font-bold uppercase transition-all ${
+                  tvSubMode === 'copil'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                COPIL Completo
+              </button>
+              <button
+                onClick={() => setTvSubMode('resumo')}
+                className={`px-3 py-1 rounded text-[11px] font-bold uppercase transition-all ${
+                  tvSubMode === 'resumo'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Resumo da Atividade
+              </button>
             </div>
 
             {/* Sector Selector directly in TV Mode Header */}
-            <div className="hidden lg:flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-700">
+            <div className="hidden lg:flex items-center gap-2 bg-[#031427] px-3 py-1.5 rounded-lg border-[1.5px] border-[#1E293B]">
               <Layers size={14} className="text-indigo-400" />
               <select
                 value={activeSector?.id || activeSectorId}
@@ -247,7 +289,7 @@ export const ApresentacaoAtividadeTab: React.FC<ApresentacaoAtividadeTabProps> =
                 className="bg-transparent text-white text-xs font-bold uppercase focus:outline-none cursor-pointer"
               >
                 {setores.map((s) => (
-                  <option key={s.id} value={s.id} className="bg-slate-900 text-white">
+                  <option key={s.id} value={s.id} className="bg-[#0b1c30] text-white">
                     Setor {s.numero} — {s.nome}
                   </option>
                 ))}
@@ -255,227 +297,285 @@ export const ApresentacaoAtividadeTab: React.FC<ApresentacaoAtividadeTabProps> =
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-5">
             <div className="flex flex-col items-end">
-              <span className="text-slate-400 text-xs font-mono font-bold">{liveDate}</span>
-              <span className="text-white font-mono text-3xl sm:text-4xl font-black tracking-tight">{liveClock}</span>
+              <span className="text-slate-400 text-[10px] font-mono font-bold tracking-wider">{liveDate} (Brasília)</span>
+              <span className="text-white font-mono text-2xl sm:text-3xl font-black tracking-tight">{liveClock}</span>
             </div>
 
             <button
               onClick={() => setIsTvMode(false)}
-              className="bg-rose-500/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 font-bold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 active:scale-95 shadow-lg"
+              className="bg-rose-500/10 hover:bg-rose-600/20 text-rose-300 border-[1.5px] border-rose-500/30 font-bold text-xs px-3.5 py-2 rounded-xl transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
               title="Sair do Modo TV"
             >
-              <Minimize2 size={16} />
+              <Minimize2 size={15} />
               <span className="hidden sm:inline">Sair do Modo TV</span>
             </button>
           </div>
         </header>
 
         {/* TV MAIN GRID */}
-        <main className="flex-1 grid grid-cols-12 gap-6 overflow-hidden">
-          {/* LEFT COLUMN: PERFORMANCE & METRICS */}
-          <div className="col-span-12 lg:col-span-8 flex flex-col gap-6 overflow-hidden">
-            
-            {/* TOP BENTO: META & UPH INDICATOR */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              {/* META DA PRODUÇÃO */}
-              <div className="bg-[#0b1c30] border border-slate-700/60 p-5 rounded-2xl flex flex-col justify-between shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 to-emerald-400"></div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Meta do Turno</span>
-                  <span className="text-emerald-400 font-mono font-black text-2xl">{goalProgressPct}%</span>
+        {tvSubMode === 'copil' ? (
+          <main className="flex-1 grid grid-cols-12 gap-4 overflow-hidden">
+            {/* LEFT COLUMN: PERFORMANCE & METRICS */}
+            <div className="col-span-12 lg:col-span-8 flex flex-col gap-4 overflow-hidden">
+              
+              {/* TOP BENTO: META, UPH & OPERATORS */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* META DA PRODUÇÃO */}
+                <div className="bg-[#0b1c30] border-[1.5px] border-[#1E293B] p-4 rounded-xl flex flex-col justify-between shadow-md relative overflow-hidden">
+                  <div className="flex justify-between items-center border-b border-[#1E293B] pb-2">
+                    <span className="text-slate-400 text-[11px] font-black uppercase tracking-wider">Meta do Turno</span>
+                    <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-black text-xs px-2 py-0.5 rounded-full">
+                      {goalProgressPct}%
+                    </span>
+                  </div>
+                  <div className="my-2">
+                    <p className="text-3xl font-black text-white font-mono tracking-tight">
+                      {totalNumeric.toLocaleString("pt-BR")} <span className="text-xs text-slate-400 font-sans font-medium">/ {sectorMeta.toLocaleString("pt-BR")} pkts</span>
+                    </p>
+                  </div>
+                  <div className="w-full bg-[#031427] h-2.5 rounded-full overflow-hidden border border-[#1E293B]">
+                    <div 
+                      className="bg-gradient-to-r from-indigo-500 via-emerald-400 to-emerald-500 h-full rounded-full transition-all duration-700"
+                      style={{ width: `${goalProgressPct}%` }}
+                    ></div>
+                  </div>
                 </div>
-                <div className="my-3">
-                  <p className="text-4xl font-black text-white font-mono tracking-tight">
-                    {totalNumeric.toLocaleString("pt-BR")} <span className="text-xs text-slate-400 font-sans font-medium">/ {sectorMeta.toLocaleString("pt-BR")} pkts</span>
+
+                {/* PERFORMANCE UPH */}
+                <div className="bg-[#0b1c30] border-[1.5px] border-[#1E293B] p-4 rounded-xl flex flex-col justify-between shadow-md border-l-4 border-l-emerald-400">
+                  <span className="text-slate-400 text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 border-b border-[#1E293B] pb-2">
+                    <TrendingUp size={14} className="text-emerald-400" /> UPH do Setor
+                  </span>
+                  <div className="my-1.5 flex items-baseline gap-2">
+                    <span className="text-4xl font-black text-emerald-400 font-mono">{activeSector?.uph || 0}</span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">un / hora</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    Promessa: <strong className="text-slate-200 font-mono">{activeSector?.promessa?.toLocaleString("pt-BR") || 0}</strong>
                   </p>
                 </div>
-                <div className="w-full bg-slate-900 h-3 rounded-full overflow-hidden p-0.5 border border-slate-800">
-                  <div 
-                    className="bg-gradient-to-r from-orange-500 via-emerald-400 to-emerald-500 h-full rounded-full transition-all duration-700"
-                    style={{ width: `${goalProgressPct}%` }}
-                  ></div>
-                </div>
-              </div>
 
-              {/* PERFORMANCE UPH */}
-              <div className="bg-[#0b1c30] border border-slate-700/60 p-5 rounded-2xl flex flex-col justify-between shadow-xl border-l-4 border-l-emerald-400">
-                <span className="text-slate-400 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
-                  <TrendingUp size={14} className="text-emerald-400" /> UPH do Setor
-                </span>
-                <div className="my-2 flex items-baseline gap-2">
-                  <span className="text-5xl font-black text-emerald-400 font-mono">{activeSector?.uph || 0}</span>
-                  <span className="text-xs text-slate-400 font-bold uppercase">un / hora</span>
-                </div>
-                <p className="text-[11px] text-slate-400 font-medium">
-                  Promessa: <strong className="text-slate-200 font-mono">{activeSector?.promessa?.toLocaleString("pt-BR") || 0}</strong>
-                </p>
-              </div>
-
-              {/* OPERADORES ATIVOS */}
-              <div className="bg-[#0b1c30] border border-slate-700/60 p-5 rounded-2xl flex flex-col justify-between shadow-xl border-l-4 border-l-indigo-500">
-                <span className="text-slate-400 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
-                  <Users size={14} className="text-indigo-400" /> Operadores em Campo
-                </span>
-                <div className="my-2 flex items-baseline gap-2">
-                  <span className="text-5xl font-black text-indigo-300 font-mono">{distinctUsers}</span>
-                  <span className="text-xs text-slate-400 font-bold uppercase">ativos hoje</span>
-                </div>
-                <p className="text-[11px] text-slate-400 font-medium truncate">
-                  Líder: <strong className="text-white">{activeSector?.resp || 'Indefinido'}</strong>
-                </p>
-              </div>
-            </div>
-
-            {/* MIDDLE BENTO: CATEGORY BREAKDOWN & OPERATOR VOLUMES */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
-              
-              {/* BREAKDOWN DE CATEGORIAS */}
-              <div className="bg-[#0b1c30] border border-slate-700/60 p-6 rounded-2xl flex flex-col shadow-xl">
-                <h3 className="text-sm font-black text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-800 pb-2">
-                  <PieChart size={16} className="text-orange-400" /> Distribuição por Categoria
-                </h3>
-
-                <div className="grid grid-cols-2 gap-3 flex-1 items-center">
-                  <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 flex flex-col">
-                    <span className="text-[10px] text-emerald-400 font-black uppercase">Alimento</span>
-                    <span className="text-2xl font-black text-white font-mono mt-1">{totalAlimento.toLocaleString("pt-BR")}</span>
-                    <span className="text-[10px] text-slate-500 mt-1 font-mono">
-                      {totalNumeric > 0 ? Math.round((totalAlimento / totalNumeric) * 100) : 0}% do total
-                    </span>
+                {/* OPERADORES ATIVOS */}
+                <div className="bg-[#0b1c30] border-[1.5px] border-[#1E293B] p-4 rounded-xl flex flex-col justify-between shadow-md border-l-4 border-l-indigo-500">
+                  <span className="text-slate-400 text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 border-b border-[#1E293B] pb-2">
+                    <Users size={14} className="text-indigo-400" /> Operadores em Campo
+                  </span>
+                  <div className="my-1.5 flex items-baseline gap-2">
+                    <span className="text-4xl font-black text-indigo-300 font-mono">{distinctUsers}</span>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase">ativos hoje</span>
                   </div>
-
-                  <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 flex flex-col">
-                    <span className="text-[10px] text-indigo-400 font-black uppercase">Montanha</span>
-                    <span className="text-2xl font-black text-white font-mono mt-1">{totalMontanha.toLocaleString("pt-BR")}</span>
-                    <span className="text-[10px] text-slate-500 mt-1 font-mono">
-                      {totalNumeric > 0 ? Math.round((totalMontanha / totalNumeric) * 100) : 0}% do total
-                    </span>
-                  </div>
-
-                  <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 flex flex-col">
-                    <span className="text-[10px] text-purple-400 font-black uppercase">L7 Mochila</span>
-                    <span className="text-2xl font-black text-white font-mono mt-1">{totalL7Mochila.toLocaleString("pt-BR")}</span>
-                    <span className="text-[10px] text-slate-500 mt-1 font-mono">
-                      {totalNumeric > 0 ? Math.round((totalL7Mochila / totalNumeric) * 100) : 0}% do total
-                    </span>
-                  </div>
-
-                  <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 flex flex-col">
-                    <span className="text-[10px] text-sky-400 font-black uppercase">Colis</span>
-                    <span className="text-2xl font-black text-white font-mono mt-1">{totalColis.toLocaleString("pt-BR")}</span>
-                    <span className="text-[10px] text-slate-500 mt-1 font-mono">
-                      {totalNumeric > 0 ? Math.round((totalColis / totalNumeric) * 100) : 0}% do total
-                    </span>
-                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium truncate">
+                    Líder: <strong className="text-white">{activeSector?.resp || 'Indefinido'}</strong>
+                  </p>
                 </div>
               </div>
 
-              {/* TOP VOLUMES POR OPERADOR */}
-              <div className="bg-[#0b1c30] border border-slate-700/60 p-6 rounded-2xl flex flex-col shadow-xl">
-                <h3 className="text-sm font-black text-white uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-800 pb-2">
-                  <BarChart3 size={16} className="text-emerald-400" /> Volume por Operador
-                </h3>
+              {/* MIDDLE BENTO: CATEGORY BREAKDOWN & OPERATOR VOLUMES */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 overflow-hidden">
+                
+                {/* BREAKDOWN DE CATEGORIAS */}
+                <div className="bg-[#0b1c30] border-[1.5px] border-[#1E293B] p-4 rounded-xl flex flex-col shadow-md">
+                  <h3 className="text-xs font-black text-white uppercase tracking-wider mb-3 flex items-center gap-2 border-b border-[#1E293B] pb-2">
+                    <PieChart size={15} className="text-indigo-400" /> Distribuição por Categoria
+                  </h3>
 
-                <div className="space-y-3 flex-1 justify-center flex flex-col">
-                  {sortedOperators.length === 0 ? (
-                    <p className="text-xs text-slate-500 italic text-center">Nenhum volume registrado por operadores hoje.</p>
-                  ) : (
-                    sortedOperators.map(([uid, vol], idx) => {
-                      const pct = Math.round((vol / maxOperatorVol) * 100);
-                      return (
-                        <div key={uid} className="space-y-1">
-                          <div className="flex justify-between items-center text-xs">
-                            <span className="text-slate-200 font-bold truncate max-w-[160px]">
-                              {idx + 1}. {getUserDisplayName(uid)}
-                            </span>
-                            <span className="text-emerald-400 font-mono font-bold">{vol.toLocaleString("pt-BR")} pkts</span>
-                          </div>
-                          <div className="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-800">
-                            <div 
-                              className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                              style={{ width: `${pct}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN: LIVE FEED DE LANÇAMENTOS */}
-          <div className="col-span-12 lg:col-span-4 bg-[#071322] border border-slate-700/60 rounded-2xl flex flex-col overflow-hidden shadow-2xl">
-            <div className="p-4 bg-[#0d223a] border-b border-slate-700/80 flex justify-between items-center">
-              <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                <Activity size={16} className="text-orange-400" /> Live Feed Operacional
-              </h3>
-              <span className="bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase animate-pulse">
-                AO VIVO
-              </span>
-            </div>
-
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
-              {entriesToday.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500 space-y-2">
-                  <Clock size={32} className="opacity-40" />
-                  <p className="text-xs font-bold">Aguardando lançamentos do turno...</p>
-                </div>
-              ) : (
-                entriesToday.map((entry) => (
-                  <div 
-                    key={entry.id} 
-                    className="bg-[#0b1c30] p-3.5 rounded-xl border border-slate-800 space-y-2 hover:border-slate-700 transition-all"
-                  >
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-white flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                        {getUserDisplayName(entry.userId)}
+                  <div className="grid grid-cols-2 gap-3 flex-1 items-center">
+                    <div className="bg-[#031427] p-3 rounded-xl border-[1.5px] border-[#1E293B] flex flex-col">
+                      <span className="text-[10px] text-emerald-400 font-black uppercase">Alimento</span>
+                      <span className="text-2xl font-black text-white font-mono mt-1">{totalAlimento.toLocaleString("pt-BR")}</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                        {totalNumeric > 0 ? Math.round((totalAlimento / totalNumeric) * 100) : 0}% do total
                       </span>
-                      <span className="font-mono text-[10px] text-slate-400">{entry.updatedAt ? new Date(entry.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Hoje'}</span>
                     </div>
 
-                    <div className="grid grid-cols-4 gap-1 text-center bg-slate-900/80 p-2 rounded-lg text-[10px] font-mono border border-slate-800">
-                      <div>
-                        <span className="text-slate-500 block">ALIM</span>
-                        <span className="text-emerald-400 font-bold">{entry.alimento || 0}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block">MONT</span>
-                        <span className="text-indigo-300 font-bold">{entry.montanha || 0}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block">L7</span>
-                        <span className="text-purple-300 font-bold">{entry.l7Mochila || 0}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block">COL</span>
-                        <span className="text-sky-300 font-bold">{entry.colis || 0}</span>
-                      </div>
+                    <div className="bg-[#031427] p-3 rounded-xl border-[1.5px] border-[#1E293B] flex flex-col">
+                      <span className="text-[10px] text-indigo-400 font-black uppercase">Montanha</span>
+                      <span className="text-2xl font-black text-white font-mono mt-1">{totalMontanha.toLocaleString("pt-BR")}</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                        {totalNumeric > 0 ? Math.round((totalMontanha / totalNumeric) * 100) : 0}% do total
+                      </span>
                     </div>
 
-                    {(entry.elog || entry.reapro) && (
-                      <div className="text-[11px] space-y-1 pt-1 border-t border-slate-800/60">
-                        {entry.elog && <p className="text-amber-300 truncate"><strong>E-LOG:</strong> {entry.elog}</p>}
-                        {entry.reapro && <p className="text-sky-300 truncate"><strong>REAPRO:</strong> {entry.reapro}</p>}
-                      </div>
+                    <div className="bg-[#031427] p-3 rounded-xl border-[1.5px] border-[#1E293B] flex flex-col">
+                      <span className="text-[10px] text-purple-400 font-black uppercase">L7 Mochila</span>
+                      <span className="text-2xl font-black text-white font-mono mt-1">{totalL7Mochila.toLocaleString("pt-BR")}</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                        {totalNumeric > 0 ? Math.round((totalL7Mochila / totalNumeric) * 100) : 0}% do total
+                      </span>
+                    </div>
+
+                    <div className="bg-[#031427] p-3 rounded-xl border-[1.5px] border-[#1E293B] flex flex-col">
+                      <span className="text-[10px] text-sky-400 font-black uppercase">Colis</span>
+                      <span className="text-2xl font-black text-white font-mono mt-1">{totalColis.toLocaleString("pt-BR")}</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                        {totalNumeric > 0 ? Math.round((totalColis / totalNumeric) * 100) : 0}% do total
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* TOP VOLUMES POR OPERADOR */}
+                <div className="bg-[#0b1c30] border-[1.5px] border-[#1E293B] p-4 rounded-xl flex flex-col shadow-md">
+                  <h3 className="text-xs font-black text-white uppercase tracking-wider mb-3 flex items-center gap-2 border-b border-[#1E293B] pb-2">
+                    <BarChart3 size={15} className="text-emerald-400" /> Volume por Operador
+                  </h3>
+
+                  <div className="space-y-3 flex-1 justify-center flex flex-col">
+                    {sortedOperators.length === 0 ? (
+                      <p className="text-xs text-slate-500 italic text-center py-4">Aguardando apontamentos...</p>
+                    ) : (
+                      sortedOperators.map(([uid, vol], idx) => {
+                        const pct = Math.round((vol / maxOperatorVol) * 100);
+                        return (
+                          <div key={uid} className="space-y-1">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-slate-200 font-bold truncate max-w-[160px]">
+                                {idx + 1}. {getUserDisplayName(uid)}
+                              </span>
+                              <span className="text-emerald-400 font-mono font-bold">{vol.toLocaleString("pt-BR")} pkts</span>
+                            </div>
+                            <div className="w-full bg-[#031427] h-2 rounded-full overflow-hidden border border-[#1E293B]">
+                              <div 
+                                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                                style={{ width: `${pct}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
-                ))
-              )}
+                </div>
+
+              </div>
             </div>
-          </div>
-        </main>
+
+            {/* RIGHT COLUMN: LIVE FEED DE LANÇAMENTOS */}
+            <div className="col-span-12 lg:col-span-4 bg-[#071322] border-[1.5px] border-[#1E293B] rounded-xl flex flex-col overflow-hidden shadow-xl">
+              <div className="p-3.5 bg-[#0b1c30] border-b border-[#1E293B] flex justify-between items-center">
+                <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <Activity size={15} className="text-indigo-400" /> Live Feed Operacional
+                </h3>
+                <span className="bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-black px-2 py-0.5 rounded-full uppercase animate-pulse">
+                  AO VIVO
+                </span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 space-y-2.5">
+                {entriesToday.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500 space-y-2">
+                    <Clock size={28} className="opacity-40 animate-pulse" />
+                    <p className="text-xs font-bold text-slate-400">Nenhum evento operacional.</p>
+                    <p className="text-[11px] text-slate-500">Aguardando novas atividades do turno...</p>
+                  </div>
+                ) : (
+                  entriesToday.map((entry) => (
+                    <div 
+                      key={entry.id} 
+                      className="bg-[#0b1c30] p-3 rounded-xl border-[1.5px] border-[#1E293B] space-y-2 hover:border-slate-700 transition-all"
+                    >
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-white flex items-center gap-1.5 truncate">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+                          <span className="truncate">{getUserDisplayName(entry.userId)}</span>
+                        </span>
+                        <span className="font-mono text-[10px] text-slate-400 shrink-0">{entry.updatedAt ? new Date(entry.updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Hoje'}</span>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-1 text-center bg-[#031427] p-2 rounded-lg text-[10px] font-mono border border-[#1E293B]">
+                        <div>
+                          <span className="text-slate-500 block text-[9px]">ALIM</span>
+                          <span className="text-emerald-400 font-bold">{entry.alimento || 0}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[9px]">MONT</span>
+                          <span className="text-indigo-300 font-bold">{entry.montanha || 0}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[9px]">L7</span>
+                          <span className="text-purple-300 font-bold">{entry.l7Mochila || 0}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[9px]">COL</span>
+                          <span className="text-sky-300 font-bold">{entry.colis || 0}</span>
+                        </div>
+                      </div>
+
+                      {(entry.elog || entry.reapro) && (
+                        <div className="text-[10px] space-y-0.5 pt-1 border-t border-[#1E293B]">
+                          {entry.elog && <p className="text-amber-300 truncate"><strong>E-LOG:</strong> {entry.elog}</p>}
+                          {entry.reapro && <p className="text-sky-300 truncate"><strong>REAPRO:</strong> {entry.reapro}</p>}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </main>
+        ) : (
+          /* RESUMO DA ATIVIDADE SUBMODE */
+          <main className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-hidden">
+            <div className="bg-[#0b1c30] border-[1.5px] border-[#1E293B] p-6 rounded-xl flex flex-col justify-between shadow-md">
+              <div>
+                <h3 className="text-sm font-black text-white uppercase tracking-wider mb-4 border-b border-[#1E293B] pb-2 flex items-center gap-2">
+                  <Activity size={18} className="text-indigo-400" /> Resumo do Turno — Setor S{activeSector?.numero}
+                </h3>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center bg-[#031427] p-4 rounded-xl border border-[#1E293B]">
+                    <span className="text-xs font-bold text-slate-300">Total Produzido</span>
+                    <span className="text-3xl font-black text-emerald-400 font-mono">{totalNumeric.toLocaleString("pt-BR")} pkts</span>
+                  </div>
+                  <div className="flex justify-between items-center bg-[#031427] p-4 rounded-xl border border-[#1E293B]">
+                    <span className="text-xs font-bold text-slate-300">Meta do Turno</span>
+                    <span className="text-3xl font-black text-white font-mono">{sectorMeta.toLocaleString("pt-BR")} pkts</span>
+                  </div>
+                  <div className="flex justify-between items-center bg-[#031427] p-4 rounded-xl border border-[#1E293B]">
+                    <span className="text-xs font-bold text-slate-300">Atingimento</span>
+                    <span className="text-3xl font-black text-indigo-400 font-mono">{goalProgressPct}%</span>
+                  </div>
+                </div>
+              </div>
+              <div className="w-full bg-[#031427] h-4 rounded-full overflow-hidden border border-[#1E293B] p-0.5">
+                <div 
+                  className="bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-400 h-full rounded-full transition-all duration-700"
+                  style={{ width: `${goalProgressPct}%` }}
+                ></div>
+              </div>
+            </div>
+
+            <div className="bg-[#0b1c30] border-[1.5px] border-[#1E293B] p-6 rounded-xl flex flex-col shadow-md overflow-hidden">
+              <h3 className="text-sm font-black text-white uppercase tracking-wider mb-4 border-b border-[#1E293B] pb-2 flex items-center gap-2">
+                <Users size={18} className="text-emerald-400" /> Operadores e Rendimento
+              </h3>
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3">
+                {sortedOperators.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic text-center py-8">Nenhum operador com lançamentos hoje.</p>
+                ) : (
+                  sortedOperators.map(([uid, vol], idx) => (
+                    <div key={uid} className="bg-[#031427] p-3.5 rounded-xl border border-[#1E293B] flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <span className="w-7 h-7 rounded-lg bg-indigo-600/20 text-indigo-400 font-black font-mono text-xs flex items-center justify-center border border-indigo-500/30">
+                          #{idx + 1}
+                        </span>
+                        <span className="text-xs font-bold text-white">{getUserDisplayName(uid)}</span>
+                      </div>
+                      <span className="text-emerald-400 font-mono font-black text-base">{vol.toLocaleString("pt-BR")} pkts</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </main>
+        )}
 
         {/* TV FOOTER SECURITY */}
-        <footer className="h-10 flex justify-between items-center px-6 bg-[#0b1c30] border border-slate-700/50 rounded-xl text-[11px] text-slate-400 font-mono">
+        <footer className="h-9 flex justify-between items-center px-5 bg-[#0b1c30] border-[1.5px] border-[#1E293B] rounded-xl text-[11px] text-slate-400 font-mono shrink-0">
           <div className="flex gap-6">
             <span>SETOR: S{activeSector?.numero} — {activeSector?.nome}</span>
-            <span className="hidden sm:inline">CRIPTOGRAFIA: AES-256 REALTIME</span>
+            <span className="hidden sm:inline">CRITICIDADE: OK / REALTIME</span>
           </div>
           <div className="flex items-center gap-2 text-emerald-400 font-bold">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
