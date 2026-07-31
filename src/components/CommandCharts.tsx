@@ -154,38 +154,6 @@ export const HourlyBarChart: React.FC<ExecTrendProps> = ({ data }) => {
   );
 };
 
-interface MixPieProps {
-  percentage: number;
-}
-
-export const MixDoughnutChart: React.FC<MixPieProps> = ({ percentage }) => {
-  const data = [
-    { name: "Feito", value: percentage },
-    { name: "Pendente", value: Math.max(0, 100 - percentage) },
-  ];
-
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <PieChart>
-        <Pie
-          data={data}
-          cx="50%"
-          cy="50%"
-          innerRadius="75%"
-          outerRadius="90%"
-          startAngle={90}
-          endAngle={-270}
-          paddingAngle={0}
-          dataKey="value"
-        >
-          <Cell fill="#10b981" />
-          <Cell fill="rgba(255, 255, 255, 0.05)" />
-        </Pie>
-      </PieChart>
-    </ResponsiveContainer>
-  );
-};
-
 interface CopilChartProps {
   rows: { kpi: string; comp: string; real: string; inverso: boolean }[];
   calcNotaFn: (r: { comp: string; real: string; inverso: boolean }) => string;

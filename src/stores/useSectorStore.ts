@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { SupabaseService } from '../lib/supabaseService';
 import { Setor, CapacidadeSetor, RadarLoja, ReaproData, BolsaoData, CopilSetor, UniversoMix, ReferenteSemana, ActivityEntry } from '../types';
 import {
   initialSetores,
@@ -111,7 +112,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
   }),
 
   incrementActivityCategory: async (sectorId, activityDate, userId, category, quantity) => {
-    const { SupabaseService } = await import('../lib/supabaseService');
+    
     const existing = get().activityEntries.find(
       e => e.sectorId === sectorId && e.activityDate === activityDate && e.userId === userId
     );
@@ -164,7 +165,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
   },
 
   updateActivityTextField: async (sectorId, activityDate, userId, field, value) => {
-    const { SupabaseService } = await import('../lib/supabaseService');
+    
     const existing = get().activityEntries.find(
       e => e.sectorId === sectorId && e.activityDate === activityDate && e.userId === userId
     );
@@ -213,7 +214,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
   },
 
   updateAdhocCategory: async (sectorId, activityDate, userId, categoryName, value) => {
-    const { SupabaseService } = await import('../lib/supabaseService');
+    
     const existing = get().activityEntries.find(
       e => e.sectorId === sectorId && e.activityDate === activityDate && e.userId === userId
     );

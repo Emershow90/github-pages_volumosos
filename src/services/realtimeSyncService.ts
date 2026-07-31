@@ -886,13 +886,13 @@ class RealtimeSyncService {
         .then((rows) => {
           if (cancelled) return;
           if (rows && rows.length > 0) {
-            useSectorStore.getState().setActivityEntries(rows);
+            useSectorStore.getState().setActivityEntries(rows as ActivityEntry[]);
           }
           if (isStaticBuild || !supabase) return;
 
           channel = supabase.channel(key)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_entries' }, async () => {
-              const fresh = await SupabaseService.fetchTable('activity_entries');
+              const fresh = await SupabaseService.fetchTable<ActivityEntry>('activity_entries');
               if (fresh.length > 0) {
                 useSectorStore.getState().setActivityEntries(fresh);
               }

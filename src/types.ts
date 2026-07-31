@@ -13,26 +13,10 @@ export enum ColaboradorStatus {
   Reabastecimento = "Reabastecimento",
 }
 import { UserRole } from './types/Usuario';
+import { Setor } from './types/Setor';
 
-export interface Setor {
-  id: string;
-  resp: string;
-  ativ: number;
-  promessa: number;
-  varFin: number;
-  bsi: number;
-  nota5s: number;
-  errosPicking: number;
-  reproTotal: number;
-  infracaoSeguranca: boolean;
-  fotoLider?: string;
-  horasDKT: number;
-  poliRec: number;
-  rdl: number;
-  poliSaid: number;
-  coletado: number;
-  uph: number;
-}
+export * from './types/ActivityEntry';
+export * from './types/Setor';
 
 export interface Colaborador {
   id: string;

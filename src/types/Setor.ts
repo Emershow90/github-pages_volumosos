@@ -7,7 +7,7 @@ export interface Setor {
   equipe?: string[];
   meta: number;
   horario?: string;
-  situacao: 'Ativo' | 'Inativo';
+  situacao?: 'Ativo' | 'Inativo';
   
   // Realtime computed or loaded metrics
   ativ: number;

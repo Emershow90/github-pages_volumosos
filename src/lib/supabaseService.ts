@@ -73,7 +73,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   capacidade_operacional: ['id', 'setor', 'abertura', 'fecho_hora', 'fechoHora', 'updated_at'],
   escalas_referentes: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'ref87', 'refVol', 'apoios', 'updated_at', 'updated_by'],
   historico_consolidado: ['id', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota5s', 'nota_5s', 'erros', 'created_at', 'updated_at'],
-  audit_logs: ['id', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at'],
+  audit_logs: ['id', 'data', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at', 'updated_at'],
   lideranca: ['id', 'nome', 'cargo', 'setor', 'contato', 'foto', 'created_at', 'updated_at'],
   override_operacional: ['chave', 'valor', 'created_at', 'updated_at'],
   activity_entries: ['id', 'sector_id', 'activity_date', 'user_id', 'alimento', 'montanha', 'l7_mochila', 'elog', 'reapro', 'colis', 'adhoc_categories', 'created_at', 'updated_at']
@@ -443,25 +443,28 @@ export class SupabaseService {
   public static async upsert<T>(
     tableName: string,
     recordOrRecords: T | T[],
-    keyField: string = 'id'
+    keyField?: string | undefined,
+    onConflict?: string
   ): Promise<any> {
     if (Array.isArray(recordOrRecords)) {
-      return Promise.all(recordOrRecords.map((r) => this.upsertRecord(tableName, r as any, keyField as any)));
+      return Promise.all(recordOrRecords.map((r) => this.upsertRecord(tableName, r as any, keyField as any, onConflict)));
     }
-    return this.upsertRecord(tableName, recordOrRecords as any, keyField as any);
+    return this.upsertRecord(tableName, recordOrRecords as any, keyField as any, onConflict);
   }
 
   public static async upsertRecord<T extends { updated_at?: string; id?: unknown; lista?: string; key?: string; chave?: string }>(
     tableName: string,
     record: T,
-    keyField: keyof T = 'id' as keyof T
+    keyField?: keyof T | string,
+    onConflict?: string
   ): Promise<T> {
     await this.garantirAuthPronto();
 
-    const docId = this.getDocId(record as Record<string, unknown>, keyField as string);
-    if (!docId) {
-      throw new Error(`Cannot upsert to ${tableName} without a valid unique key.`);
+    let docId = '';
+    if (keyField) {
+      docId = this.getDocId(record as Record<string, unknown>, keyField as string);
     }
+    const conflictTarget = onConflict || (keyField ? String(keyField) : 'id');
 
     const now = new Date().toISOString();
     const finalizedRecord = {
@@ -488,13 +491,15 @@ export class SupabaseService {
       return finalizedRecord as unknown as T;
     }
 
-    const localExisting = await IndexedDBService.get<T>(tableName, docId);
-    if (localExisting && localExisting.updated_at) {
-      const localTime = new Date(localExisting.updated_at).getTime();
-      const newTime = new Date(finalizedRecord.updated_at).getTime();
-      if (newTime < localTime) {
-        console.log(`[Supabase LWW] Newer record exists locally for ${tableName}:${docId}. Skipping update.`);
-        return localExisting;
+    if (docId) {
+      const localExisting = await IndexedDBService.get<T>(tableName, docId);
+      if (localExisting && localExisting.updated_at) {
+        const localTime = new Date(localExisting.updated_at).getTime();
+        const newTime = new Date(finalizedRecord.updated_at).getTime();
+        if (newTime < localTime) {
+          console.log(`[Supabase LWW] Newer record exists locally for ${tableName}:${docId}. Skipping update.`);
+          return localExisting;
+        }
       }
     }
 
@@ -503,7 +508,7 @@ export class SupabaseService {
         const client = this.getClient();
         const { data, error } = await client
           .from(realTableName)
-          .upsert(filteredRecord, { onConflict: String(keyField) })
+          .upsert(filteredRecord, { onConflict: conflictTarget })
           .select()
           .maybeSingle();
         
@@ -700,7 +705,7 @@ export class SupabaseService {
         try {
           const client = this.getClient() as unknown as {
             from: (table: string) => {
-              upsert: (data: unknown) => Promise<{ error: { code?: string; message?: string } | null }>;
+              upsert: (data: unknown, options?: any) => Promise<{ error: { code?: string; message?: string } | null }>;
               delete: () => { eq: (col: string, val: unknown) => Promise<{ error: { code?: string; message?: string } | null }> };
             };
           };

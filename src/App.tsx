@@ -40,7 +40,6 @@ import { ExecutivoTab, AnalyticsTab } from "./components/ExecutiveAndAnalyticsTa
 import {
   CapacidadeTab,
   ProdutividadeTab,
-  MixTab,
   CopilTab,
 } from "./components/TransactionalAndOperationalTabs";
 import {
@@ -1598,14 +1597,6 @@ export default function App() {
               <span className="truncate">Ativid.</span>
             </button>
             <button
-              onClick={() => setActiveTab("mix")}
-              className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "mix" ? "active" : ""}`}
-              title="Mix Atividades"
-            >
-              <Layers size={10} />
-              <span className="truncate">Mix</span>
-            </button>
-            <button
               onClick={() => setActiveTab("copil")}
               className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "copil" ? "active" : ""}`}
               title="Matriz COPIL"
@@ -1814,70 +1805,6 @@ export default function App() {
                 activeSectorId={activeSectorId}
                 onChangeSector={setActiveSectorId}
               />
-            </ProtectedRoute>
-          )}
-
-          {activeTab === "mix" && (
-            <ProtectedRoute 
-              userRole={currentRole} 
-              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Operador, UserRole.Operacao, UserRole.Expedicao]}
-            >
-              <MixTab
-              setores={setores}
-              universos={universos}
-              onAddUniverso={(sid, nome, meta) => {
-                setUniversos((prev) => {
-                  const list = prev[sid] || [];
-                  return { ...prev, [sid]: [...list, { nome, meta, feito: 0 }] };
-                });
-                addAudit(currentUser, "Novo Mix Universo", sid, nome);
-              }}
-              onRemoveUniverso={(sid, uIdx) => {
-                setUniversos((prev) => {
-                  const list = (prev[sid] || []).filter((_, i) => i !== uIdx);
-                  return { ...prev, [sid]: list };
-                });
-                addAudit(currentUser, "Remover Mix Universo", sid, uIdx);
-              }}
-              onIncrementUniverso={(sid, uIdx, delta) => {
-                setUniversos((prev) => {
-                  const list = [...(prev[sid] || [])];
-                  if (list[uIdx]) {
-                    list[uIdx] = { ...list[uIdx], feito: list[uIdx].feito + delta };
-                  }
-                  return { ...prev, [sid]: list };
-                });
-                addAudit(currentUser, "Apontar Mix", `${sid}.${uIdx}`, delta);
-              }}
-              onZerarMix={() => {
-                if (currentRole !== UserRole.Admin) return;
-                setUniversos((prev) => {
-                  const copy = { ...prev };
-                  Object.keys(copy).forEach((k) => {
-                    copy[k] = (copy[k] as any[]).map((u: any) => ({ ...u, feito: 0 }));
-                  });
-                  return copy;
-                });
-                addAudit(currentUser, "Zerar Mix Completo", "Tudo", 0);
-              }}
-              onExportMixCSV={() => {
-                let csv = "Setor;Universo;Meta;Feito;Progresso\n";
-                Object.entries(universos).forEach(([sid, list]) => {
-                  (list as any[]).forEach((u: any) => {
-                    const pct = u.meta ? ((u.feito / u.meta) * 100).toFixed(1) : "0.0";
-                    csv += `${sid};${u.nome};${u.meta};${u.feito};${pct}%\n`;
-                  });
-                });
-                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-                const link = document.createElement("a");
-                link.href = URL.createObjectURL(blob);
-                link.setAttribute("download", `backup_mix_volumosos.csv`);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              }}
-              currentRole={currentRole}
-            />
             </ProtectedRoute>
           )}
 
