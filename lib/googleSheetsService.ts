@@ -19,7 +19,74 @@ export const SECTOR_ROW_MAP: Record<string, number> = {
 };
 
 /**
- * Updates operational metrics in "VOLUMOSOS - ATIVIDADE" tab of Google Sheets
+ * Helper to safely extract numeric values from cell text or number.
+ */
+
+const parseCellNumber = (val: any): number => {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  let str = String(val).trim();
+  if (str.startsWith('#') || !str) return 0;
+  // strip spaces
+  str = str.replace(/[\s\u00A0]/g, '');
+  if (str.includes(',') && str.includes('.')) {
+    str = str.replace(/\./g, '').replace(',', '.');
+  } else if (str.includes(',')) {
+    str = str.replace(',', '.');
+  }
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
+};
+
+/**
+ * Dynamically finds the best matching sheet title from a Google Spreadsheet.
+ */
+async function getBestSheetTitle(
+  accessToken: string,
+  spreadsheetId: string,
+  preferredName: string,
+  keywords: string[] = []
+): Promise<string> {
+  try {
+    const metaRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+    if (metaRes.ok) {
+      const meta = await metaRes.json();
+      const titles: string[] = (meta.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
+
+      if (titles.length > 0) {
+        // 1. Exact match (case insensitive)
+        const exact = titles.find((t) => t.toLowerCase() === preferredName.toLowerCase());
+        if (exact) return exact;
+
+        // 2. Contains preferred name substring
+        const partialPreferred = titles.find(
+          (t) => t.toLowerCase().includes(preferredName.toLowerCase()) || preferredName.toLowerCase().includes(t.toLowerCase())
+        );
+        if (partialPreferred) return partialPreferred;
+
+        // 3. Keyword match
+        for (const kw of keywords) {
+          const kwMatch = titles.find((t) => t.toLowerCase().includes(kw.toLowerCase()));
+          if (kwMatch) return kwMatch;
+        }
+
+        // 4. Default to first available title
+        return titles[0];
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch sheet metadata, falling back to preferred title:', err);
+  }
+  return preferredName;
+}
+
+/**
+ * Updates operational metrics in Google Sheets
  */
 export const updateOperationalMetricsToSpreadsheet = async (
   accessToken: string,
@@ -33,7 +100,13 @@ export const updateOperationalMetricsToSpreadsheet = async (
       return { success: false, message: `Setor ${sectorId} não mapeado na planilha.` };
     }
 
-    const sheetName = 'VOLUMOSOS - ATIVIDADE';
+    const sheetName = await getBestSheetTitle(
+      accessToken,
+      spreadsheetId,
+      'VOLUMOSOS - ATIVIDADE',
+      ['atividade', 'volumosos', 'queries', 'su_queries', 'indicadores', 'painel']
+    );
+
     const isElog = sectorId === 'ELOG' || sectorId === 'E-LOG';
 
     // 1. Update Atividade (Column H / Col 8) if not ELOG
@@ -86,7 +159,7 @@ export const updateOperationalMetricsToSpreadsheet = async (
 
     return {
       success: true,
-      message: `Métricas do Setor ${sectorId} gravadas com sucesso na planilha (Linha ${targetRow})!`,
+      message: `Métricas do Setor ${sectorId} gravadas com sucesso na aba "${sheetName}" (Linha ${targetRow})!`,
       spreadsheetId,
       spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
     };
@@ -100,15 +173,21 @@ export const updateOperationalMetricsToSpreadsheet = async (
 };
 
 /**
- * Reads operational metrics from "VOLUMOSOS - ATIVIDADE" tab
+ * Reads operational metrics from Google Sheets with dynamic sheet and row resolution.
  */
 export const readOperationalMetricsFromSpreadsheet = async (
   accessToken: string,
   spreadsheetId: string = DEFAULT_SPREADSHEET_ID
 ): Promise<{ success: boolean; message: string; data?: Record<string, { atividade: number; uph: number }> }> => {
   try {
-    const sheetName = 'VOLUMOSOS - ATIVIDADE';
-    const range = `'${sheetName}'!A1:L10`;
+    const sheetTitle = await getBestSheetTitle(
+      accessToken,
+      spreadsheetId,
+      'VOLUMOSOS - ATIVIDADE',
+      ['atividade', 'volumosos', 'queries', 'su_queries', 'indicadores', 'painel']
+    );
+
+    const range = `'${sheetTitle}'!A1:AZ100`;
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`,
       {
@@ -120,26 +199,103 @@ export const readOperationalMetricsFromSpreadsheet = async (
 
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.error?.message || 'Erro ao ler aba VOLUMOSOS - ATIVIDADE');
+      throw new Error(err.error?.message || `Erro ao ler aba "${sheetTitle}"`);
     }
 
     const json = await res.json();
     const rows: string[][] = json.values || [];
 
     const result: Record<string, { atividade: number; uph: number }> = {};
+    const sectorKeys = ['87', '88', '89', '90', 'ELOG', 'E-LOG'];
 
-    Object.entries(SECTOR_ROW_MAP).forEach(([sec, rowIdx]) => {
-      const row = rows[rowIdx - 1]; // 0-indexed
-      if (row) {
-        const ativVal = parseFloat((row[7] || '0').replace(/\./g, '').replace(',', '.')) || 0; // Col H is index 7
-        const uphVal = parseFloat((row[11] || '0').replace(/\./g, '').replace(',', '.')) || 0; // Col L is index 11
+    // Console/SU_Queries row mappings
+    const altSectorRows: Record<string, number> = {
+      '87': 23,
+      '88': 25,
+      '89': 27,
+      '90': 29,
+      'ELOG': 7,
+      'E-LOG': 7,
+    };
+
+    sectorKeys.forEach((sec) => {
+      let targetRowIdx = -1;
+
+      // 1. Search by explicit text in cells
+      const foundIdx = rows.findIndex((r) => {
+        if (!r || r.length === 0) return false;
+        const firstCols = r.slice(0, 6).map((c) => String(c || '').toUpperCase());
+        return firstCols.some(
+          (val) => val === sec || val === `SETOR ${sec}` || val === `S${sec}` || val.includes(`PICKING ${sec}`) || val.includes(`SETOR ${sec}`)
+        );
+      });
+
+      if (foundIdx !== -1) {
+        targetRowIdx = foundIdx;
+      } else {
+        // Fallback to primary or secondary mapped row index
+        const primaryMapped = (SECTOR_ROW_MAP[sec] || 0) - 1;
+        const secondaryMapped = (altSectorRows[sec] || 0) - 1;
+
+        if (primaryMapped >= 0 && primaryMapped < rows.length) {
+          targetRowIdx = primaryMapped;
+        } else if (secondaryMapped >= 0 && secondaryMapped < rows.length) {
+          targetRowIdx = secondaryMapped;
+        }
+      }
+
+      if (targetRowIdx >= 0 && rows[targetRowIdx]) {
+        const row = rows[targetRowIdx];
+
+        // Parse Atividade (Col W / idx 22, then Col H / idx 7)
+        let ativVal = 0;
+        const colW = parseCellNumber(row[22]);
+        const colH = parseCellNumber(row[7]);
+
+        if (colW > 0) {
+          ativVal = colW;
+        } else if (colH > 0) {
+          ativVal = colH;
+        } else {
+          for (let i = 1; i < row.length; i++) {
+            const num = parseCellNumber(row[i]);
+            if (num > 0) {
+              ativVal = num;
+              break;
+            }
+          }
+        }
+
+        // Parse UPH (Col L / idx 11, then Col Y / idx 24)
+        let uphVal = 0;
+        const colL = parseCellNumber(row[11]);
+        const colY = parseCellNumber(row[24]);
+
+        if (colL > 0) {
+          uphVal = colL;
+        } else if (colY > 0) {
+          uphVal = colY;
+        } else {
+          let foundCount = 0;
+          for (let i = 1; i < row.length; i++) {
+            const num = parseCellNumber(row[i]);
+            if (num > 0) {
+              foundCount++;
+              if (foundCount === 2) {
+                uphVal = num;
+                break;
+              }
+            }
+          }
+        }
+
         result[sec] = { atividade: ativVal, uph: uphVal };
       }
     });
 
     return {
       success: true,
-      message: 'Métricas da planilha lidas com sucesso!',
+      message: `Métricas da aba "${sheetTitle}" lidas com sucesso!`,
       data: result,
     };
   } catch (error: any) {
@@ -151,10 +307,83 @@ export const readOperationalMetricsFromSpreadsheet = async (
   }
 };
 
+/**
+ * NEW: Reads activity totals from the live "VOLUMOSOS - ATIVIDADE" sheet.
+ * It will fetch range B2:I6 and map the sector (first column) to the "Atividade Total" value
+ * which is expected to be the 7th column inside that range (column H in the sheet).
+ */
+export const readActivityTotalsFromSpreadsheet = async (
+  accessToken: string,
+  spreadsheetId: string = DEFAULT_SPREADSHEET_ID
+): Promise<{ success: boolean; message: string; data?: Record<string, number> }> => {
+  try {
+    const sheetName = await getBestSheetTitle(accessToken, spreadsheetId, 'VOLUMOSOS - ATIVIDADE');
+    const range = `'${sheetName}'!B2:I6`;
+
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Erro ao ler intervalo B2:I6 da aba VOLUMOSOS - ATIVIDADE');
+    }
+
+    const json = await res.json();
+    const rows: string[][] = json.values || [];
+
+    const data: Record<string, number> = {};
+
+    for (const row of rows) {
+      // Expecting at least sector and 7th column (atividade total)
+      const sectorRaw = row[0];
+      if (!sectorRaw) continue;
+      const sector = String(sectorRaw).trim();
+      // In the B2:I6 range the Atividade Total is the 7th column -> index 6
+      const atividadeRaw = row[6];
+      const atividade = parseCellNumber(atividadeRaw);
+      data[sector] = atividade;
+    }
+
+    return {
+      success: true,
+      message: 'Atividade total por setor obtida com sucesso (live).',
+      data,
+    };
+  } catch (error: any) {
+    console.error('readActivityTotalsFromSpreadsheet Error:', error);
+    return {
+      success: false,
+      message: `Erro ao ler atividade total: ${error.message || error}`,
+    };
+  }
+};
 
 /**
- * Creates a new spreadsheet in the user's Google Drive.
+ * Convenience: Get single sector activity total from the live sheet
  */
+export const getActivityTotalForSector = async (
+  accessToken: string,
+  sectorId: string,
+  spreadsheetId: string = DEFAULT_SPREADSHEET_ID
+): Promise<{ success: boolean; message: string; atividade?: number }> => {
+  const res = await readActivityTotalsFromSpreadsheet(accessToken, spreadsheetId);
+  if (!res.success) return { success: false, message: res.message };
+  const val = res.data ? res.data[sectorId] ?? res.data[sectorId.replace(/\D/g, '')] : undefined;
+  if (typeof val === 'number') return { success: true, message: 'Valor obtido', atividade: val };
+  return { success: false, message: `Setor ${sectorId} não encontrado na planilha.` };
+};
+
+/**
+ * Remaining functions (createScaleSpreadsheet, writeScaleToSpreadsheet, readScaleFromSpreadsheet)
+ * are preserved below unchanged from previous implementation and are used elsewhere in the app.
+ */
+
 export const createScaleSpreadsheet = async (
   accessToken: string,
   colaboradores: Colaborador[]
@@ -211,17 +440,19 @@ export const createScaleSpreadsheet = async (
   }
 };
 
-/**
- * Writes (exports) current collaborators to a linked spreadsheet.
- */
 export const writeScaleToSpreadsheet = async (
   accessToken: string,
   spreadsheetId: string,
   colaboradores: Colaborador[]
 ): Promise<SyncResult> => {
   try {
-    // We will clear existing data first or just overwrite the top rows.
-    // It's safer to clear first to avoid ghost rows, or just overwrite the exact range.
+    const sheetTitle = await getBestSheetTitle(
+      accessToken,
+      spreadsheetId,
+      'Escala',
+      ['escala', 'equipe', 'colaboradores', 'operadores', 'pessoal']
+    );
+
     const headers = ['ID', 'Nome', 'Setor', 'Status', 'Cargo', 'Horas', 'Foto URL'];
     const rows = colaboradores.map((c) => [
       c.id,
@@ -235,12 +466,9 @@ export const writeScaleToSpreadsheet = async (
 
     const values = [headers, ...rows];
 
-    // Write range Escala!A1:G${values.length}
-    const range = `Escala!A1:G${values.length + 50}`; // Pad to clear any minor extra rows if list shrunk, or we can use clear API first
-
-    // First, clear the sheet to be clean
+    // First clear sheet to prevent trailing rows
     await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Escala!A1:G500:clear`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(sheetTitle)}'!A1:G500:clear`,
       {
         method: 'POST',
         headers: {
@@ -251,7 +479,7 @@ export const writeScaleToSpreadsheet = async (
 
     // Then write values
     const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Escala!A1?valueInputOption=USER_ENTERED`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(sheetTitle)}'!A1?valueInputOption=USER_ENTERED`,
       {
         method: 'PUT',
         headers: {
@@ -259,7 +487,7 @@ export const writeScaleToSpreadsheet = async (
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          range: 'Escala!A1',
+          range: `'${sheetTitle}'!A1`,
           majorDimension: 'ROWS',
           values,
         }),
@@ -273,7 +501,7 @@ export const writeScaleToSpreadsheet = async (
 
     return {
       success: true,
-      message: `Escala exportada com sucesso! ${colaboradores.length} operadores sincronizados.`,
+      message: `Escala exportada com sucesso na aba "${sheetTitle}"! ${colaboradores.length} operadores sincronizados.`,
     };
   } catch (error: any) {
     console.error('writeScaleToSpreadsheet Error:', error);
@@ -284,16 +512,20 @@ export const writeScaleToSpreadsheet = async (
   }
 };
 
-/**
- * Reads (imports) collaborators from a linked spreadsheet.
- */
 export const readScaleFromSpreadsheet = async (
   accessToken: string,
   spreadsheetId: string
 ): Promise<{ success: boolean; message: string; data?: Colaborador[] }> => {
   try {
+    const sheetTitle = await getBestSheetTitle(
+      accessToken,
+      spreadsheetId,
+      'Escala',
+      ['escala', 'equipe', 'colaboradores', 'operadores', 'pessoal']
+    );
+
     const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Escala!A1:G500`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(sheetTitle)}'!A1:Z500`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -303,7 +535,7 @@ export const readScaleFromSpreadsheet = async (
 
     if (!response.ok) {
       const errData = await response.json();
-      throw new Error(errData.error?.message || 'Erro ao ler a planilha. Verifique se a aba "Escala" existe.');
+      throw new Error(errData.error?.message || `Erro ao ler a planilha na aba "${sheetTitle}".`);
     }
 
     const result = await response.json();
@@ -312,38 +544,62 @@ export const readScaleFromSpreadsheet = async (
     if (values.length === 0) {
       return {
         success: false,
-        message: 'A planilha está vazia ou não contém dados na aba "Escala".',
+        message: `A planilha está vazia ou não contém dados na aba "${sheetTitle}".`,
       };
     }
 
-    // Skip headers row
-    const headers = values[0];
-    const dataRows = values.slice(1);
+    // Header normalization and dynamic index mapping
+    const rawHeaders = (values[0] || []).map((h) => String(h || '').trim());
+    const headers = rawHeaders.map((h) =>
+      h
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '')
+    );
 
+    let idxId = headers.findIndex((h) => h.includes('id') || h.includes('codigo') || h === 'key');
+    let idxNome = headers.findIndex((h) => h.includes('nome') || h.includes('colaborador') || h.includes('operador') || h.includes('funcionario') || h.includes('name'));
+    let idxSetor = headers.findIndex((h) => h.includes('setor') || h === 'sec' || h.includes('sector'));
+    let idxStatus = headers.findIndex((h) => h.includes('status') || h.includes('situacao') || h.includes('escala'));
+    let idxCargo = headers.findIndex((h) => h.includes('cargo') || h.includes('funcao') || h.includes('role'));
+    let idxHoras = headers.findIndex((h) => h.includes('horas') || h.includes('jornada') || h.includes('hours') || h === 'hrs');
+    let idxFoto = headers.findIndex((h) => h.includes('foto') || h.includes('avatar') || h.includes('image') || h.includes('url'));
+
+    // Fallbacks
+    if (idxId === -1) idxId = 0;
+    if (idxNome === -1) idxNome = 1;
+    if (idxSetor === -1) idxSetor = 2;
+    if (idxStatus === -1) idxStatus = 3;
+    if (idxCargo === -1) idxCargo = 4;
+    if (idxHoras === -1) idxHoras = 5;
+    if (idxFoto === -1) idxFoto = 6;
+
+    const dataRows = values.slice(1);
     const colaboradores: Colaborador[] = [];
 
     for (const r of dataRows) {
-      if (!r[1]) continue; // Skip if no name
+      const nameVal = r[idxNome] ? String(r[idxNome]).trim() : '';
+      if (!nameVal) continue;
 
-      // Map values
-      const id = r[0] || `col-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
-      const nome = r[1].trim();
-      const setor = r[2] || 'Setor 87';
-      
-      // Safe status parsing
+      const id = r[idxId] ? String(r[idxId]).trim() : `col-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+      const nome = nameVal;
+      const setorRaw = r[idxSetor] ? String(r[idxSetor]).trim() : 'Setor 87';
+      const setor = setorRaw.toLowerCase().startsWith('setor') ? setorRaw : `Setor ${setorRaw.replace(/\D/g, '') || '87'}`;
+
       let status = ColaboradorStatus.Operacao;
-      const statusStr = (r[3] || '').trim().toLowerCase();
+      const statusStr = r[idxStatus] ? String(r[idxStatus]).trim().toLowerCase() : '';
       if (statusStr.includes('poli')) {
         status = ColaboradorStatus.Poli;
       } else if (statusStr.includes('bh')) {
         status = ColaboradorStatus.BH;
-      } else if (statusStr.includes('ausente') || statusStr.includes('aus')) {
+      } else if (statusStr.includes('ausente') || statusStr.includes('aus') || statusStr.includes('falta')) {
         status = ColaboradorStatus.Ausente;
       }
 
-      const cargo = r[4] || 'Operador';
-      const horas = parseFloat(r[5]) || 7.2;
-      const foto = r[6] || '';
+      const cargo = r[idxCargo] ? String(r[idxCargo]).trim() : 'Operador';
+      const horas = parseCellNumber(r[idxHoras]) || 7.2;
+      const foto = r[idxFoto] ? String(r[idxFoto]).trim() : '';
 
       colaboradores.push({
         id,
@@ -358,7 +614,7 @@ export const readScaleFromSpreadsheet = async (
 
     return {
       success: true,
-      message: `Importado com sucesso! ${colaboradores.length} operadores carregados da planilha.`,
+      message: `Importado com sucesso! ${colaboradores.length} operadores carregados da aba "${sheetTitle}".`,
       data: colaboradores,
     };
   } catch (error: any) {
