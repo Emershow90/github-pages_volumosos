@@ -127,7 +127,22 @@ CREATE TABLE IF NOT EXISTS public.atividade_loja (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Readequação retroativa de colunas de camelCase para snake_case caso a tabela já exista
+-- Tabela: painel_producao (Console operacional e métricas de produção diárias)
+CREATE TABLE IF NOT EXISTS public.painel_producao (
+  id TEXT PRIMARY KEY,
+  sector_id TEXT NOT NULL,
+  upload_date DATE NOT NULL,
+  feito_hoje NUMERIC DEFAULT 0,
+  feito_ontem NUMERIC DEFAULT 0,
+  maquina_full NUMERIC DEFAULT 0,
+  rafale_full NUMERIC DEFAULT 0,
+  uploaded_by TEXT DEFAULT 'Sistema',
+  arquivo_nome TEXT DEFAULT '',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Readequação retroativa de colunas e garantia de existência de campos caso as tabelas já existam
 DO $$
 BEGIN
   -- store_master
@@ -140,7 +155,7 @@ BEGIN
     ALTER TABLE public.lista_coleta RENAME COLUMN "atividadeRelacionada" TO atividade_relacionada;
   END IF;
 
-  -- radar_lojas_status
+  -- radar_lojas_status renames
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'statusSoltura') THEN
     ALTER TABLE public.radar_lojas_status RENAME COLUMN "statusSoltura" TO status_soltura;
   END IF;
@@ -172,7 +187,24 @@ BEGIN
     ALTER TABLE public.radar_lojas_status RENAME COLUMN "statusExpedicao" TO status_expedicao;
   END IF;
 
-  -- store_operations
+  -- radar_lojas_status add missing columns if table existed without them
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'radar_lojas_status') THEN
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS status_soltura TEXT NOT NULL DEFAULT 'Não Solta';
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS horario_soltura TEXT;
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS solto_por TEXT;
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS status_coleta TEXT NOT NULL DEFAULT 'Não iniciada';
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS horario_coleta TEXT;
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS coletado_por TEXT;
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS status_carregamento TEXT NOT NULL DEFAULT 'Não carregada';
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS horario_carregamento TEXT;
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS carregado_por TEXT;
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS status_expedicao TEXT NOT NULL DEFAULT 'Pendente';
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS updated_by TEXT DEFAULT 'Sistema';
+    ALTER TABLE public.radar_lojas_status ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+  END IF;
+
+  -- store_operations renames and additions
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'programacaoId') THEN
     ALTER TABLE public.store_operations RENAME COLUMN "programacaoId" TO programacao_id;
   END IF;
@@ -217,6 +249,23 @@ BEGIN
   END IF;
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'perdeuCorte') THEN
     ALTER TABLE public.store_operations RENAME COLUMN "perdeuCorte" TO perdeu_corte;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'store_operations') THEN
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS status_soltura TEXT NOT NULL DEFAULT 'Não Solta';
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS horario_soltura TEXT;
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS solto_por TEXT;
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS status_coleta TEXT NOT NULL DEFAULT 'Não iniciada';
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS horario_coleta TEXT;
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS coletado_por TEXT;
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS status_carregamento TEXT NOT NULL DEFAULT 'Não carregada';
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS horario_carregamento TEXT;
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS carregado_por TEXT;
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS status_expedicao TEXT NOT NULL DEFAULT 'Pendente';
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS perdeu_corte BOOLEAN DEFAULT FALSE;
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS updated_by TEXT DEFAULT 'Sistema';
+    ALTER TABLE public.store_operations ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
   END IF;
 
   -- atividade_loja
@@ -424,6 +473,7 @@ ALTER TABLE public.store_operations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.atividade_loja ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.colaboradores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.escalas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.painel_producao ENABLE ROW LEVEL SECURITY;
 
 -- Limpar e redefinir políticas existentes para evitar erros ou duplicações
 DO $$ 
@@ -435,7 +485,7 @@ BEGIN
         SELECT tablename 
         FROM pg_tables 
         WHERE schemaname = 'public' 
-          AND tablename IN ('usuarios', 'store_master', 'setores', 'lista_coleta', 'radar_lojas_status', 'store_operations', 'atividade_loja', 'colaboradores', 'escalas')
+          AND tablename IN ('usuarios', 'store_master', 'setores', 'lista_coleta', 'radar_lojas_status', 'store_operations', 'atividade_loja', 'colaboradores', 'escalas', 'painel_producao')
     LOOP 
         FOR p_name IN 
             SELECT policyname 
@@ -514,6 +564,13 @@ CREATE POLICY select_escalas ON public.escalas
   FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY write_escalas ON public.escalas 
+  FOR ALL TO authenticated USING (public.has_write_access()) WITH CHECK (public.has_write_access());
+
+-- POLÍTICAS: painel_producao
+CREATE POLICY select_painel_producao ON public.painel_producao 
+  FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY write_painel_producao ON public.painel_producao 
   FOR ALL TO authenticated USING (public.has_write_access()) WITH CHECK (public.has_write_access());
 
 -- NOTIFICAÇÃO: Gatilho para disparar e-mail ao cadastrar usuário pendente via Supabase Edge Function
