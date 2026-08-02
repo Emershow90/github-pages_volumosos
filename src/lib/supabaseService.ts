@@ -76,7 +76,8 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   audit_logs: ['id', 'data', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at', 'updated_at'],
   lideranca: ['id', 'nome', 'cargo', 'setor', 'contato', 'foto', 'created_at', 'updated_at'],
   override_operacional: ['chave', 'valor', 'created_at', 'updated_at'],
-  activity_entries: ['id', 'sector_id', 'activity_date', 'user_id', 'alimento', 'montanha', 'l7_mochila', 'elog', 'reapro', 'colis', 'adhoc_categories', 'created_at', 'updated_at']
+  activity_entries: ['id', 'sector_id', 'activity_date', 'user_id', 'alimento', 'montanha', 'l7_mochila', 'elog', 'reapro', 'colis', 'adhoc_categories', 'created_at', 'updated_at'],
+  painel_producao: ['id', 'sector_id', 'upload_date', 'feito_hoje', 'feito_ontem', 'maquina_full', 'rafale_full', 'uploaded_by', 'arquivo_nome', 'created_at', 'updated_at']
 };
 
 export class SupabaseService {
@@ -183,6 +184,12 @@ export class SupabaseService {
       if ('carregadoPor' in result) { result.carregado_por = result.carregadoPor; delete result.carregadoPor; }
       if ('statusExpedicao' in result) { result.status_expedicao = result.statusExpedicao; delete result.statusExpedicao; }
       if ('perdeuCorte' in result) { result.perdeu_corte = result.perdeuCorte; delete result.perdeuCorte; }
+    } else if (realTable === 'atividade_loja') {
+      if ('programacaoId' in result) { result.programacao_id = result.programacaoId; delete result.programacaoId; }
+      if ('lojaId' in result) { result.loja_id = result.lojaId; delete result.lojaId; }
+      if ('tipoAtividade' in result) { result.tipo_atividade = result.tipoAtividade; delete result.tipoAtividade; }
+      if ('colisProgramados' in result) { result.colis_programados = result.colisProgramados; delete result.colisProgramados; }
+      if ('colisColetados' in result) { result.colis_coletados = result.colisColetados; delete result.colisColetados; }
     } else if (realTable === 'historico_consolidado') {
       if ('nota5s' in result) { result.nota_5s = result.nota5s; delete result.nota5s; }
     } else if (realTable === 'escala_semanal') {
@@ -250,7 +257,7 @@ export class SupabaseService {
       if ('fecho_hora' in result && !('fechoHora' in result)) result.fechoHora = result.fecho_hora;
     } else if (realTable === 'store_operations') {
       if ('programacao_id' in result && !('programacaoId' in result)) result.programacaoId = result.programacao_id;
-      if ('loja_id' in result && !('lojaId' in result)) result.lojaId = result.lojaId;
+      if ('loja_id' in result && !('lojaId' in result)) result.lojaId = result.loja_id;
       if ('nome_loja' in result && !('nomeLoja' in result)) result.nomeLoja = result.nome_loja;
       if ('atividade_relacionada' in result && !('atividadeRelacionada' in result)) result.atividadeRelacionada = result.atividade_relacionada;
       if ('status_soltura' in result && !('statusSoltura' in result)) result.statusSoltura = result.status_soltura;
@@ -264,6 +271,12 @@ export class SupabaseService {
       if ('carregado_por' in result && !('carregadoPor' in result)) result.carregadoPor = result.carregado_por;
       if ('status_expedicao' in result && !('statusExpedicao' in result)) result.statusExpedicao = result.status_expedicao;
       if ('perdeu_corte' in result && !('perdeuCorte' in result)) result.perdeuCorte = result.perdeu_corte;
+    } else if (realTable === 'atividade_loja') {
+      if ('programacao_id' in result && !('programacaoId' in result)) result.programacaoId = result.programacao_id;
+      if ('loja_id' in result && !('lojaId' in result)) result.lojaId = result.loja_id;
+      if ('tipo_atividade' in result && !('tipoAtividade' in result)) result.tipoAtividade = result.tipo_atividade;
+      if ('colis_programados' in result && !('colisProgramados' in result)) result.colisProgramados = result.colis_programados;
+      if ('colis_coletados' in result && !('colisColetados' in result)) result.colisColetados = result.colis_coletados;
     } else if (realTable === 'historico_consolidado') {
       if ('nota_5s' in result && !('nota5s' in result)) result.nota5s = result.nota_5s;
     } else if (realTable === 'escala_semanal') {

@@ -4,6 +4,7 @@ import { SupabaseService } from '../lib/supabaseService';
 import { useStoreOperations } from '../stores/useStoreOperations';
 import { useAtividadeLoja } from '../stores/useAtividadeLoja';
 import { useSectorStore } from '../stores/useSectorStore';
+import { usePainelProducaoStore } from '../stores/usePainelProducaoStore';
 import { useCollaboratorStore } from '../stores/useCollaboratorStore';
 import { useHistoryStore } from '../stores/useHistoryStore';
 import { useUserStore } from '../stores/useUserStore';
@@ -902,6 +903,39 @@ class RealtimeSyncService {
           this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
         })
         .catch((err) => console.error("[RealtimeSyncService] Erro activity_entries:", err));
+
+      this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+    });
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
+  public startListeningPainelProducao() {
+    const key = 'painel_producao_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) { existing(); this.unsubscribes.delete(key); }
+        return;
+      }
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: RealtimeChannel | null = null;
+      let cancelled = false;
+
+      usePainelProducaoStore.getState().fetchRegistrosHoje();
+
+      if (isStaticBuild || !supabase) return;
+
+      channel = supabase.channel(key)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'painel_producao' }, async () => {
+          if (!cancelled) {
+            await usePainelProducaoStore.getState().fetchRegistrosHoje();
+          }
+        })
+        .subscribe();
 
       this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
     });

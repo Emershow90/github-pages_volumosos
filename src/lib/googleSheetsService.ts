@@ -7,6 +7,151 @@ export interface SyncResult {
   spreadsheetUrl?: string;
 }
 
+export const DEFAULT_SPREADSHEET_ID = '134K5N5HGchuSg3UA7oa75_BwIOiwcZRQQF9J32fkmWg';
+
+export const SECTOR_ROW_MAP: Record<string, number> = {
+  '87': 3,
+  '88': 4,
+  '89': 5,
+  '90': 6,
+  'ELOG': 7,
+  'E-LOG': 7,
+};
+
+/**
+ * Updates operational metrics in "VOLUMOSOS - ATIVIDADE" tab of Google Sheets
+ */
+export const updateOperationalMetricsToSpreadsheet = async (
+  accessToken: string,
+  spreadsheetId: string = DEFAULT_SPREADSHEET_ID,
+  sectorId: string,
+  payload: { atividade?: number; uph?: number }
+): Promise<SyncResult> => {
+  try {
+    const targetRow = SECTOR_ROW_MAP[sectorId] || SECTOR_ROW_MAP[sectorId.replace(/\D/g, '')];
+    if (!targetRow) {
+      return { success: false, message: `Setor ${sectorId} não mapeado na planilha.` };
+    }
+
+    const sheetName = 'VOLUMOSOS - ATIVIDADE';
+    const isElog = sectorId === 'ELOG' || sectorId === 'E-LOG';
+
+    // 1. Update Atividade (Column H / Col 8) if not ELOG
+    if (payload.atividade !== undefined && !isElog) {
+      const rangeH = `'${sheetName}'!H${targetRow}`;
+      const resH = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(rangeH)}?valueInputOption=USER_ENTERED`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            range: rangeH,
+            majorDimension: 'ROWS',
+            values: [[payload.atividade]],
+          }),
+        }
+      );
+      if (!resH.ok) {
+        const err = await resH.json();
+        throw new Error(err.error?.message || 'Erro ao atualizar Coluna H (Atividade)');
+      }
+    }
+
+    // 2. Update Produtividade / UPH (Column L / Col 12)
+    if (payload.uph !== undefined) {
+      const rangeL = `'${sheetName}'!L${targetRow}`;
+      const resL = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(rangeL)}?valueInputOption=USER_ENTERED`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            range: rangeL,
+            majorDimension: 'ROWS',
+            values: [[payload.uph]],
+          }),
+        }
+      );
+      if (!resL.ok) {
+        const err = await resL.json();
+        throw new Error(err.error?.message || 'Erro ao atualizar Coluna L (UPH)');
+      }
+    }
+
+    return {
+      success: true,
+      message: `Métricas do Setor ${sectorId} gravadas com sucesso na planilha (Linha ${targetRow})!`,
+      spreadsheetId,
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}`,
+    };
+  } catch (error: any) {
+    console.error('updateOperationalMetricsToSpreadsheet Error:', error);
+    return {
+      success: false,
+      message: `Erro ao gravar na planilha: ${error.message || error}`,
+    };
+  }
+};
+
+/**
+ * Reads operational metrics from "VOLUMOSOS - ATIVIDADE" tab
+ */
+export const readOperationalMetricsFromSpreadsheet = async (
+  accessToken: string,
+  spreadsheetId: string = DEFAULT_SPREADSHEET_ID
+): Promise<{ success: boolean; message: string; data?: Record<string, { atividade: number; uph: number }> }> => {
+  try {
+    const sheetName = 'VOLUMOSOS - ATIVIDADE';
+    const range = `'${sheetName}'!A1:L10`;
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Erro ao ler aba VOLUMOSOS - ATIVIDADE');
+    }
+
+    const json = await res.json();
+    const rows: string[][] = json.values || [];
+
+    const result: Record<string, { atividade: number; uph: number }> = {};
+
+    Object.entries(SECTOR_ROW_MAP).forEach(([sec, rowIdx]) => {
+      const row = rows[rowIdx - 1]; // 0-indexed
+      if (row) {
+        const ativVal = parseFloat((row[7] || '0').replace(/\./g, '').replace(',', '.')) || 0; // Col H is index 7
+        const uphVal = parseFloat((row[11] || '0').replace(/\./g, '').replace(',', '.')) || 0; // Col L is index 11
+        result[sec] = { atividade: ativVal, uph: uphVal };
+      }
+    });
+
+    return {
+      success: true,
+      message: 'Métricas da planilha lidas com sucesso!',
+      data: result,
+    };
+  } catch (error: any) {
+    console.error('readOperationalMetricsFromSpreadsheet Error:', error);
+    return {
+      success: false,
+      message: `Erro ao ler métricas da planilha: ${error.message || error}`,
+    };
+  }
+};
+
+
 /**
  * Creates a new spreadsheet in the user's Google Drive.
  */

@@ -107,6 +107,28 @@ export const initialSetores: Setor[] = [
     coletado: 3240,
     uph: 450,
   },
+  {
+    id: "ELOG",
+    numero: 99,
+    nome: "E-LOG (Picking)",
+    meta: 100,
+    resp: "EQUIPE E-LOG",
+    ativ: 0,
+    promessa: 100.0,
+    varFin: 0,
+    bsi: 100,
+    nota5s: 100,
+    errosPicking: 0,
+    reproTotal: 0,
+    infracaoSeguranca: false,
+    fotoLider: "",
+    horasDKT: 7,
+    poliRec: 0,
+    rdl: 0,
+    poliSaid: 0,
+    coletado: 0,
+    uph: 40,
+  },
 ];
 
 export const initialColaboradores: Colaborador[] = [

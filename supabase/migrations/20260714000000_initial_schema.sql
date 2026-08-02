@@ -88,27 +88,27 @@ CREATE TABLE IF NOT EXISTS public.radar_lojas_status (
 -- Tabela: store_operations (Operações ativas de expedição e carregamento por loja)
 CREATE TABLE IF NOT EXISTS public.store_operations (
   id TEXT PRIMARY KEY,
-  "programacaoId" TEXT NOT NULL,
-  "lojaId" TEXT NOT NULL REFERENCES public.store_master(id) ON DELETE CASCADE,
-  "nomeLoja" TEXT NOT NULL,
+  programacao_id TEXT NOT NULL,
+  loja_id TEXT NOT NULL REFERENCES public.store_master(id) ON DELETE CASCADE,
+  nome_loja TEXT NOT NULL,
   setor TEXT NOT NULL,
   transportadora TEXT,
   corte TEXT,
   carregamento TEXT,
   volumes INTEGER DEFAULT 0,
   enderecos INTEGER DEFAULT 0,
-  "atividadeRelacionada" TEXT,
-  "statusSoltura" TEXT NOT NULL DEFAULT 'Não Solta',
-  "horarioSoltura" TEXT,
-  "soltoPor" TEXT,
-  "statusColeta" TEXT NOT NULL DEFAULT 'Não iniciada',
-  "horarioColeta" TEXT,
-  "coletadoPor" TEXT,
-  "statusCarregamento" TEXT NOT NULL DEFAULT 'Não carregada',
-  "horarioCarregamento" TEXT,
-  "carregadoPor" TEXT,
-  "statusExpedicao" TEXT NOT NULL DEFAULT 'Pendente',
-  "perdeuCorte" BOOLEAN DEFAULT FALSE,
+  atividade_relacionada TEXT,
+  status_soltura TEXT NOT NULL DEFAULT 'Não Solta',
+  horario_soltura TEXT,
+  solto_por TEXT,
+  status_coleta TEXT NOT NULL DEFAULT 'Não iniciada',
+  horario_coleta TEXT,
+  coletado_por TEXT,
+  status_carregamento TEXT NOT NULL DEFAULT 'Não carregada',
+  horario_carregamento TEXT,
+  carregado_por TEXT,
+  status_expedicao TEXT NOT NULL DEFAULT 'Pendente',
+  perdeu_corte BOOLEAN DEFAULT FALSE,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_by TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -117,15 +117,81 @@ CREATE TABLE IF NOT EXISTS public.store_operations (
 -- Tabela: atividade_loja (Histórico e volume de atividades por loja)
 CREATE TABLE IF NOT EXISTS public.atividade_loja (
   id TEXT PRIMARY KEY,
-  "programacaoId" TEXT NOT NULL,
-  "lojaId" TEXT NOT NULL REFERENCES public.store_master(id) ON DELETE CASCADE,
+  programacao_id TEXT NOT NULL,
+  loja_id TEXT NOT NULL REFERENCES public.store_master(id) ON DELETE CASCADE,
   setor TEXT NOT NULL,
-  "tipoAtividade" TEXT,
-  "colisProgramados" INTEGER NOT NULL DEFAULT 0,
-  "colisColetados" INTEGER NOT NULL DEFAULT 0,
+  tipo_atividade TEXT,
+  colis_programados INTEGER NOT NULL DEFAULT 0,
+  colis_coletados INTEGER NOT NULL DEFAULT 0,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Readequação retroativa de colunas de camelCase para snake_case caso a tabela já exista
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'programacaoId') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "programacaoId" TO programacao_id;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'lojaId') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "lojaId" TO loja_id;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'nomeLoja') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "nomeLoja" TO nome_loja;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'atividadeRelacionada') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "atividadeRelacionada" TO atividade_relacionada;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'statusSoltura') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "statusSoltura" TO status_soltura;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'horarioSoltura') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "horarioSoltura" TO horario_soltura;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'soltoPor') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "soltoPor" TO solto_por;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'statusColeta') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "statusColeta" TO status_coleta;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'horarioColeta') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "horarioColeta" TO horario_coleta;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'coletadoPor') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "coletadoPor" TO coletado_por;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'statusCarregamento') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "statusCarregamento" TO status_carregamento;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'horarioCarregamento') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "horarioCarregamento" TO horario_carregamento;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'carregadoPor') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "carregadoPor" TO carregado_por;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'statusExpedicao') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "statusExpedicao" TO status_expedicao;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'perdeuCorte') THEN
+    ALTER TABLE public.store_operations RENAME COLUMN "perdeuCorte" TO perdeu_corte;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'atividade_loja' AND column_name = 'programacaoId') THEN
+    ALTER TABLE public.atividade_loja RENAME COLUMN "programacaoId" TO programacao_id;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'atividade_loja' AND column_name = 'lojaId') THEN
+    ALTER TABLE public.atividade_loja RENAME COLUMN "lojaId" TO loja_id;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'atividade_loja' AND column_name = 'tipoAtividade') THEN
+    ALTER TABLE public.atividade_loja RENAME COLUMN "tipoAtividade" TO tipo_atividade;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'atividade_loja' AND column_name = 'colisProgramados') THEN
+    ALTER TABLE public.atividade_loja RENAME COLUMN "colisProgramados" TO colis_programados;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'atividade_loja' AND column_name = 'colisColetados') THEN
+    ALTER TABLE public.atividade_loja RENAME COLUMN "colisColetados" TO colis_coletados;
+  END IF;
+END $$;
 
 -- Tabela: usuarios (Perfis de usuários do sistema e controle de acesso RBAC)
 CREATE TABLE IF NOT EXISTS public.usuarios (
@@ -175,8 +241,8 @@ CREATE INDEX IF NOT EXISTS idx_store_master_nome ON public.store_master(nome);
 CREATE INDEX IF NOT EXISTS idx_setores_numero ON public.setores(numero);
 CREATE INDEX IF NOT EXISTS idx_lista_coleta_loja ON public.lista_coleta(loja);
 CREATE INDEX IF NOT EXISTS idx_lista_coleta_setor ON public.lista_coleta(setor);
-CREATE INDEX IF NOT EXISTS idx_store_ops_programacao ON public.store_operations("programacaoId");
-CREATE INDEX IF NOT EXISTS idx_store_ops_loja ON public.store_operations("lojaId");
+CREATE INDEX IF NOT EXISTS idx_store_ops_programacao ON public.store_operations(programacao_id);
+CREATE INDEX IF NOT EXISTS idx_store_ops_loja ON public.store_operations(loja_id);
 CREATE INDEX IF NOT EXISTS idx_usuarios_email ON public.usuarios(email);
 CREATE INDEX IF NOT EXISTS idx_colaboradores_nome ON public.colaboradores(nome);
 CREATE INDEX IF NOT EXISTS idx_escalas_data ON public.escalas(data);

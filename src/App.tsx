@@ -82,7 +82,7 @@ import {
   UserCheck,
   RotateCcw,
   Radio,
-  ShieldAlert, ClipboardList,
+  ShieldAlert, ClipboardList, Zap,
 } from "lucide-react";
 
 export default function App() {
@@ -346,6 +346,7 @@ export default function App() {
     realtimeSync.startListeningHistorico();
     realtimeSync.startListeningAudit();
     realtimeSync.startListeningActivityEntries();
+    realtimeSync.startListeningPainelProducao();
 
     return () => {
       realtimeSync.stopAll();
@@ -1591,10 +1592,18 @@ export default function App() {
                         <button
               onClick={() => setActiveTab("apresentacao")}
               className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "apresentacao" ? "active" : ""}`}
-              title="Apresentação de Atividade"
+              title="Console Operacional"
             >
               <ClipboardList size={10} />
-              <span className="truncate">Ativid.</span>
+              <span className="truncate">Console Op.</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("override")}
+              className={`nav-btn py-1 px-1 text-[9px] ${activeTab === "override" ? "active" : ""}`}
+              title="Override Operacional"
+            >
+              <Zap size={10} className="text-amber-400" />
+              <span className="truncate font-bold text-amber-300">Override</span>
             </button>
             <button
               onClick={() => setActiveTab("copil")}
@@ -1808,6 +1817,64 @@ export default function App() {
             </ProtectedRoute>
           )}
 
+          {activeTab === "override" && (
+            <ProtectedRoute 
+              userRole={currentRole} 
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Operador, UserRole.Operacao, UserRole.Expedicao]}
+            >
+              <ConfigTab
+                setores={setores}
+                colaboradores={colaboradores}
+                referentesSemana={referentesSemana}
+                screensaver={screensaver}
+                coordenador={currentUser}
+                fotoCoordenador=""
+                initialSubCat="override"
+                onSaveRadar={handleSaveRadar}
+                onUpdateReferente={(idx, field, val) => {
+                  setReferentesSemana((prev) => {
+                    const copy = [...prev];
+                    copy[idx] = { ...copy[idx], [field]: val };
+                    return copy;
+                  });
+                }}
+                onAddReferente={() => {
+                  setReferentesSemana((prev) => [
+                    ...prev,
+                    { dia: "segunda", ref87: "Novo Líder", refVol: "Apoio Volumoso" },
+                  ]);
+                }}
+                onRemoveReferente={(idx) => {
+                  setReferentesSemana((prev) => prev.filter((_, i) => i !== idx));
+                }}
+                onAddSetor={(id, resp, foto) => {
+                  const numero = parseInt(id.replace(/\D/g, '')) || 0;
+                  const newSec: Setor = { id, numero, nome: `Setor ${id}`, resp, ativ: 0, uph: 0, promessa: 100, nota5s: 100, bsi: 100, reproTotal: 0, errosPicking: 0, horasDKT: 0, poliRec: 0, rdl: 0, poliSaid: 0, coletado: 0, varFin: 0, infracaoSeguranca: false, fotoLider: foto, situacao: 'Ativo', meta: 0 };
+                  setSetores((prev) => [...prev, newSec]);
+                }}
+                onRemoveSetor={(idx) => {
+                  setSetores((prev) => prev.filter((_, i) => i !== idx));
+                }}
+                onUpdateSetor={(sid, field, val) => {
+                  setSetores((prev) =>
+                    prev.map((s) => (s.id === sid ? { ...s, [field]: val } : s))
+                  );
+                }}
+                onUpdateSetorProd={handleUpdateSetorProd}
+                onUpdateCoordenador={(nome) => {
+                  setCurrentUser(nome);
+                }}
+                onUpdateScreensaver={(cfg) => {
+                  setScreensaver(cfg);
+                  alert("Configuração da tela de descanso gravada.");
+                }}
+                onExportBackup={() => {}}
+                onImportBackup={() => {}}
+                onLogout={() => {}}
+              />
+            </ProtectedRoute>
+          )}
+
                     {activeTab === "copil" && (
             <ProtectedRoute 
               userRole={currentRole} 
@@ -1969,6 +2036,7 @@ export default function App() {
                   prev.map((s) => (s.id === sid ? { ...s, [field]: val } : s))
                 );
               }}
+              onUpdateSetorProd={handleUpdateSetorProd}
               onUpdateCoordenador={(nome) => {
                 setCurrentUser(nome);
               }}

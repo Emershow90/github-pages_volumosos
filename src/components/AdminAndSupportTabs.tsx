@@ -1124,12 +1124,14 @@ interface ConfigTabProps {
   screensaver: ScreensaverConfig;
   coordenador: string;
   fotoCoordenador: string;
+  initialSubCat?: string;
   onUpdateReferente: (index: number, field: string, val: string) => void;
   onAddReferente: () => void;
   onRemoveReferente: (index: number) => void;
   onAddSetor: (id: string, resp: string, foto: string) => void;
   onRemoveSetor: (index: number) => void;
   onUpdateSetor: (sid: string, field: string, value: number) => void;
+  onUpdateSetorProd?: (sid: string, field: string, value: number) => void;
   onUpdateCoordenador: (nome: string, foto: string) => void;
   onUpdateScreensaver: (config: ScreensaverConfig) => void;
   onImportBackup: (state: any) => void;
@@ -1145,12 +1147,14 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   screensaver,
   coordenador,
   fotoCoordenador,
+  initialSubCat,
   onUpdateReferente,
   onAddReferente,
   onRemoveReferente,
   onAddSetor,
   onRemoveSetor,
   onUpdateSetor,
+  onUpdateSetorProd,
   onUpdateCoordenador,
   onUpdateScreensaver,
   onImportBackup,
@@ -1158,7 +1162,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   onLogout,
   onSaveRadar,
 }) => {
-  const [subCat, setSubCat] = useState("geral");
+  const [subCat, setSubCat] = useState(initialSubCat || "geral");
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [totalImportedCount, setTotalImportedCount] = useState(0);
 
@@ -1197,6 +1201,13 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   const [overBsi, setOverBsi] = useState(100);
   const [overUph, setOverUph] = useState(0);
   const [overErrosPicking, setOverErrosPicking] = useState(0);
+
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideSummary, setOverrideSummary] = useState<{
+    sector: string;
+    autoLoaded: { label: string; value: string | number }[];
+    manualRequired: string[];
+  } | null>(null);
 
   const lastSidRef = React.useRef<string>("");
 
@@ -1434,14 +1445,51 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
   const handleOverrideSave = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateSetor(overrideSid, "ativ", overAtiv);
+    const isElog = overrideSid === "ELOG" || overrideSid === "E-LOG";
+    const updateProd = onUpdateSetorProd || onUpdateSetor;
+
+    if (!isElog) {
+      onUpdateSetor(overrideSid, "ativ", overAtiv);
+    }
     onUpdateSetor(overrideSid, "reproTotal", overRepro);
     onUpdateSetor(overrideSid, "promessa", overPromessa);
-    onUpdateSetorProd(overrideSid, "nota5s", over5s);
-    onUpdateSetorProd(overrideSid, "bsi", overBsi);
-    onUpdateSetorProd(overrideSid, "uph", overUph);
-    onUpdateSetorProd(overrideSid, "errosPicking", overErrosPicking);
-    showFeedback(`Apontamentos e overrides salvos com sucesso para S${overrideSid}!`, "success");
+    updateProd(overrideSid, "nota5s", over5s);
+    updateProd(overrideSid, "bsi", overBsi);
+    updateProd(overrideSid, "uph", overUph);
+    updateProd(overrideSid, "errosPicking", overErrosPicking);
+
+    const autoLoaded: { label: string; value: string | number }[] = [];
+    const manualRequired: string[] = [];
+
+    if (isElog) {
+      manualRequired.push("Atividade (Ativ) [Col H] (Bloqueado p/ E-LOG)");
+    } else if (overAtiv > 0) {
+      autoLoaded.push({ label: "Atividade (Ativ) [Col H]", value: overAtiv });
+    } else {
+      manualRequired.push("Atividade (Ativ) [Col H]");
+    }
+
+    if (overUph > 0) {
+      autoLoaded.push({ label: "Produtividade (UPH) [Col L]", value: overUph });
+    } else {
+      manualRequired.push("Produtividade (UPH) [Col L]");
+    }
+
+    if (overRepro > 0) autoLoaded.push({ label: "Repro Total", value: overRepro });
+    else manualRequired.push("Repro Total");
+
+    if (overPromessa > 0) autoLoaded.push({ label: "Promessa %", value: `${overPromessa}%` });
+    if (over5s > 0) autoLoaded.push({ label: "5S Auditoria %", value: `${over5s}%` });
+    if (overBsi > 0) autoLoaded.push({ label: "BSI %", value: `${overBsi}%` });
+    if (overErrosPicking >= 0) autoLoaded.push({ label: "Erros Picking %", value: `${overErrosPicking}%` });
+
+    setOverrideSummary({
+      sector: overrideSid,
+      autoLoaded,
+      manualRequired,
+    });
+    setShowOverrideModal(true);
+    showFeedback(`Apontamentos e overrides gravados no banco com sucesso para S${overrideSid}!`, "success");
   };
 
   const handleCreateSetor = (e: React.FormEvent) => {
@@ -2189,30 +2237,105 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
         {/* CATEGORY: OVERRIDE */}
         {subCat === "override" && (
           <div className="space-y-6">
+            {/* Modal Summary after Save */}
+            {showOverrideModal && overrideSummary && (
+              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fadeIn">
+                <div className="bg-[#0c0c0f] border border-[#262630] rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+                  <div className="bg-[#1a1a24] p-5 border-b border-[#262630] flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-emerald-500/20 p-2 rounded-full text-emerald-400 font-bold">
+                        ✓
+                      </div>
+                      <h2 className="text-white font-bold text-base uppercase font-mono tracking-wider">
+                        Resumo do Envio (S{overrideSummary.sector})
+                      </h2>
+                    </div>
+                    <button onClick={() => setShowOverrideModal(false)} className="text-zinc-400 hover:text-white transition-colors">
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto font-mono text-xs">
+                    <div>
+                      <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        Payload Enviado p/ Supabase (Sucesso)
+                      </h3>
+                      {overrideSummary.autoLoaded.length > 0 ? (
+                        <ul className="space-y-2">
+                          {overrideSummary.autoLoaded.map((item, i) => (
+                            <li key={i} className="bg-[#13131a] border border-[#262630] p-2.5 rounded-lg flex justify-between items-center text-zinc-300">
+                              <span className="font-medium text-white">{item.label}</span>
+                              <span className="text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">{item.value}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-zinc-500 italic">Nenhum dado alterado.</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3">
+                        Em Branco / Ignorado
+                      </h3>
+                      {overrideSummary.manualRequired.length > 0 ? (
+                        <ul className="flex flex-wrap gap-2">
+                          {overrideSummary.manualRequired.map((item, i) => (
+                            <li key={i} className="text-[11px] bg-[#13131a] border border-[#262630] px-3 py-1 rounded-full text-zinc-400">
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-zinc-500 italic">Todos os campos foram preenchidos.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-4 border-t border-[#262630] bg-[#0a0a0c] flex justify-end">
+                    <button 
+                      onClick={() => setShowOverrideModal(false)}
+                      className="bg-[#262630] hover:bg-[#333] text-white text-xs font-bold uppercase tracking-wider py-2 px-5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleOverrideSave} className="glass-card p-6 border border-white/10 bg-zinc-950/40 relative overflow-hidden rounded-[20px] shadow-2xl">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-4 border-b border-white/5">
                 <div>
                   <h3 className="text-sm font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
                     <span className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg">⚡</span>
-                    Apontamento Rápido (Override)
+                    Apontamento Rápido (Override Operacional)
                   </h3>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">Forçar modificação manual de métricas cruciais de um setor de forma independente</p>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">Forçar modificação manual de métricas cruciais de um setor com salvamento direto no banco</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Setor Ativo:</span>
                   <select
                     value={overrideSid}
                     onChange={(e) => setOverrideSid(e.target.value)}
-                    className="inp w-36 py-2 px-3 font-bold text-indigo-300 bg-zinc-900 border border-white/10 rounded-[12px] focus:border-indigo-500 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] focus:outline-none cursor-pointer transition-all duration-200"
+                    className="inp w-44 py-2 px-3 font-bold text-indigo-300 bg-zinc-900 border border-white/10 rounded-[12px] focus:border-indigo-500 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] focus:outline-none cursor-pointer transition-all duration-200"
                   >
                     {setores.map((s) => (
                       <option key={s.id} value={s.id} className="bg-zinc-950 text-white">
-                        S{s.id} ({s.id === "87" ? "Caixas" : "Colis"})
+                        {s.id === "ELOG" || s.id === "E-LOG" ? "E-LOG (Picking)" : `S${s.id} (${s.nome || s.resp || "Geral"})`}
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
+
+              {/* Banner de aviso E-LOG */}
+              {(overrideSid === "ELOG" || overrideSid === "E-LOG") && (
+                <div className="mb-6 bg-amber-500/10 border border-amber-500/30 text-amber-300 p-4 rounded-xl text-xs flex items-center gap-3 animate-fadeIn">
+                  <span className="text-base flex-shrink-0">⚠️</span>
+                  <span><strong>Aviso E-LOG:</strong> A <u>Atividade</u> preenchida será ignorada no envio para a tabela. A <u>Produtividade (UPH)</u> e demais métricas serão salvas normalmente no banco Supabase.</span>
+                </div>
+              )}
 
               <div className="bg-black/40 p-5 rounded-[16px] border border-white/5 grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>
@@ -2220,8 +2343,9 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                   <input
                     type="number"
                     value={overAtiv}
+                    disabled={overrideSid === "ELOG" || overrideSid === "E-LOG"}
                     onChange={(e) => setOverAtiv(parseInt(e.target.value) || 0)}
-                    className="inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] transition-all duration-200"
+                    className={`inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] transition-all duration-200 ${(overrideSid === "ELOG" || overrideSid === "E-LOG") ? "opacity-40 cursor-not-allowed bg-zinc-900" : ""}`}
                   />
                 </div>
                 <div>
@@ -2249,7 +2373,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                     type="number"
                     value={overUph}
                     onChange={(e) => setOverUph(parseInt(e.target.value) || 0)}
-                    className="inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] transition-all duration-200"
+                    className="inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 text-emerald-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:shadow-[0_0_15px_rgba(16,185,129,0.25)] transition-all duration-200"
                   />
                 </div>
                 <div>
@@ -2289,7 +2413,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                   type="submit"
                   className="bg-indigo-600 hover:bg-indigo-500 hover:scale-[1.02] active:scale-[0.98] text-white py-2.5 px-6 rounded-[12px] text-xs font-black uppercase tracking-wider cursor-pointer shadow-lg shadow-indigo-500/20 transition-all duration-200 flex items-center gap-2"
                 >
-                  <span>💾</span> Registar Apontamento S{overrideSid}
+                  <span>💾</span> Registrar Apontamento {(overrideSid === "ELOG" || overrideSid === "E-LOG") ? "E-LOG" : `S${overrideSid}`}
                 </button>
               </div>
             </form>
@@ -3078,9 +3202,4 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
       />
     </div>
   );
-
-  // Helper inside tab scope
-  function onUpdateSetorProd(sid: string, field: string, value: number) {
-    onUpdateSetor(sid, field, value);
-  }
 };

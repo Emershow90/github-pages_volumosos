@@ -42,7 +42,7 @@ export class IndexedDBService {
             "override_operacional", "audit_logs", "historico_consolidado",
             "lista_coleta", "radar_lojas_status", "store_master",
             "store_operations", "atividade_loja", "universos_trabalho",
-            "copil_matriz", "alertas_operacionais", "capacidade", "capacidade_operacional", "usuarios", "activity_entries"
+            "copil_matriz", "alertas_operacionais", "capacidade", "capacidade_operacional", "usuarios", "activity_entries", "painel_producao"
           ];
           
           stores.forEach(store => {
