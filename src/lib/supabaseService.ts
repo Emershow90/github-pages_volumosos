@@ -165,6 +165,17 @@ export class SupabaseService {
       if ('transportadoraPadrao' in result) { result.transportadorapadrao = result.transportadoraPadrao; delete result.transportadoraPadrao; }
     } else if (realTable === 'lista_coleta') {
       if ('atividadeRelacionada' in result) { result.atividaderelacionada = result.atividadeRelacionada; delete result.atividadeRelacionada; }
+    } else if (realTable === 'radar_lojas_status') {
+      if ('statusSoltura' in result) { result.status_soltura = result.statusSoltura; delete result.statusSoltura; }
+      if ('horarioSoltura' in result) { result.horario_soltura = result.horarioSoltura; delete result.horarioSoltura; }
+      if ('soltoPor' in result) { result.solto_por = result.soltoPor; delete result.soltoPor; }
+      if ('statusColeta' in result) { result.status_coleta = result.statusColeta; delete result.statusColeta; }
+      if ('horarioColeta' in result) { result.horario_coleta = result.horarioColeta; delete result.horarioColeta; }
+      if ('coletadoPor' in result) { result.coletado_por = result.coletadoPor; delete result.coletadoPor; }
+      if ('statusCarregamento' in result) { result.status_carregamento = result.statusCarregamento; delete result.statusCarregamento; }
+      if ('horarioCarregamento' in result) { result.horario_carregamento = result.horarioCarregamento; delete result.horarioCarregamento; }
+      if ('carregadoPor' in result) { result.carregado_por = result.carregadoPor; delete result.carregadoPor; }
+      if ('statusExpedicao' in result) { result.status_expedicao = result.statusExpedicao; delete result.statusExpedicao; }
     } else if (realTable === 'capacidade') {
       if ('setor_id' in result) { result.setor = result.setor_id; delete result.setor_id; }
       if ('fechoHora' in result) { result.fecho_hora = result.fechoHora; delete result.fechoHora; }
@@ -252,6 +263,27 @@ export class SupabaseService {
       if ('transportadorapadrao' in result && !('transportadoraPadrao' in result)) result.transportadoraPadrao = result.transportadorapadrao;
     } else if (realTable === 'lista_coleta') {
       if ('atividaderelacionada' in result && !('atividadeRelacionada' in result)) result.atividadeRelacionada = result.atividaderelacionada;
+    } else if (realTable === 'radar_lojas_status') {
+      if ('status_soltura' in result && !('statusSoltura' in result)) result.statusSoltura = result.status_soltura;
+      if ('statussoltura' in result && !('statusSoltura' in result)) result.statusSoltura = result.statussoltura;
+      if ('horario_soltura' in result && !('horarioSoltura' in result)) result.horarioSoltura = result.horario_soltura;
+      if ('horariosoltura' in result && !('horarioSoltura' in result)) result.horarioSoltura = result.horariosoltura;
+      if ('solto_por' in result && !('soltoPor' in result)) result.soltoPor = result.solto_por;
+      if ('soltopor' in result && !('soltoPor' in result)) result.soltoPor = result.soltopor;
+      if ('status_coleta' in result && !('statusColeta' in result)) result.statusColeta = result.status_coleta;
+      if ('statuscoleta' in result && !('statusColeta' in result)) result.statusColeta = result.statuscoleta;
+      if ('horario_coleta' in result && !('horarioColeta' in result)) result.horarioColeta = result.horario_coleta;
+      if ('horariocoleta' in result && !('horarioColeta' in result)) result.horarioColeta = result.horariocoleta;
+      if ('coletado_por' in result && !('coletadoPor' in result)) result.coletadoPor = result.coletado_por;
+      if ('coletadopor' in result && !('coletadoPor' in result)) result.coletadoPor = result.coletadopor;
+      if ('status_carregamento' in result && !('statusCarregamento' in result)) result.statusCarregamento = result.status_carregamento;
+      if ('statuscarregamento' in result && !('statusCarregamento' in result)) result.statusCarregamento = result.statuscarregamento;
+      if ('horario_carregamento' in result && !('horarioCarregamento' in result)) result.horarioCarregamento = result.horario_carregamento;
+      if ('horariocarregamento' in result && !('horarioCarregamento' in result)) result.horarioCarregamento = result.horariocarregamento;
+      if ('carregado_por' in result && !('carregadoPor' in result)) result.carregadoPor = result.carregado_por;
+      if ('carregadopor' in result && !('carregadoPor' in result)) result.carregadoPor = result.carregadopor;
+      if ('status_expedicao' in result && !('statusExpedicao' in result)) result.statusExpedicao = result.status_expedicao;
+      if ('statusexpedicao' in result && !('statusExpedicao' in result)) result.statusExpedicao = result.statusexpedicao;
     } else if (realTable === 'capacidade') {
       if ('setor' in result && !('setor_id' in result)) result.setor_id = result.setor;
       if ('fecho_hora' in result && !('fechoHora' in result)) result.fechoHora = result.fecho_hora;

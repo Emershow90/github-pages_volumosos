@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS public.store_master (
   nome TEXT NOT NULL,
   cidade TEXT NOT NULL,
   uf TEXT NOT NULL,
-  "transportadoraPadrao" TEXT NOT NULL,
+  transportadora_padrao TEXT NOT NULL,
   observacoes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -30,22 +30,22 @@ CREATE TABLE IF NOT EXISTS public.setores (
   numero INTEGER NOT NULL UNIQUE,
   nome TEXT NOT NULL,
   resp TEXT NOT NULL,
-  "fotoLider" TEXT,
+  foto_lider TEXT,
   meta DECIMAL(10,2) NOT NULL,
   horario TEXT,
   situacao TEXT NOT NULL DEFAULT 'Ativo' CHECK (situacao IN ('Ativo', 'Inativo')),
   ativ DECIMAL(10,2),
   promessa DECIMAL(10,2),
-  "varFin" DECIMAL(10,2),
+  var_fin DECIMAL(10,2),
   bsi DECIMAL(10,2),
-  "nota5s" DECIMAL(10,2),
-  "errosPicking" INTEGER DEFAULT 0,
-  "reproTotal" INTEGER DEFAULT 0,
-  "infracaoSeguranca" BOOLEAN DEFAULT FALSE,
-  "horasDKT" DECIMAL(10,2),
-  "poliRec" DECIMAL(10,2),
+  nota_5s DECIMAL(10,2),
+  erros_picking INTEGER DEFAULT 0,
+  repro_total INTEGER DEFAULT 0,
+  infracao_seguranca BOOLEAN DEFAULT FALSE,
+  horas_dkt DECIMAL(10,2),
+  poli_rec DECIMAL(10,2),
   rdl DECIMAL(10,2),
-  "poliSaid" DECIMAL(10,2),
+  poli_said DECIMAL(10,2),
   coletado DECIMAL(10,2),
   uph DECIMAL(10,2),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS public.lista_coleta (
   transportadora TEXT,
   volumes INTEGER DEFAULT 0,
   enderecos INTEGER DEFAULT 0,
-  "atividadeRelacionada" TEXT,
+  atividade_relacionada TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -70,16 +70,16 @@ CREATE TABLE IF NOT EXISTS public.lista_coleta (
 -- Tabela: radar_lojas_status (Estados detalhados de soltura, coleta e expedição)
 CREATE TABLE IF NOT EXISTS public.radar_lojas_status (
   lista TEXT PRIMARY KEY REFERENCES public.lista_coleta(lista) ON DELETE CASCADE,
-  "statusSoltura" TEXT NOT NULL DEFAULT 'Não Solta',
-  "horarioSoltura" TEXT,
-  "soltoPor" TEXT,
-  "statusColeta" TEXT NOT NULL DEFAULT 'Não iniciada',
-  "horarioColeta" TEXT,
-  "coletadoPor" TEXT,
-  "statusCarregamento" TEXT NOT NULL DEFAULT 'Não carregada',
-  "horarioCarregamento" TEXT,
-  "carregadoPor" TEXT,
-  "statusExpedicao" TEXT NOT NULL DEFAULT 'Pendente',
+  status_soltura TEXT NOT NULL DEFAULT 'Não Solta',
+  horario_soltura TEXT,
+  solto_por TEXT,
+  status_coleta TEXT NOT NULL DEFAULT 'Não iniciada',
+  horario_coleta TEXT,
+  coletado_por TEXT,
+  status_carregamento TEXT NOT NULL DEFAULT 'Não carregada',
+  horario_carregamento TEXT,
+  carregado_por TEXT,
+  status_expedicao TEXT NOT NULL DEFAULT 'Pendente',
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_by TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -130,6 +130,49 @@ CREATE TABLE IF NOT EXISTS public.atividade_loja (
 -- Readequação retroativa de colunas de camelCase para snake_case caso a tabela já exista
 DO $$
 BEGIN
+  -- store_master
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_master' AND column_name = 'transportadoraPadrao') THEN
+    ALTER TABLE public.store_master RENAME COLUMN "transportadoraPadrao" TO transportadora_padrao;
+  END IF;
+
+  -- lista_coleta
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'lista_coleta' AND column_name = 'atividadeRelacionada') THEN
+    ALTER TABLE public.lista_coleta RENAME COLUMN "atividadeRelacionada" TO atividade_relacionada;
+  END IF;
+
+  -- radar_lojas_status
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'statusSoltura') THEN
+    ALTER TABLE public.radar_lojas_status RENAME COLUMN "statusSoltura" TO status_soltura;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'horarioSoltura') THEN
+    ALTER TABLE public.radar_lojas_status RENAME COLUMN "horarioSoltura" TO horario_soltura;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'soltoPor') THEN
+    ALTER TABLE public.radar_lojas_status RENAME COLUMN "soltoPor" TO solto_por;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'statusColeta') THEN
+    ALTER TABLE public.radar_lojas_status RENAME COLUMN "statusColeta" TO status_coleta;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'horarioColeta') THEN
+    ALTER TABLE public.radar_lojas_status RENAME COLUMN "horarioColeta" TO horario_coleta;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'coletadoPor') THEN
+    ALTER TABLE public.radar_lojas_status RENAME COLUMN "coletadoPor" TO coletado_por;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'statusCarregamento') THEN
+    ALTER TABLE public.radar_lojas_status RENAME COLUMN "statusCarregamento" TO status_carregamento;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'horarioCarregamento') THEN
+    ALTER TABLE public.radar_lojas_status RENAME COLUMN "horarioCarregamento" TO horario_carregamento;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'carregadoPor') THEN
+    ALTER TABLE public.radar_lojas_status RENAME COLUMN "carregadoPor" TO carregado_por;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'radar_lojas_status' AND column_name = 'statusExpedicao') THEN
+    ALTER TABLE public.radar_lojas_status RENAME COLUMN "statusExpedicao" TO status_expedicao;
+  END IF;
+
+  -- store_operations
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'store_operations' AND column_name = 'programacaoId') THEN
     ALTER TABLE public.store_operations RENAME COLUMN "programacaoId" TO programacao_id;
   END IF;
@@ -176,6 +219,7 @@ BEGIN
     ALTER TABLE public.store_operations RENAME COLUMN "perdeuCorte" TO perdeu_corte;
   END IF;
 
+  -- atividade_loja
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'atividade_loja' AND column_name = 'programacaoId') THEN
     ALTER TABLE public.atividade_loja RENAME COLUMN "programacaoId" TO programacao_id;
   END IF;
@@ -190,6 +234,11 @@ BEGIN
   END IF;
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'atividade_loja' AND column_name = 'colisColetados') THEN
     ALTER TABLE public.atividade_loja RENAME COLUMN "colisColetados" TO colis_coletados;
+  END IF;
+
+  -- usuarios
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'usuarios' AND column_name = 'setoresAutorizados') THEN
+    ALTER TABLE public.usuarios RENAME COLUMN "setoresAutorizados" TO setores_autorizados;
   END IF;
 END $$;
 
@@ -301,16 +350,16 @@ SELECT
   lc.transportadora,
   lc.corte,
   lc.carregamento,
-  rls."statusSoltura" AS "statusSoltura",
-  rls."horarioSoltura" AS "horarioSoltura",
-  rls."soltoPor" AS "soltoPor",
-  rls."statusColeta" AS "statusColeta",
-  rls."horarioColeta" AS "horarioColeta",
-  rls."coletadoPor" AS "coletadoPor",
-  rls."statusCarregamento" AS "statusCarregamento",
-  rls."horarioCarregamento" AS "horarioCarregamento",
-  rls."carregadoPor" AS "carregadoPor",
-  rls."statusExpedicao" AS "statusExpedicao",
+  rls.status_soltura AS "statusSoltura",
+  rls.horario_soltura AS "horarioSoltura",
+  rls.solto_por AS "soltoPor",
+  rls.status_coleta AS "statusColeta",
+  rls.horario_coleta AS "horarioColeta",
+  rls.coletado_por AS "coletadoPor",
+  rls.status_carregamento AS "statusCarregamento",
+  rls.horario_carregamento AS "horarioCarregamento",
+  rls.carregado_por AS "carregadoPor",
+  rls.status_expedicao AS "statusExpedicao",
   rls.updated_at AS "ultima_atualizacao"
 FROM public.lista_coleta lc
 LEFT JOIN public.radar_lojas_status rls ON lc.lista = rls.lista;

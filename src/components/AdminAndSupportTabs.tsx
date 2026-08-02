@@ -50,7 +50,9 @@ import {
 import {
   createScaleSpreadsheet,
   writeScaleToSpreadsheet,
-  readScaleFromSpreadsheet
+  readScaleFromSpreadsheet,
+  readOperationalMetricsFromSpreadsheet,
+  DEFAULT_SPREADSHEET_ID
 } from "../lib/googleSheetsService";
 import { SupabaseService as FirebaseService } from "../lib/supabaseService";
 import { IndexedDBService } from "../lib/indexedDb";
@@ -107,12 +109,10 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
 
   const isAdmin = currentRole === UserRole.Admin;
 
-  // Load spreadsheet link from localStorage on mount
+  // Load spreadsheet link from localStorage on mount (defaults to corporate ID)
   useEffect(() => {
     const savedId = localStorage.getItem("google_sheets_scale_id");
-    if (savedId) {
-      setSpreadsheetId(savedId);
-    }
+    setSpreadsheetId(savedId || DEFAULT_SPREADSHEET_ID);
   }, []);
 
   // Initialize auth state listener
@@ -138,11 +138,18 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
         setGoogleUser(res.user);
         setGoogleToken(res.accessToken);
         setSyncStatus("Conectado com o Google com sucesso!");
+        return res.accessToken;
       }
     } catch (err: any) {
       console.error(err);
-      setSyncStatus(`Erro de login: ${err.message || err}`);
+      const errMsg = err?.msg || err?.message || (typeof err === "string" ? err : JSON.stringify(err));
+      if (errMsg.includes("Unsupported provider") || errMsg.includes("not enabled")) {
+        setSyncStatus("Provedor Google OAuth desativado no Supabase. Utilize e-mail/senha ou importação por arquivo local.");
+      } else {
+        setSyncStatus(`Erro ao autenticar com Google: ${errMsg}`);
+      }
     }
+    return null;
   };
 
   const handleGoogleLogout = async () => {
@@ -157,11 +164,15 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
   };
 
   const handleCreateNewSheet = async () => {
-    if (!googleToken) return;
+    let token = googleToken;
+    if (!token) {
+      token = await handleGoogleLogin();
+      if (!token) return;
+    }
     setIsSyncing(true);
     setSyncStatus("Criando nova planilha...");
     try {
-      const result = await createScaleSpreadsheet(googleToken, colaboradores);
+      const result = await createScaleSpreadsheet(token, colaboradores);
       if (result.success && result.spreadsheetId) {
         setSpreadsheetId(result.spreadsheetId);
         localStorage.setItem("google_sheets_scale_id", result.spreadsheetId);
@@ -177,11 +188,16 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
   };
 
   const handleExportToSheet = async () => {
-    if (!googleToken || !spreadsheetId) return;
+    let token = googleToken;
+    if (!token) {
+      token = await handleGoogleLogin();
+      if (!token) return;
+    }
+    const sid = spreadsheetId || DEFAULT_SPREADSHEET_ID;
     setIsSyncing(true);
     setSyncStatus("Sincronizando dados para planilha (Exportando)...");
     try {
-      const result = await writeScaleToSpreadsheet(googleToken, spreadsheetId, colaboradores);
+      const result = await writeScaleToSpreadsheet(token, sid, colaboradores);
       setSyncStatus(result.message);
     } catch (err: any) {
       setSyncStatus(`Erro ao exportar: ${err.message || err}`);
@@ -191,11 +207,16 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
   };
 
   const handleImportFromSheet = async () => {
-    if (!googleToken || !spreadsheetId) return;
+    let token = googleToken;
+    if (!token) {
+      token = await handleGoogleLogin();
+      if (!token) return;
+    }
+    const sid = spreadsheetId || DEFAULT_SPREADSHEET_ID;
     setIsSyncing(true);
     setSyncStatus("Buscando dados da planilha (Importando)...");
     try {
-      const result = await readScaleFromSpreadsheet(googleToken, spreadsheetId);
+      const result = await readScaleFromSpreadsheet(token, sid);
       if (result.success && result.data) {
         onSetColaboradores(result.data);
         setSyncStatus(result.message);
@@ -1186,6 +1207,97 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   const showFeedback = (text: string, type: "success" | "error" | "info" = "success") => {
     setFeedback({ text, type });
     setTimeout(() => setFeedback(null), 4000);
+  };
+
+  // Google Sheets Integration states inside ConfigTab
+  const [googleUser, setGoogleUser] = useState<any>(null);
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
+  const [spreadsheetId, setSpreadsheetId] = useState<string>("");
+  const [syncStatus, setSyncStatus] = useState<string>("");
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  useEffect(() => {
+    const savedId = localStorage.getItem("google_sheets_scale_id");
+    setSpreadsheetId(savedId || DEFAULT_SPREADSHEET_ID);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      (user, token) => {
+        setGoogleUser(user);
+        setGoogleToken(token);
+      },
+      () => {
+        setGoogleUser(null);
+        setGoogleToken(null);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const handleFetchOperationalMetrics = async () => {
+    let tokenToUse = googleToken;
+    if (!tokenToUse || tokenToUse === "mock-token") {
+      setSyncStatus("Solicitando autorização do Google...");
+      try {
+        const res = await googleSignIn();
+        if (res && res.accessToken) {
+          tokenToUse = res.accessToken;
+          setGoogleUser(res.user);
+          setGoogleToken(res.accessToken);
+        } else {
+          setSyncStatus("Por favor, conecte sua conta Google para ler a planilha.");
+          showFeedback("Conecte sua conta do Google para puxar os dados da planilha.", "error");
+          return;
+        }
+      } catch (err: any) {
+        console.error(err);
+        const errMsg = err?.msg || err?.message || (typeof err === "string" ? err : JSON.stringify(err));
+        if (errMsg.includes("Unsupported provider") || errMsg.includes("not enabled")) {
+          setSyncStatus("Login Google OAuth via Supabase não está ativado no console. Você pode preencher as métricas manualmente ou importar via arquivo CSV/XLSX.");
+          showFeedback("Provedor Google OAuth desativado no Supabase. Preencha manualmente ou via arquivo CSV/XLSX.", "error");
+        } else {
+          setSyncStatus(`Erro ao autenticar: ${errMsg}`);
+          showFeedback(`Erro ao autenticar com Google: ${errMsg}`, "error");
+        }
+        return;
+      }
+    }
+
+    const sid = spreadsheetId || DEFAULT_SPREADSHEET_ID;
+    setIsSyncing(true);
+    setSyncStatus("Buscando métricas da aba VOLUMOSOS - ATIVIDADE...");
+    try {
+      const result = await readOperationalMetricsFromSpreadsheet(tokenToUse, sid);
+      if (result.success && result.data) {
+        const updateProd = onUpdateSetorProd || onUpdateSetor;
+        Object.entries(result.data).forEach(([secId, metrics]) => {
+          if (secId !== "ELOG" && secId !== "E-LOG") {
+            onUpdateSetor(secId, "ativ", metrics.atividade);
+          }
+          updateProd(secId, "uph", metrics.uph);
+        });
+
+        if (overrideSid && result.data[overrideSid]) {
+          const m = result.data[overrideSid];
+          if (overrideSid !== "ELOG" && overrideSid !== "E-LOG") {
+            setOverAtiv(m.atividade);
+          }
+          setOverUph(m.uph);
+        }
+
+        setSyncStatus(result.message);
+        showFeedback(`Métricas da planilha (VOLUMOSOS - ATIVIDADE) puxadas com sucesso!`, "success");
+      } else {
+        setSyncStatus(result.message);
+        showFeedback(result.message, "error");
+      }
+    } catch (err: any) {
+      setSyncStatus(`Erro ao puxar dados: ${err.message || err}`);
+      showFeedback(`Erro ao puxar dados da planilha: ${err.message || err}`, "error");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // General Liderança forms
@@ -2327,6 +2439,30 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Banner de Sincronização com Google Sheets */}
+              <div className="mb-6 p-4 rounded-xl border border-indigo-500/30 bg-indigo-950/30 flex flex-col sm:flex-row justify-between items-center gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl flex-shrink-0">📊</span>
+                  <div>
+                    <p className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      Planilha Oficial Google Sheets (VOLUMOSOS - ATIVIDADE)
+                    </p>
+                    <p className="text-[10px] text-zinc-400 mt-0.5">
+                      Puxe Atividade (Coluna H) e Produtividade UPH (Coluna L) diretamente da planilha oficial.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleFetchOperationalMetrics}
+                  disabled={isSyncing}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/20 transition-all duration-200 disabled:opacity-50 flex-shrink-0"
+                >
+                  <RefreshCw size={14} className={isSyncing ? "animate-spin text-amber-300" : "text-white"} />
+                  {isSyncing ? "Puxando..." : "Importar Métricas da Planilha"}
+                </button>
               </div>
 
               {/* Banner de aviso E-LOG */}

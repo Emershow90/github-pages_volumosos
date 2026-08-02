@@ -95,8 +95,8 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     } catch (err: any) {
       console.error(err);
       let BrazilianMsg = 'Erro ao realizar login. Verifique suas credenciais.';
-      const errMsg = err.message || '';
-      const errCode = err.code || '';
+      const errMsg = err.msg || err.message || (typeof err === 'string' ? err : '');
+      const errCode = err.code || err.error_code || '';
       if (
         errCode === 'auth/invalid-credential' || 
         errCode === 'auth/wrong-password' || 
@@ -109,8 +109,8 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
         BrazilianMsg = 'Formato de e-mail inválido.';
       } else if (errCode === 'auth/user-disabled' || errCode === 'user_disabled') {
         BrazilianMsg = 'Este usuário foi desativado.';
-      } else if (errCode === 'auth/operation-not-allowed') {
-        BrazilianMsg = 'Autenticação por e-mail desativada. Use o Google Workspace ou ative no console.';
+      } else if (errCode === 'auth/operation-not-allowed' || errMsg.includes('not enabled') || errMsg.includes('Unsupported provider')) {
+        BrazilianMsg = 'O provedor de login selecionado não está ativado no Supabase. Entre em contato com o suporte ou utilize e-mail/senha.';
       } else if (errMsg.includes('Email not confirmed')) {
         BrazilianMsg = 'E-mail não confirmado. Por favor, verifique sua caixa de entrada.';
       } else if (errMsg) {
@@ -231,7 +231,12 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
       }
     } catch (err: any) {
       console.error(err);
-      setError('Falha na autenticação com Google.');
+      const msg = err?.msg || err?.message || (typeof err === 'string' ? err : '');
+      if (msg.includes('Unsupported provider') || msg.includes('not enabled')) {
+        setError('O login via Google não está ativado no Supabase. Por favor, utilize o login com E-mail e Senha.');
+      } else {
+        setError(`Falha na autenticação com Google: ${msg || 'Erro desconhecido'}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -247,7 +252,12 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
       }
     } catch (err: any) {
       console.error(err);
-      setError('Falha na autenticação com Microsoft 365.');
+      const msg = err?.msg || err?.message || (typeof err === 'string' ? err : '');
+      if (msg.includes('Unsupported provider') || msg.includes('not enabled')) {
+        setError('O login via Microsoft 365 não está ativado no Supabase. Por favor, utilize o login com E-mail e Senha.');
+      } else {
+        setError(`Falha na autenticação com Microsoft 365: ${msg || 'Erro desconhecido'}`);
+      }
     } finally {
       setLoading(false);
     }
