@@ -13,6 +13,7 @@ import {
   ColaboradorStatus,
 } from "../types";
 import { CopilBarChart, ProdHorasHorizontalBar } from "./CommandCharts";
+import { OverrideOperacionalModal } from "./OverrideOperacionalModal";
 import { Minimize2, Plus, RefreshCw, FileText, Upload, ShieldAlert, Sparkles, Sliders, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 
 // ==========================================
@@ -127,6 +128,7 @@ export const ProdutividadeTab: React.FC<ProdutividadeTabProps> = ({
   onGravarTurno,
 }) => {
   const activeS = setores.find((x) => x.id === activeSectorId) || setores[0];
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
 
   const hDKT = activeS?.horasDKT || 0;
   const pRec = activeS?.poliRec || 0;
@@ -157,18 +159,34 @@ export const ProdutividadeTab: React.FC<ProdutividadeTabProps> = ({
       <div className="glass-card p-6 space-y-6">
         <div className="flex justify-between items-center border-b border-white/5 pb-4">
           <h3 className="font-black text-white text-sm uppercase">Cálculo Macro Oficial (UPH)</h3>
-          <select
-            value={activeS.id}
-            onChange={(e) => setActiveSectorId(e.target.value)}
-            className="inp w-48 font-bold text-indigo-300 focus:outline-none cursor-pointer"
-          >
-            {setores.map((x) => (
-              <option key={x.id} value={x.id}>
-                S{x.id} — {x.resp.split(" ")[0]}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsOverrideModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-500/30 transition-colors text-xs font-bold cursor-pointer"
+            >
+              <Sliders size={14} />
+              Override Operacional
+            </button>
+            <select
+              value={activeS.id}
+              onChange={(e) => setActiveSectorId(e.target.value)}
+              className="inp w-48 font-bold text-indigo-300 focus:outline-none cursor-pointer"
+            >
+              {setores.map((x) => (
+                <option key={x.id} value={x.id}>
+                  S{x.id} — {x.resp.split(" ")[0]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        <OverrideOperacionalModal
+          isOpen={isOverrideModalOpen}
+          onClose={() => setIsOverrideModalOpen(false)}
+          setores={setores}
+          onUpdateSetor={onUpdateSetorProd}
+        />
 
         <div className="bg-black/30 p-5 rounded-xl border border-white/5">
           <div className="flex flex-wrap items-center gap-4 text-sm">

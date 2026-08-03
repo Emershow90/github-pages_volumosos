@@ -1419,12 +1419,12 @@ export default function App() {
                 onRemoveReferente={(idx) => {
                   setReferentesSemana((prev) => prev.filter((_, i) => i !== idx));
                 }}
-                onAddSetor={(id, resp, foto) => {
+                onAddSetor={async (id, resp, foto) => {
                   const numero = parseInt(id.replace(/\D/g, "")) || 0;
                   const newSec: Setor = {
                     id,
                     numero,
-                    nome: `Setor ${id}`,
+                    nome: id.toUpperCase() === 'E-LOG' ? 'E-LOG' : `Setor ${id}`,
                     resp,
                     ativ: 0,
                     uph: 0,
@@ -1444,7 +1444,20 @@ export default function App() {
                     situacao: "Ativo",
                     meta: 0,
                   };
-                  setSetores((prev) => [...prev, newSec]);
+                  
+                  // Atomic insert for both Setor and Capacidade via Supabase 
+                  // using 'setor' as the unique conflict target for Capacidade
+                  try {
+                    await FirebaseService.upsertRecord('setores', newSec, 'id');
+                    const newCap = { id, setor: id, abertura: 0, fechoHora: 0 };
+                    await FirebaseService.upsertRecord('capacidade', newCap, 'setor');
+                    
+                    // Optimistic update
+                    setSetores((prev) => [...prev, newSec]);
+                  } catch (err) {
+                    console.error("Error creating new sector & capacity:", err);
+                    alert("Erro ao criar o setor no servidor.");
+                  }
                 }}
                 onRemoveSetor={(idx) => {
                   setSetores((prev) => prev.filter((_, i) => i !== idx));
@@ -1606,12 +1619,12 @@ export default function App() {
                 onRemoveReferente={(idx) => {
                   setReferentesSemana((prev) => prev.filter((_, i) => i !== idx));
                 }}
-                onAddSetor={(id, resp, foto) => {
+                onAddSetor={async (id, resp, foto) => {
                   const numero = parseInt(id.replace(/\D/g, "")) || 0;
                   const newSec: Setor = {
                     id,
                     numero,
-                    nome: `Setor ${id}`,
+                    nome: id.toUpperCase() === 'E-LOG' ? 'E-LOG' : `Setor ${id}`,
                     resp,
                     ativ: 0,
                     uph: 0,
@@ -1631,7 +1644,20 @@ export default function App() {
                     situacao: "Ativo",
                     meta: 0,
                   };
-                  setSetores((prev) => [...prev, newSec]);
+                  
+                  // Atomic insert for both Setor and Capacidade via Supabase 
+                  // using 'setor' as the unique conflict target for Capacidade
+                  try {
+                    await FirebaseService.upsertRecord('setores', newSec, 'id');
+                    const newCap = { id, setor: id, abertura: 0, fechoHora: 0 };
+                    await FirebaseService.upsertRecord('capacidade', newCap, 'setor');
+                    
+                    // Optimistic update
+                    setSetores((prev) => [...prev, newSec]);
+                  } catch (err) {
+                    console.error("Error creating new sector & capacity:", err);
+                    alert("Erro ao criar o setor no servidor.");
+                  }
                 }}
                 onRemoveSetor={(idx) => {
                   setSetores((prev) => prev.filter((_, i) => i !== idx));
