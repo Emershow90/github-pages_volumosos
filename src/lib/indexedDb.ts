@@ -40,7 +40,7 @@ export class IndexedDBService {
           const stores = [
             "setores", "colaboradores", "escala_semanal", "escalas", "escalas_referentes", "lideranca",
             "override_operacional", "audit_logs", "historico_consolidado",
-            "lista_coleta", "radar_lojas_status", "store_master",
+            "lista_coleta", "store_master",
             "store_operations", "atividade_loja", "universos_trabalho",
             "copil_matriz", "alertas_operacionais", "capacidade", "capacidade_operacional", "usuarios", "activity_entries", "painel_producao"
           ];
@@ -53,8 +53,7 @@ export class IndexedDBService {
                 console.warn(`[IndexedDB] Error deleting store ${store} during upgrade:`, e);
               }
             }
-            const keyPath = (store === "override_operacional") ? "chave" : 
-                            (store === "lista_coleta" || store === "radar_lojas_status") ? "lista" : "id";
+            const keyPath = "id";
             const autoIncrement = (store === "audit_logs" || store === "historico_consolidado");
             db.createObjectStore(store, { keyPath, autoIncrement });
           });
@@ -133,16 +132,15 @@ export class IndexedDBService {
     }
   }
 
-  public static async put(storeName: string, value: any): Promise<void> {
-    const keyField = (storeName === "override_operacional") ? "chave" : 
-                     (storeName === "lista_coleta" || storeName === "radar_lojas_status") ? "lista" : "id";
+  public static async put(storeName: string, value: unknown): Promise<void> {
+    const keyField = "id";
     
     if (value && typeof value === "object") {
       if (value[keyField] === undefined) {
         if (storeName === "lideranca") {
-          value[keyField] = value.nome || "lideranca_atual";
+          value[keyField] = (value as any).nome || "lideranca_atual";
         } else if (storeName === "escala_semanal") {
-          value[keyField] = value.dia || "escala_semanal_item";
+          value[keyField] = (value as any).dia || "escala_semanal_item";
         } else {
           value[keyField] = "rand_" + Math.random().toString(36).substring(2, 11);
         }
@@ -180,16 +178,15 @@ export class IndexedDBService {
   }
 
   public static async putMany(storeName: string, values: any[]): Promise<void> {
-    const keyField = (storeName === "override_operacional") ? "chave" : 
-                     (storeName === "lista_coleta" || storeName === "radar_lojas_status") ? "lista" : "id";
+    const keyField = "id";
     
     for (const val of values) {
       if (val && typeof val === "object") {
         if (val[keyField] === undefined) {
           if (storeName === "lideranca") {
-            val[keyField] = val.nome || "lideranca_atual";
+            val[keyField] = (val as any).nome || "lideranca_atual";
           } else if (storeName === "escala_semanal") {
-            val[keyField] = val.dia || "escala_semanal_item";
+            val[keyField] = (val as any).dia || "escala_semanal_item";
           } else {
             val[keyField] = "rand_" + Math.random().toString(36).substring(2, 11);
           }

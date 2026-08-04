@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Setor } from '../types/Setor';
-import { Settings, Check, X, AlertTriangle, Save } from 'lucide-react';
+import { Settings, X, AlertTriangle, Save, Sparkles } from 'lucide-react';
 import { SupabaseService as FirebaseService } from '../lib/supabaseService';
+import { fetchPublicSpreadsheetMetrics, PublicSpreadsheetMetricsMap } from '../lib/googleSheetsPublicSource';
 
 interface OverrideOperacionalModalProps {
   isOpen: boolean;
@@ -26,9 +27,17 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
     bsi: '',
     errosPicking: '',
   });
+
+  const [publicMetrics, setPublicMetrics] = useState<PublicSpreadsheetMetricsMap | null>(null);
+  const [suggestedAtiv, setSuggestedAtiv] = useState<string>('');
+  const [suggestedUph, setSuggestedUph] = useState<string>('');
+  const [isAtivSuggested, setIsAtivSuggested] = useState(false);
+  const [isUphSuggested, setIsUphSuggested] = useState(false);
+
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Fetch public Google Sheets CSV metrics on modal open
   useEffect(() => {
     if (isOpen) {
       setSelectedSector('');
@@ -41,15 +50,65 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
         bsi: '',
         errosPicking: '',
       });
+      setSuggestedAtiv('');
+      setSuggestedUph('');
+      setIsAtivSuggested(false);
+      setIsUphSuggested(false);
       setIsConfirming(false);
       setIsSaving(false);
+
+      fetchPublicSpreadsheetMetrics()
+        .then((data) => setPublicMetrics(data))
+        .catch((err: unknown) => {
+          console.error('Erro ao buscar métricas da planilha pública:', err);
+          setPublicMetrics(null);
+        });
     }
   }, [isOpen]);
+
+  // Pre-fill ATIVIDADE & UPH from public Google Sheets metrics when a sector is selected
+  useEffect(() => {
+    if (!selectedSector || !publicMetrics) {
+      setIsAtivSuggested(false);
+      setIsUphSuggested(false);
+      setSuggestedAtiv('');
+      setSuggestedUph('');
+      return;
+    }
+
+    const metrics = publicMetrics[selectedSector];
+    if (metrics) {
+      const ativStr = metrics.atividadeTotal !== null && metrics.atividadeTotal > 0 ? metrics.atividadeTotal.toString() : '';
+      const uphStr = metrics.uph > 0 ? metrics.uph.toString() : '';
+
+      setSuggestedAtiv(ativStr);
+      setSuggestedUph(uphStr);
+      setIsAtivSuggested(Boolean(ativStr));
+      setIsUphSuggested(Boolean(uphStr));
+
+      setFormData((prev) => ({
+        ...prev,
+        ativ: ativStr,
+        uph: uphStr,
+      }));
+    } else {
+      setIsAtivSuggested(false);
+      setIsUphSuggested(false);
+      setSuggestedAtiv('');
+      setSuggestedUph('');
+    }
+  }, [selectedSector, publicMetrics]);
 
   if (!isOpen) return null;
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    if (field === 'ativ' && isAtivSuggested && value !== suggestedAtiv) {
+      setIsAtivSuggested(false);
+    }
+    if (field === 'uph' && isUphSuggested && value !== suggestedUph) {
+      setIsUphSuggested(false);
+    }
   };
 
   const hasChanges = Object.values(formData).some((v) => v !== '');
@@ -72,19 +131,19 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
         if (val !== '') {
           const numVal = Number(val);
           onUpdateSetor(selectedSector, field, numVal);
-          (updatedFields as any)[field] = numVal;
+          (updatedFields as Record<string, unknown>)[field] = numVal;
         }
       });
 
       // Update Supabase directly to ensure atomic update of just these fields
-      // This uses spread of the existing sector to avoid wiping other fields
       const updatedSector = { ...activeS, ...updatedFields };
       await FirebaseService.upsertRecord('setores', updatedSector, 'id');
       
       onClose();
-    } catch (err) {
-      console.error('Erro ao salvar override:', err);
-      alert('Erro ao salvar os dados.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Erro ao salvar override:', msg);
+      alert('Erro ao salvar os dados: ' + msg);
     } finally {
       setIsSaving(false);
     }
@@ -139,13 +198,27 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <FieldInput label="Atividade" field="ativ" value={formData.ativ} placeholder={activeSectorData?.ativ.toString()} onChange={handleInputChange} />
-                    <FieldInput label="UPH" field="uph" value={formData.uph} placeholder={activeSectorData?.uph.toString()} onChange={handleInputChange} />
-                    <FieldInput label="Repro Total" field="reproTotal" value={formData.reproTotal} placeholder={activeSectorData?.reproTotal.toString()} onChange={handleInputChange} />
-                    <FieldInput label="Promessa (%)" field="promessa" value={formData.promessa} placeholder={activeSectorData?.promessa.toString()} onChange={handleInputChange} />
-                    <FieldInput label="Auditoria 5S" field="nota5s" value={formData.nota5s} placeholder={activeSectorData?.nota5s.toString()} onChange={handleInputChange} />
-                    <FieldInput label="BSI" field="bsi" value={formData.bsi} placeholder={activeSectorData?.bsi.toString()} onChange={handleInputChange} />
-                    <FieldInput label="Erros Picking" field="errosPicking" value={formData.errosPicking} placeholder={activeSectorData?.errosPicking.toString()} onChange={handleInputChange} />
+                    <FieldInput 
+                      label="Atividade" 
+                      field="ativ" 
+                      value={formData.ativ} 
+                      placeholder={activeSectorData?.ativ?.toString()} 
+                      onChange={handleInputChange} 
+                      badge={isAtivSuggested ? "Sugerido pela Planilha" : undefined}
+                    />
+                    <FieldInput 
+                      label="UPH" 
+                      field="uph" 
+                      value={formData.uph} 
+                      placeholder={activeSectorData?.uph?.toString()} 
+                      onChange={handleInputChange} 
+                      badge={isUphSuggested ? "Sugerido pela Planilha" : undefined}
+                    />
+                    <FieldInput label="Repro Total" field="reproTotal" value={formData.reproTotal} placeholder={activeSectorData?.reproTotal?.toString()} onChange={handleInputChange} />
+                    <FieldInput label="Promessa (%)" field="promessa" value={formData.promessa} placeholder={activeSectorData?.promessa?.toString()} onChange={handleInputChange} />
+                    <FieldInput label="Auditoria 5S" field="nota5s" value={formData.nota5s} placeholder={activeSectorData?.nota5s?.toString()} onChange={handleInputChange} />
+                    <FieldInput label="BSI" field="bsi" value={formData.bsi} placeholder={activeSectorData?.bsi?.toString()} onChange={handleInputChange} />
+                    <FieldInput label="Erros Picking" field="errosPicking" value={formData.errosPicking} placeholder={activeSectorData?.errosPicking?.toString()} onChange={handleInputChange} />
                   </div>
                 </div>
               )}
@@ -162,17 +235,25 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
                 <div className="space-y-2">
                   {Object.entries(formData).map(([field, val]) => {
                     const isChanged = val !== '';
-                    const oldVal = (activeSectorData as any)?.[field];
+                    const oldVal = (activeSectorData as Record<string, unknown>)?.[field];
+                    const isSuggested = (field === 'ativ' && isAtivSuggested) || (field === 'uph' && isUphSuggested);
                     return (
                       <div key={field} className="flex justify-between text-sm items-center">
                         <span className="text-zinc-400 font-mono capitalize">{field}</span>
                         {isChanged ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-zinc-500 line-through">{oldVal}</span>
-                            <span className="text-indigo-400 font-bold">→ {val}</span>
+                            <span className="text-zinc-500 line-through">{String(oldVal ?? 0)}</span>
+                            <span className="text-indigo-400 font-bold flex items-center gap-1.5">
+                              → {val}
+                              {isSuggested && (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-sans border border-indigo-500/30">
+                                  [Planilha]
+                                </span>
+                              )}
+                            </span>
                           </div>
                         ) : (
-                          <span className="text-zinc-600 text-xs italic">Mantido ({oldVal})</span>
+                          <span className="text-zinc-600 text-xs italic">Mantido ({String(oldVal ?? 0)})</span>
                         )}
                       </div>
                     );
@@ -230,22 +311,34 @@ const FieldInput = ({
   field, 
   value, 
   placeholder,
-  onChange 
+  onChange,
+  badge
 }: { 
   label: string; 
   field: string; 
   value: string; 
   placeholder?: string;
   onChange: (f: string, v: string) => void;
+  badge?: string;
 }) => (
   <div className="flex flex-col gap-1">
-    <label className="text-xs text-zinc-400 font-medium">{label}</label>
+    <div className="flex items-center justify-between">
+      <label className="text-xs text-zinc-400 font-medium">{label}</label>
+      {badge && (
+        <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium flex items-center gap-1">
+          <Sparkles size={10} className="text-indigo-400 animate-pulse" />
+          {badge}
+        </span>
+      )}
+    </div>
     <input
       type="number"
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(field, e.target.value)}
-      className="bg-zinc-900 border border-zinc-700 text-white p-2 rounded-md focus:ring-1 focus:ring-indigo-500 outline-none text-sm placeholder:text-zinc-600"
+      className={`bg-zinc-900 border text-white p-2 rounded-md focus:ring-1 outline-none text-sm placeholder:text-zinc-600 transition-all ${
+        badge ? 'border-indigo-500/50 ring-1 ring-indigo-500/30' : 'border-zinc-700 focus:ring-indigo-500'
+      }`}
     />
   </div>
 );

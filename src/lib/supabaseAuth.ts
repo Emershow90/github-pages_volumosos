@@ -61,6 +61,7 @@ import { supabase, isStaticBuild } from './supabase';
 import { UserRole, Usuario } from '../types/Usuario';
 import { IndexedDBService } from './indexedDb';
 import { SupabaseService } from './supabaseService';
+import { getServiceAccountToken, getServiceAccountCredentials } from './googleAuthService';
 
 // Define a safe mock user interface
 export interface SupabaseUser {
@@ -96,9 +97,18 @@ export function ensureGetIdToken(user: any): any {
   return user;
 }
 
+// Safe localStorage fallback for server-side / node environments
+const safeLocalStorage = {
+  getItem: (key: string) => (typeof window !== 'undefined' && typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null),
+  setItem: (key: string, value: string) => { if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') localStorage.setItem(key, value); },
+  removeItem: (key: string) => { if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') localStorage.removeItem(key); },
+  key: (index: number) => (typeof window !== 'undefined' && typeof localStorage !== 'undefined' ? localStorage.key(index) : null),
+  get length() { return typeof window !== 'undefined' && typeof localStorage !== 'undefined' ? localStorage.length : 0; }
+};
+
 // Sincronizar usuário logado inicial do localStorage se houver
 if (typeof window !== 'undefined') {
-  const cachedUser = localStorage.getItem('sys_active_user_session');
+  const cachedUser = safeLocalStorage.getItem('sys_active_user_session');
   if (cachedUser) {
     try {
       const parsed = JSON.parse(cachedUser);
@@ -114,7 +124,7 @@ export const auth = {
   get currentUser() {
     return ensureGetIdToken(currentMockUser);
   },
-  onAuthStateChanged: (cb: (user: any) => void, errorCb?: (err: any) => void) => {
+  onAuthStateChanged: (cb: (user: any) => void, errorCb?: (err: unknown) => void) => {
     if (isStaticBuild) {
       setTimeout(() => cb(auth.currentUser), 100);
       return () => {};
@@ -129,11 +139,11 @@ export const auth = {
           displayName: u.user_metadata?.displayName || u.user_metadata?.full_name || u.email?.split('@')[0],
           getIdToken: async () => session.access_token || ""
         };
-        localStorage.setItem('sys_active_user_session', JSON.stringify(currentMockUser));
+        safeLocalStorage.setItem('sys_active_user_session', JSON.stringify(currentMockUser));
         cb(auth.currentUser);
       } else {
         currentMockUser = null;
-        localStorage.removeItem('sys_active_user_session');
+        safeLocalStorage.removeItem('sys_active_user_session');
         cb(null);
       }
     });
@@ -146,15 +156,15 @@ export const auth = {
       await supabase!.auth.signOut();
     }
     currentMockUser = null;
-    localStorage.removeItem('sys_active_user_session');
-    localStorage.removeItem('current_user');
-    localStorage.removeItem('current_role');
-    localStorage.removeItem('current_status');
+    safeLocalStorage.removeItem('sys_active_user_session');
+    safeLocalStorage.removeItem('current_user');
+    safeLocalStorage.removeItem('current_role');
+    safeLocalStorage.removeItem('current_status');
     // Clear profile caches
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
+    for (let i = 0; i < safeLocalStorage.length; i++) {
+      const key = safeLocalStorage.key(i);
       if (key?.startsWith('sys_cached_profile_')) {
-        localStorage.removeItem(key);
+        safeLocalStorage.removeItem(key);
       }
     }
     window.location.reload();
@@ -340,6 +350,27 @@ export const initAuth = (
 };
 
 export const googleSignIn = async (): Promise<{ user: any; accessToken: string } | null> => {
+  // Check if Service Account is available first
+  try {
+    const creds = getServiceAccountCredentials();
+    if (creds) {
+      const saToken = await getServiceAccountToken();
+      if (saToken) {
+        const saUser: SupabaseUser = {
+          uid: "service-account-google",
+          id: "service-account-google",
+          email: creds.client_email,
+          displayName: "Service Account Google",
+          getIdToken: async () => saToken
+        };
+        currentMockUser = saUser;
+        return { user: saUser, accessToken: saToken };
+      }
+    }
+  } catch (saErr) {
+    console.warn("Service Account check warning:", saErr);
+  }
+
   if (isStaticBuild) {
     const mockUser: SupabaseUser = {
       uid: "local-google",
@@ -368,6 +399,22 @@ export const googleSignIn = async (): Promise<{ user: any; accessToken: string }
     return null; // OAuth redireciona a página
   } catch (error: any) {
     console.error('Sign in error:', error);
+    const errMsg = error?.msg || error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+    if (errMsg.includes('Unsupported provider') || errMsg.includes('not enabled')) {
+      console.warn('[Google OAuth] Provedor Google não ativado no Supabase Console. Alternando para Service Account / modo local.');
+      const saToken = await getServiceAccountToken();
+      if (saToken) {
+        const creds = getServiceAccountCredentials();
+        const saUser = {
+          uid: "service-account-google",
+          id: "service-account-google",
+          email: creds?.client_email || "service-account@google.com",
+          displayName: "Service Account Google",
+          getIdToken: async () => saToken
+        };
+        return { user: saUser, accessToken: saToken };
+      }
+    }
     throw error;
   } finally {
     isSigningIn = false;
@@ -643,41 +690,43 @@ async function simulateBackendRequest(url: string, init?: RequestInit): Promise<
       return new Response(JSON.stringify({ success: true }), { status: 200 });
     }
     return new Response("Method Not Allowed", { status: 405 });
-  } catch (err: any) {
-    if (err.name === 'AbortError') throw err;
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+  } catch (err: unknown) {
+    if ((err as Error).name === 'AbortError') throw err;
+    return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500 });
   }
 }
 
-const originalFetch = window.fetch;
+if (typeof window !== 'undefined') {
+  const originalFetch = window.fetch;
 
-const patchedFetch: typeof window.fetch = async (input, init) => {
-  const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
-  if (url.includes('/api/')) {
-    if (IS_STATIC_BUILD) {
-      return simulateBackendRequest(url, init);
-    }
-    try {
-      const user = auth.currentUser;
-      const token = user && typeof user.getIdToken === 'function' ? await user.getIdToken() : '';
-      const headers = new Headers(init?.headers);
-      if (token) {
-        headers.set('Authorization', `Bearer ${token}`);
+  const patchedFetch: typeof window.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+    if (url.includes('/api/')) {
+      if (IS_STATIC_BUILD) {
+        return simulateBackendRequest(url, init);
       }
-      if (init?.body && typeof init.body === 'string' && !headers.has('Content-Type')) {
-        headers.set('Content-Type', 'application/json');
+      try {
+        const user = auth.currentUser;
+        const token = user && typeof user.getIdToken === 'function' ? await user.getIdToken() : '';
+        const headers = new Headers(init?.headers);
+        if (token) {
+          headers.set('Authorization', `Bearer ${token}`);
+        }
+        if (init?.body && typeof init.body === 'string' && !headers.has('Content-Type')) {
+          headers.set('Content-Type', 'application/json');
+        }
+        return originalFetch(input, { ...init, headers });
+      } catch (err) {
+        console.error('Error in global fetch auth interceptor:', err);
       }
-      return originalFetch(input, { ...init, headers });
-    } catch (err) {
-      console.error('Error in global fetch auth interceptor:', err);
     }
+    return originalFetch(input, init);
+  };
+
+  try {
+    (window as any).fetch = patchedFetch;
+    console.log('[SupabaseAuth] Global fetch interceptor installed.');
+  } catch (err) {
+    console.warn('Could not install global fetch interceptor in this sandbox:', err);
   }
-  return originalFetch(input, init);
-};
-
-try {
-  (window as any).fetch = patchedFetch;
-  console.log('[SupabaseAuth] Global fetch interceptor installed.');
-} catch (err) {
-  console.warn('Could not install global fetch interceptor in this sandbox:', err);
 }

@@ -92,11 +92,11 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
       setLockoutTime(null);
       // Fetch profile in parent component
       onAuthSuccess(user, null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       let BrazilianMsg = 'Erro ao realizar login. Verifique suas credenciais.';
-      const errMsg = err.msg || err.message || (typeof err === 'string' ? err : '');
-      const errCode = err.code || err.error_code || '';
+      const errMsg = ((err as any)?.msg) || ((err as Error)?.message) || (typeof err === 'string' ? err : '');
+      const errCode = (err as any).code || (err as any).error_code || '';
       if (
         errCode === 'auth/invalid-credential' || 
         errCode === 'auth/wrong-password' || 
@@ -158,11 +158,11 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
       setTimeout(() => {
         onAuthSuccess(user, profile);
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       let BrazilianMsg = 'Erro ao realizar o cadastro.';
-      const errMsg = err.message || '';
-      const errCode = err.code || '';
+      const errMsg = ((err as Error)?.message) || '';
+      const errCode = (err as any).code || '';
       if (
         errCode === 'auth/email-already-in-use' || 
         errCode === 'user_already_exists' || 
@@ -203,11 +203,11 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
       await recoverPassword(email);
       setSuccessMsg('E-mail de redefinição enviado com sucesso! Verifique sua caixa de entrada.');
       setEmail('');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       let BrazilianMsg = 'Erro ao enviar e-mail de recuperação.';
-      const errMsg = err.message || '';
-      const errCode = err.code || '';
+      const errMsg = ((err as Error)?.message) || '';
+      const errCode = (err as any).code || '';
       if (errCode === 'auth/user-not-found' || errMsg.includes('User not found')) {
         BrazilianMsg = 'Nenhuma conta cadastrada com este e-mail.';
       } else if (errCode === 'auth/invalid-email' || errCode === 'invalid_email') {
@@ -229,9 +229,9 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
       if (res) {
         onAuthSuccess(res.user, null);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      const msg = err?.msg || err?.message || (typeof err === 'string' ? err : '');
+      const msg = (err as any)?.msg || (err as any)?.message || (typeof err === 'string' ? err : '');
       if (msg.includes('Unsupported provider') || msg.includes('not enabled')) {
         setError('O login via Google não está ativado no Supabase. Por favor, utilize o login com E-mail e Senha.');
       } else {
@@ -250,9 +250,9 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
       if (res) {
         onAuthSuccess(res.user, null);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      const msg = err?.msg || err?.message || (typeof err === 'string' ? err : '');
+      const msg = (err as any)?.msg || (err as any)?.message || (typeof err === 'string' ? err : '');
       if (msg.includes('Unsupported provider') || msg.includes('not enabled')) {
         setError('O login via Microsoft 365 não está ativado no Supabase. Por favor, utilize o login com E-mail e Senha.');
       } else {

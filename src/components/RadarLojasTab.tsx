@@ -46,7 +46,7 @@ import { ModalConfirmacao } from "./ModalConfirmacao";
 
 interface RadarLojasTabProps {
   currentRole?: string;
-  onSaveRadar?: (items: any[]) => void;
+  onSaveRadar?: (items: Record<string, unknown>[]) => void;
   activeSectorId?: string;
 }
 
@@ -160,7 +160,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
       try {
         await FirebaseService.flushOfflineQueue();
         triggerFeedback("Modo Online restabelecido e dados sincronizados com sucesso!");
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("[Sync Switch] Falha ao esvaziar fila de sincronização:", err);
         triggerFeedback("Internet restabelecida, mas alguns itens da fila falharam ao sincronizar.", true);
       } finally {
@@ -209,9 +209,9 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
       } else {
         triggerFeedback(`Sincronização parcial realizada: ${queue.length} registros ainda pendentes.`, true);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[Force Sync] Erro geral na sincronização:", err);
-      triggerFeedback(`Falha ao sincronizar: ${err?.message || err}`, true);
+      triggerFeedback(`Falha ao sincronizar: ${(err as any)?.message || err}`, true);
     } finally {
       setIsSyncing(false);
     }
@@ -315,7 +315,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
         setor: op.setor
       });
       triggerFeedback("Status operacional atualizado.");
-    } catch (err: any) {
+    } catch (err: unknown) {
       triggerFeedback("Falha ao salvar atualização no banco de dados.", true);
     }
   };
@@ -561,20 +561,6 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
     );
   };
 
-  // Run legacy migration
-  const handleMigrateLegacyData = async () => {
-    if (window.confirm("Isso importará dados legados de lista_coleta e radar_lojas_status para o novo modelo de setores independentes. Continuar?")) {
-      const count = await StoreService.migrateLegacyToOperations(currentUser);
-      triggerFeedback(`Sucesso! ${count} registros legados migrados e deduplicados.`);
-      addAlert({
-        tipo: "Info",
-        prioridade: "baixa",
-        titulo: "Migração de Dados",
-        descricao: `Migração: ${count} listas do modelo antigo reestruturadas.`,
-        setor: "Legado"
-      });
-    }
-  };
 
   // Create customized single list item
   const handleManualAddSubmit = async (e: React.FormEvent) => {
@@ -684,9 +670,9 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
       }
 
       triggerFeedback(`Sucesso! ${count} rotas do Radar Live apagadas permanentemente.`);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("[Delete All] Erro ao apagar todas as rotas:", e);
-      triggerFeedback(`Erro ao apagar dados do Radar: ${e.message || e}`, true);
+      triggerFeedback(`Erro ao apagar dados do Radar: ${(e as Error).message || e}`, true);
     } finally {
       setIsSyncing(false);
     }
@@ -1220,12 +1206,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
               <p className="text-[10px] text-zinc-500 leading-relaxed">
                 Reestruture dados antigos das tabelas de listas em formato unificado para o novo modelo de acompanhamento de setores independentes.
               </p>
-              <button
-                onClick={handleMigrateLegacyData}
-                className="w-full bg-indigo-900/30 hover:bg-indigo-900/50 border border-indigo-500/30 text-indigo-300 font-bold text-xs py-2 rounded-lg uppercase tracking-wider transition"
-              >
-                Sincronizar Dados Legados (Bolsão D+1)
-              </button>
+              <div className="text-zinc-600 text-xs italic">Migração desabilitada.</div>
             </div>
           )}
         </div>

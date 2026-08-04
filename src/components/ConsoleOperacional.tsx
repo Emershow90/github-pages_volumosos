@@ -22,6 +22,7 @@ import { usePainelProducaoStore } from '../stores/usePainelProducaoStore';
 import { useSectorStore } from '../stores/useSectorStore';
 import { useUserStore } from '../stores/useUserStore';
 import { Setor } from '../types';
+import { initialCapacidade } from '../initialData';
 
 interface ConsoleOperacionalProps {
   setores?: Setor[];
@@ -29,11 +30,11 @@ interface ConsoleOperacionalProps {
   onChangeSector?: (id: string) => void;
 }
 
-const CONFIG_SETORES: Record<string, { nome: string; linha: number; capacidade: number; cor: string }> = {
-  '87': { nome: 'Picking 87', linha: 23, capacidade: 4680, cor: '#8b5cf6' },
-  '88': { nome: 'Picking 88', linha: 25, capacidade: 18200, cor: '#3b82f6' },
-  '89': { nome: 'Picking 89', linha: 27, capacidade: 225, cor: '#f59e0b' },
-  '90': { nome: 'Picking 90', linha: 29, capacidade: 2000, cor: '#10b981' }
+const CONFIG_SETORES: Record<string, { nome: string; linha: number; cor: string }> = {
+  '87': { nome: 'Picking 87', linha: 23, cor: '#8b5cf6' },
+  '88': { nome: 'Picking 88', linha: 25, cor: '#3b82f6' },
+  '89': { nome: 'Picking 89', linha: 27, cor: '#f59e0b' },
+  '90': { nome: 'Picking 90', linha: 29, cor: '#10b981' }
 };
 
 export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
@@ -43,7 +44,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
 }) => {
   const { currentUser } = useUserStore();
   const { registros, upsertRegistro, fetchRegistrosHoje } = usePainelProducaoStore();
-  const { activityEntries } = useSectorStore();
+  const { activityEntries, capacidade } = useSectorStore();
 
   const [visaoAtual, setVisaoAtual] = useState<string>('TODOS');
   const [carrosselAtivo, setCarrosselAtivo] = useState(false);
@@ -88,9 +89,9 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   }, [carrosselAtivo, visaoAtual]);
 
   // Helper to parse numeric values from Excel cells
-  const cleanNum = (cell: any): number => {
+  const cleanNum = (cell: string | number): number => {
     if (!cell) return 0;
-    let val = cell.v !== undefined ? cell.v : cell;
+    let val = ((cell as unknown) as { v: string | number }).v !== undefined ? ((cell as unknown) as { v: string | number }).v : cell;
     if (val === null || val === '') return 0;
     if (typeof val === 'number') return val;
 
@@ -179,12 +180,24 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
       await new Promise(r => setTimeout(r, 300));
       setIsLoadingModalOpen(false);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[ConsoleOperacional] Erro no parsing:', err);
-      setFileInfo(`ERRO NO CARREGAMENTO: ${err.message || 'Formato de arquivo inválido'}`);
+      setFileInfo(`ERRO NO CARREGAMENTO: ${(err as Error).message || 'Formato de arquivo inválido'}`);
       setIsLoadingModalOpen(false);
-      alert(`Erro durante a extração: ${err.message || 'Verifique se o arquivo é .xlsm / .xlsx válido.'}`);
+      alert(`Erro durante a extração: ${(err as Error).message || 'Verifique se o arquivo é .xlsm / .xlsx válido.'}`);
     }
+  };
+
+  // Helper to obtain REAL capacity for sector from useSectorStore (tabela capacidade / abertura / fechoHora)
+  const getSectorCapacidade = (sectorId: string): { cap: number; isConfigured: boolean } => {
+    const foundCap = capacidade.find(c => String(c.id) === String(sectorId));
+    if (foundCap && foundCap.abertura > 0) {
+      return { cap: foundCap.abertura, isConfigured: true };
+    }
+    // Fallback vindo da matriz inicial cadastrada em initialCapacidade (src/initialData.ts)
+    const initialFound = initialCapacidade.find(c => String(c.id) === String(sectorId));
+    const capValue = initialFound?.abertura || 0;
+    return { cap: capValue, isConfigured: false };
   };
 
   // Get current sector data mapped by sector_id
@@ -192,14 +205,15 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     const found = registros.find(r => r.sector_id === sectorId && r.upload_date === todayStr) || 
                   registros.find(r => r.sector_id === sectorId);
     
-    // Fallback or existing
-    const cap = CONFIG_SETORES[sectorId]?.capacidade || 1000;
+    // Capacidade REAL via useSectorStore
+    const { cap, isConfigured } = getSectorCapacidade(sectorId);
     return {
       feitoHoje: found?.feito_hoje || 0,
       feitoOntem: found?.feito_ontem || 0,
       maquina: found?.maquina_full || 0,
       rafale: found?.rafale_full || 0,
-      cap
+      cap,
+      isConfigured
     };
   };
 
@@ -547,8 +561,15 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
 
                       {/* Progress Track */}
                       <div className="space-y-1">
-                        <div className="flex justify-between text-[11px] font-medium text-slate-400">
-                          <span>Cap: {d.cap.toLocaleString('pt-BR')} un</span>
+                        <div className="flex justify-between items-center text-[11px] font-medium text-slate-400">
+                          <span className="flex items-center gap-1.5">
+                            <span>Cap: {d.cap.toLocaleString('pt-BR')} un</span>
+                            {!d.isConfigured && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-sans" title="Capacidade não configurada no setor; utilizando matriz inicial padrão">
+                                Padrão
+                              </span>
+                            )}
+                          </span>
                           <span className="font-mono font-bold text-white">{ef}%</span>
                         </div>
                         <div className="w-full bg-[#050507] h-2 rounded-full overflow-hidden border border-[#1e1e2a]">
@@ -603,7 +624,14 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-white tracking-tight">{cfg.nome}</h2>
-                      <p className="text-xs text-slate-400">Setor {id} • Capacidade nominal: {d.cap.toLocaleString('pt-BR')} un</p>
+                      <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+                        <span>Setor {id} • Capacidade nominal: {d.cap.toLocaleString('pt-BR')} un</span>
+                        {!d.isConfigured && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-sans" title="Capacidade não configurada no setor; utilizando matriz inicial padrão">
+                            Padrão
+                          </span>
+                        )}
+                      </p>
                     </div>
                   </div>
                   <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-md border ${badgeStyle}`}>

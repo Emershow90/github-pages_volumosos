@@ -40,6 +40,7 @@ import {
   Check,
   AlertTriangle,
   Info,
+  Settings,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -47,13 +48,13 @@ import {
   logoutGoogle,
   initAuth
 } from "../lib/supabaseAuth";
+import { OverrideOperacionalModal } from "./OverrideOperacionalModal";
 import {
-  createScaleSpreadsheet,
-  writeScaleToSpreadsheet,
-  readScaleFromSpreadsheet,
-  readOperationalMetricsFromSpreadsheet,
-  DEFAULT_SPREADSHEET_ID
-} from "../lib/googleSheetsService";
+  getServiceAccountCredentials,
+  saveServiceAccountJson,
+  clearServiceAccountCredentials,
+  getServiceAccountToken
+} from "../lib/googleAuthService";
 import { SupabaseService as FirebaseService } from "../lib/supabaseService";
 import { IndexedDBService } from "../lib/indexedDb";
 import { ListaColetaItem, RadarLojaStatus } from "../types";
@@ -102,6 +103,7 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
   // Google Integration states
   const [googleUser, setGoogleUser] = useState<any>(null);
   const [googleToken, setGoogleToken] = useState<string | null>(null);
+  const [saCreds, setSaCreds] = useState<any>(null);
   const [spreadsheetId, setSpreadsheetId] = useState<string>("");
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -109,10 +111,12 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
 
   const isAdmin = currentRole === UserRole.Admin;
 
-  // Load spreadsheet link from localStorage on mount (defaults to corporate ID)
+  // Load spreadsheet link & Service Account from localStorage on mount
   useEffect(() => {
     const savedId = localStorage.getItem("google_sheets_scale_id");
-    setSpreadsheetId(savedId || DEFAULT_SPREADSHEET_ID);
+    setSpreadsheetId(savedId || "");
+    const creds = getServiceAccountCredentials();
+    setSaCreds(creds);
   }, []);
 
   // Initialize auth state listener
@@ -129,106 +133,6 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
     );
     return () => unsubscribe();
   }, []);
-
-  const handleGoogleLogin = async () => {
-    try {
-      setSyncStatus("Autenticando...");
-      const res = await googleSignIn();
-      if (res) {
-        setGoogleUser(res.user);
-        setGoogleToken(res.accessToken);
-        setSyncStatus("Conectado com o Google com sucesso!");
-        return res.accessToken;
-      }
-    } catch (err: any) {
-      console.error(err);
-      const errMsg = err?.msg || err?.message || (typeof err === "string" ? err : JSON.stringify(err));
-      if (errMsg.includes("Unsupported provider") || errMsg.includes("not enabled")) {
-        setSyncStatus("Provedor Google OAuth desativado no Supabase. Utilize e-mail/senha ou importação por arquivo local.");
-      } else {
-        setSyncStatus(`Erro ao autenticar com Google: ${errMsg}`);
-      }
-    }
-    return null;
-  };
-
-  const handleGoogleLogout = async () => {
-    try {
-      await logoutGoogle();
-      setGoogleUser(null);
-      setGoogleToken(null);
-      setSyncStatus("Sessão Google encerrada.");
-    } catch (err: any) {
-      console.error(err);
-    }
-  };
-
-  const handleCreateNewSheet = async () => {
-    let token = googleToken;
-    if (!token) {
-      token = await handleGoogleLogin();
-      if (!token) return;
-    }
-    setIsSyncing(true);
-    setSyncStatus("Criando nova planilha...");
-    try {
-      const result = await createScaleSpreadsheet(token, colaboradores);
-      if (result.success && result.spreadsheetId) {
-        setSpreadsheetId(result.spreadsheetId);
-        localStorage.setItem("google_sheets_scale_id", result.spreadsheetId);
-        setSyncStatus(result.message);
-      } else {
-        setSyncStatus(result.message);
-      }
-    } catch (err: any) {
-      setSyncStatus(`Erro ao criar planilha: ${err.message || err}`);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handleExportToSheet = async () => {
-    let token = googleToken;
-    if (!token) {
-      token = await handleGoogleLogin();
-      if (!token) return;
-    }
-    const sid = spreadsheetId || DEFAULT_SPREADSHEET_ID;
-    setIsSyncing(true);
-    setSyncStatus("Sincronizando dados para planilha (Exportando)...");
-    try {
-      const result = await writeScaleToSpreadsheet(token, sid, colaboradores);
-      setSyncStatus(result.message);
-    } catch (err: any) {
-      setSyncStatus(`Erro ao exportar: ${err.message || err}`);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handleImportFromSheet = async () => {
-    let token = googleToken;
-    if (!token) {
-      token = await handleGoogleLogin();
-      if (!token) return;
-    }
-    const sid = spreadsheetId || DEFAULT_SPREADSHEET_ID;
-    setIsSyncing(true);
-    setSyncStatus("Buscando dados da planilha (Importando)...");
-    try {
-      const result = await readScaleFromSpreadsheet(token, sid);
-      if (result.success && result.data) {
-        onSetColaboradores(result.data);
-        setSyncStatus(result.message);
-      } else {
-        setSyncStatus(result.message);
-      }
-    } catch (err: any) {
-      setSyncStatus(`Erro ao importar: ${err.message || err}`);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   const handleOpenAdd = () => {
     setEditIdx(null);
@@ -343,123 +247,6 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
             <span className="text-[9px] text-zinc-500 font-medium">Faltas/Afastados</span>
           </div>
         </div>
-      </div>
-
-      {/* GOOGLE SHEETS SYNCHRONIZATION INTEGRATION CARD */}
-      <div className="glass-card p-5 border-l-2 border-indigo-500/50 bg-[#07070a]/98">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5 pb-4 mb-4">
-          <div>
-            <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
-              <FileText className="text-indigo-400" size={16} />
-              Integração com Google Sheets (Escala de Operadores)
-            </h3>
-            <p className="text-[10px] text-zinc-500 mt-0.5">Sincronize a escala dos operadores diretamente com sua planilha oficial para controle corporativo.</p>
-          </div>
-          {!googleUser ? (
-            <button
-              onClick={handleGoogleLogin}
-              className="flex items-center gap-2 bg-white text-black hover:bg-zinc-200 px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition cursor-pointer shadow-md"
-            >
-              <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-4 h-4">
-                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-              </svg>
-              Conectar Conta Google
-            </button>
-          ) : (
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full uppercase tracking-wider">
-                ● Conectado: {googleUser.displayName || googleUser.email}
-              </span>
-              <button
-                onClick={handleGoogleLogout}
-                className="text-zinc-500 hover:text-white p-1"
-                title="Desconectar"
-              >
-                <LogOut size={14} />
-              </button>
-            </div>
-          )}
-        </div>
-
-        {googleUser && (
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-6">
-              <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block mb-1.5">Google Spreadsheet ID</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={spreadsheetId}
-                  onChange={(e) => {
-                    setSpreadsheetId(e.target.value);
-                    localStorage.setItem("google_sheets_scale_id", e.target.value);
-                  }}
-                  placeholder="ID da planilha do Google Sheets"
-                  className="inp flex-1 py-1.5 px-3 text-xs font-mono"
-                />
-                {spreadsheetId && (
-                  <button
-                    onClick={handleCopyLink}
-                    className="bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition"
-                    title="Copiar link"
-                  >
-                    {copiedLink ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="md:col-span-6 flex gap-2 flex-wrap md:justify-end">
-              <button
-                onClick={handleCreateNewSheet}
-                disabled={isSyncing}
-                className="bg-indigo-600/25 border border-indigo-500/35 hover:bg-indigo-600/40 text-indigo-300 text-[10px] font-black py-2 px-3.5 rounded-lg uppercase tracking-wider cursor-pointer disabled:opacity-50 transition"
-              >
-                Criar Nova Planilha
-              </button>
-              {spreadsheetId && (
-                <>
-                  <button
-                    onClick={handleExportToSheet}
-                    disabled={isSyncing}
-                    className="bg-emerald-600/20 border border-emerald-500/30 hover:bg-emerald-600/35 text-emerald-400 text-[10px] font-black py-2 px-3.5 rounded-lg uppercase tracking-wider cursor-pointer disabled:opacity-50 transition"
-                  >
-                    Exportar dados (Push)
-                  </button>
-                  <button
-                    onClick={handleImportFromSheet}
-                    disabled={isSyncing}
-                    className="bg-sky-600/20 border border-sky-500/30 hover:bg-sky-600/35 text-sky-400 text-[10px] font-black py-2 px-3.5 rounded-lg uppercase tracking-wider cursor-pointer disabled:opacity-50 transition"
-                  >
-                    Importar dados (Pull)
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Sync Status Logger */}
-        {syncStatus && (
-          <div className="mt-3.5 bg-black/40 border border-white/5 rounded-lg p-2.5 flex items-center justify-between text-[11px] font-mono text-zinc-400">
-            <span className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-amber-400 animate-pulse' : 'bg-indigo-400'}`}></span>
-              Status: <span className="text-white font-bold">{syncStatus}</span>
-            </span>
-            {spreadsheetId && (
-              <a
-                href={`https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sky-400 hover:underline flex items-center gap-1 text-[10px] font-bold uppercase"
-              >
-                Abrir Planilha <ExternalLink size={10} />
-              </a>
-            )}
-          </div>
-        )}
       </div>
 
       {/* FILTER & SEARCH BAR */}
@@ -1209,135 +996,20 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
     setTimeout(() => setFeedback(null), 4000);
   };
 
-  // Google Sheets Integration states inside ConfigTab
-  const [googleUser, setGoogleUser] = useState<any>(null);
-  const [googleToken, setGoogleToken] = useState<string | null>(null);
-  const [spreadsheetId, setSpreadsheetId] = useState<string>("");
-  const [syncStatus, setSyncStatus] = useState<string>("");
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
-  useEffect(() => {
-    const savedId = localStorage.getItem("google_sheets_scale_id");
-    setSpreadsheetId(savedId || DEFAULT_SPREADSHEET_ID);
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = initAuth(
-      (user, token) => {
-        setGoogleUser(user);
-        setGoogleToken(token);
-      },
-      () => {
-        setGoogleUser(null);
-        setGoogleToken(null);
-      }
-    );
-    return () => unsubscribe();
-  }, []);
-
-  const handleFetchOperationalMetrics = async () => {
-    let tokenToUse = googleToken;
-    if (!tokenToUse || tokenToUse === "mock-token") {
-      setSyncStatus("Solicitando autorização do Google...");
-      try {
-        const res = await googleSignIn();
-        if (res && res.accessToken) {
-          tokenToUse = res.accessToken;
-          setGoogleUser(res.user);
-          setGoogleToken(res.accessToken);
-        } else {
-          setSyncStatus("Por favor, conecte sua conta Google para ler a planilha.");
-          showFeedback("Conecte sua conta do Google para puxar os dados da planilha.", "error");
-          return;
-        }
-      } catch (err: any) {
-        console.error(err);
-        const errMsg = err?.msg || err?.message || (typeof err === "string" ? err : JSON.stringify(err));
-        if (errMsg.includes("Unsupported provider") || errMsg.includes("not enabled")) {
-          setSyncStatus("Login Google OAuth via Supabase não está ativado no console. Você pode preencher as métricas manualmente ou importar via arquivo CSV/XLSX.");
-          showFeedback("Provedor Google OAuth desativado no Supabase. Preencha manualmente ou via arquivo CSV/XLSX.", "error");
-        } else {
-          setSyncStatus(`Erro ao autenticar: ${errMsg}`);
-          showFeedback(`Erro ao autenticar com Google: ${errMsg}`, "error");
-        }
-        return;
-      }
-    }
-
-    const sid = spreadsheetId || DEFAULT_SPREADSHEET_ID;
-    setIsSyncing(true);
-    setSyncStatus("Buscando métricas da aba VOLUMOSOS - ATIVIDADE...");
-    try {
-      const result = await readOperationalMetricsFromSpreadsheet(tokenToUse, sid);
-      if (result.success && result.data) {
-        const updateProd = onUpdateSetorProd || onUpdateSetor;
-        Object.entries(result.data).forEach(([secId, metrics]) => {
-          if (secId !== "ELOG" && secId !== "E-LOG") {
-            onUpdateSetor(secId, "ativ", metrics.atividade);
-          }
-          updateProd(secId, "uph", metrics.uph);
-        });
-
-        if (overrideSid && result.data[overrideSid]) {
-          const m = result.data[overrideSid];
-          if (overrideSid !== "ELOG" && overrideSid !== "E-LOG") {
-            setOverAtiv(m.atividade);
-          }
-          setOverUph(m.uph);
-        }
-
-        setSyncStatus(result.message);
-        showFeedback(`Métricas da planilha (VOLUMOSOS - ATIVIDADE) puxadas com sucesso!`, "success");
-      } else {
-        setSyncStatus(result.message);
-        showFeedback(result.message, "error");
-      }
-    } catch (err: any) {
-      setSyncStatus(`Erro ao puxar dados: ${err.message || err}`);
-      showFeedback(`Erro ao puxar dados da planilha: ${err.message || err}`, "error");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   // General Liderança forms
   const [coordNome, setCoordNome] = useState(coordenador);
   const [coordFoto, setCoordFoto] = useState(fotoCoordenador);
 
-  // Setor override form
-  const [overrideSid, setOverrideSid] = useState(setores[0]?.id || "87");
-  const [overAtiv, setOverAtiv] = useState(0);
-  const [overRepro, setOverRepro] = useState(0);
-  const [overPromessa, setOverPromessa] = useState(100);
-  const [over5s, setOver5s] = useState(100);
-  const [overBsi, setOverBsi] = useState(100);
-  const [overUph, setOverUph] = useState(0);
-  const [overErrosPicking, setOverErrosPicking] = useState(0);
-
-  const [showOverrideModal, setShowOverrideModal] = useState(false);
-  const [overrideSummary, setOverrideSummary] = useState<{
-    sector: string;
-    autoLoaded: { label: string; value: string | number }[];
-    manualRequired: string[];
-  } | null>(null);
-
-  const lastSidRef = React.useRef<string>("");
+  // Setor override modal state
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(initialSubCat === "override");
 
   useEffect(() => {
-    if (overrideSid !== lastSidRef.current) {
-      lastSidRef.current = overrideSid;
-      const activeSec = setores.find((s) => s.id === overrideSid);
-      if (activeSec) {
-        setOverAtiv(activeSec.ativ ?? 0);
-        setOverRepro(activeSec.reproTotal ?? 0);
-        setOverPromessa(activeSec.promessa ?? 100);
-        setOver5s(activeSec.nota5s ?? 100);
-        setOverBsi(activeSec.bsi ?? 100);
-        setOverUph(activeSec.uph ?? 0);
-        setOverErrosPicking(activeSec.errosPicking ?? 0);
-      }
+    if (subCat === "override") {
+      setIsOverrideModalOpen(true);
     }
-  }, [overrideSid, setores]);
+  }, [subCat]);
 
 
   // Simulated OCR Loader
@@ -1553,55 +1225,6 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
     e.preventDefault();
     onUpdateCoordenador(coordNome, coordFoto);
     showFeedback("Liderança geral do turno atualizada com sucesso!", "success");
-  };
-
-  const handleOverrideSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    const isElog = overrideSid === "ELOG" || overrideSid === "E-LOG";
-    const updateProd = onUpdateSetorProd || onUpdateSetor;
-
-    if (!isElog) {
-      onUpdateSetor(overrideSid, "ativ", overAtiv);
-    }
-    onUpdateSetor(overrideSid, "reproTotal", overRepro);
-    onUpdateSetor(overrideSid, "promessa", overPromessa);
-    updateProd(overrideSid, "nota5s", over5s);
-    updateProd(overrideSid, "bsi", overBsi);
-    updateProd(overrideSid, "uph", overUph);
-    updateProd(overrideSid, "errosPicking", overErrosPicking);
-
-    const autoLoaded: { label: string; value: string | number }[] = [];
-    const manualRequired: string[] = [];
-
-    if (isElog) {
-      manualRequired.push("Atividade (Ativ) [Col H] (Bloqueado p/ E-LOG)");
-    } else if (overAtiv > 0) {
-      autoLoaded.push({ label: "Atividade (Ativ) [Col H]", value: overAtiv });
-    } else {
-      manualRequired.push("Atividade (Ativ) [Col H]");
-    }
-
-    if (overUph > 0) {
-      autoLoaded.push({ label: "Produtividade (UPH) [Col L]", value: overUph });
-    } else {
-      manualRequired.push("Produtividade (UPH) [Col L]");
-    }
-
-    if (overRepro > 0) autoLoaded.push({ label: "Repro Total", value: overRepro });
-    else manualRequired.push("Repro Total");
-
-    if (overPromessa > 0) autoLoaded.push({ label: "Promessa %", value: `${overPromessa}%` });
-    if (over5s > 0) autoLoaded.push({ label: "5S Auditoria %", value: `${over5s}%` });
-    if (overBsi > 0) autoLoaded.push({ label: "BSI %", value: `${overBsi}%` });
-    if (overErrosPicking >= 0) autoLoaded.push({ label: "Erros Picking %", value: `${overErrosPicking}%` });
-
-    setOverrideSummary({
-      sector: overrideSid,
-      autoLoaded,
-      manualRequired,
-    });
-    setShowOverrideModal(true);
-    showFeedback(`Apontamentos e overrides gravados no banco com sucesso para S${overrideSid}!`, "success");
   };
 
   const handleCreateSetor = (e: React.FormEvent) => {
@@ -2349,210 +1972,43 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
         {/* CATEGORY: OVERRIDE */}
         {subCat === "override" && (
           <div className="space-y-6">
-            {/* Modal Summary after Save */}
-            {showOverrideModal && overrideSummary && (
-              <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fadeIn">
-                <div className="bg-[#0c0c0f] border border-[#262630] rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-                  <div className="bg-[#1a1a24] p-5 border-b border-[#262630] flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-emerald-500/20 p-2 rounded-full text-emerald-400 font-bold">
-                        ✓
-                      </div>
-                      <h2 className="text-white font-bold text-base uppercase font-mono tracking-wider">
-                        Resumo do Envio (S{overrideSummary.sector})
-                      </h2>
-                    </div>
-                    <button onClick={() => setShowOverrideModal(false)} className="text-zinc-400 hover:text-white transition-colors">
-                      ✕
-                    </button>
-                  </div>
-
-                  <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto font-mono text-xs">
-                    <div>
-                      <h3 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        Payload Enviado p/ Supabase (Sucesso)
-                      </h3>
-                      {overrideSummary.autoLoaded.length > 0 ? (
-                        <ul className="space-y-2">
-                          {overrideSummary.autoLoaded.map((item, i) => (
-                            <li key={i} className="bg-[#13131a] border border-[#262630] p-2.5 rounded-lg flex justify-between items-center text-zinc-300">
-                              <span className="font-medium text-white">{item.label}</span>
-                              <span className="text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">{item.value}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-zinc-500 italic">Nenhum dado alterado.</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3">
-                        Em Branco / Ignorado
-                      </h3>
-                      {overrideSummary.manualRequired.length > 0 ? (
-                        <ul className="flex flex-wrap gap-2">
-                          {overrideSummary.manualRequired.map((item, i) => (
-                            <li key={i} className="text-[11px] bg-[#13131a] border border-[#262630] px-3 py-1 rounded-full text-zinc-400">
-                              {item}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-zinc-500 italic">Todos os campos foram preenchidos.</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="p-4 border-t border-[#262630] bg-[#0a0a0c] flex justify-end">
-                    <button 
-                      onClick={() => setShowOverrideModal(false)}
-                      className="bg-[#262630] hover:bg-[#333] text-white text-xs font-bold uppercase tracking-wider py-2 px-5 rounded-lg transition-colors cursor-pointer"
-                    >
-                      Fechar
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <form onSubmit={handleOverrideSave} className="glass-card p-6 border border-white/10 bg-zinc-950/40 relative overflow-hidden rounded-[20px] shadow-2xl">
+            <div className="glass-card p-6 border border-white/10 bg-zinc-950/40 relative overflow-hidden rounded-[20px] shadow-2xl">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-4 border-b border-white/5">
                 <div>
                   <h3 className="text-sm font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
                     <span className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg">⚡</span>
-                    Apontamento Rápido (Override Operacional)
+                    Override Operacional
                   </h3>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">Forçar modificação manual de métricas cruciais de um setor com salvamento direto no banco</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Setor Ativo:</span>
-                  <select
-                    value={overrideSid}
-                    onChange={(e) => setOverrideSid(e.target.value)}
-                    className="inp w-44 py-2 px-3 font-bold text-indigo-300 bg-zinc-900 border border-white/10 rounded-[12px] focus:border-indigo-500 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] focus:outline-none cursor-pointer transition-all duration-200"
-                  >
-                    {setores.map((s) => (
-                      <option key={s.id} value={s.id} className="bg-zinc-950 text-white">
-                        {s.id === "ELOG" || s.id === "E-LOG" ? "E-LOG (Picking)" : `S${s.id} (${s.nome || s.resp || "Geral"})`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Banner de Sincronização com Google Sheets */}
-              <div className="mb-6 p-4 rounded-xl border border-indigo-500/30 bg-indigo-950/30 flex flex-col sm:flex-row justify-between items-center gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl flex-shrink-0">📊</span>
-                  <div>
-                    <p className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                      Planilha Oficial Google Sheets (VOLUMOSOS - ATIVIDADE)
-                    </p>
-                    <p className="text-[10px] text-zinc-400 mt-0.5">
-                      Puxe Atividade (Coluna H) e Produtividade UPH (Coluna L) diretamente da planilha oficial.
-                    </p>
-                  </div>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Central unificada para modificação manual de métricas operacionais dos setores (Atividade, UPH, Repro, Promessa, 5S, BSI e Erros).
+                  </p>
                 </div>
                 <button
                   type="button"
-                  onClick={handleFetchOperationalMetrics}
-                  disabled={isSyncing}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2.5 px-4 rounded-xl uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/20 transition-all duration-200 disabled:opacity-50 flex-shrink-0"
+                  onClick={() => setIsOverrideModalOpen(true)}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white py-3 px-6 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all cursor-pointer shrink-0"
                 >
-                  <RefreshCw size={14} className={isSyncing ? "animate-spin text-amber-300" : "text-white"} />
-                  {isSyncing ? "Puxando..." : "Importar Métricas da Planilha"}
+                  <Settings size={16} />
+                  Abrir Modal de Override
                 </button>
               </div>
 
-              {/* Banner de aviso E-LOG */}
-              {(overrideSid === "ELOG" || overrideSid === "E-LOG") && (
-                <div className="mb-6 bg-amber-500/10 border border-amber-500/30 text-amber-300 p-4 rounded-xl text-xs flex items-center gap-3 animate-fadeIn">
-                  <span className="text-base flex-shrink-0">⚠️</span>
-                  <span><strong>Aviso E-LOG:</strong> A <u>Atividade</u> preenchida será ignorada no envio para a tabela. A <u>Produtividade (UPH)</u> e demais métricas serão salvas normalmente no banco Supabase.</span>
-                </div>
-              )}
-
-              <div className="bg-black/40 p-5 rounded-[16px] border border-white/5 grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div>
-                  <label className="text-[0.55rem] text-zinc-400 uppercase block mb-1.5 font-bold tracking-wider">📦 Atividade (Ativ)</label>
-                  <input
-                    type="number"
-                    value={overAtiv}
-                    disabled={overrideSid === "ELOG" || overrideSid === "E-LOG"}
-                    onChange={(e) => setOverAtiv(parseInt(e.target.value) || 0)}
-                    className={`inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] transition-all duration-200 ${(overrideSid === "ELOG" || overrideSid === "E-LOG") ? "opacity-40 cursor-not-allowed bg-zinc-900" : ""}`}
-                  />
-                </div>
-                <div>
-                  <label className="text-[0.55rem] text-zinc-400 uppercase block mb-1.5 font-bold tracking-wider">🔄 Repro Total</label>
-                  <input
-                    type="number"
-                    value={overRepro}
-                    onChange={(e) => setOverRepro(parseInt(e.target.value) || 0)}
-                    className="inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 text-amber-500 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 focus:shadow-[0_0_15px_rgba(245,158,11,0.25)] transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="text-[0.55rem] text-zinc-400 uppercase block mb-1.5 font-bold tracking-wider">🎯 Promessa %</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={overPromessa}
-                    onChange={(e) => setOverPromessa(parseFloat(e.target.value) || 0)}
-                    className="inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="text-[0.55rem] text-zinc-400 uppercase block mb-1.5 font-bold tracking-wider">⚡ UPH</label>
-                  <input
-                    type="number"
-                    value={overUph}
-                    onChange={(e) => setOverUph(parseInt(e.target.value) || 0)}
-                    className="inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 text-emerald-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:shadow-[0_0_15px_rgba(16,185,129,0.25)] transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="text-[0.55rem] text-zinc-400 uppercase block mb-1.5 font-bold tracking-wider">🧹 5S Auditoria %</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={over5s}
-                    onChange={(e) => setOver5s(parseFloat(e.target.value) || 0)}
-                    className="inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="text-[0.55rem] text-zinc-400 uppercase block mb-1.5 font-bold tracking-wider">🛡️ BSI %</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={overBsi}
-                    onChange={(e) => setOverBsi(parseFloat(e.target.value) || 0)}
-                    className="inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] transition-all duration-200"
-                  />
-                </div>
-                <div>
-                  <label className="text-[0.55rem] text-zinc-400 uppercase block mb-1.5 font-bold tracking-wider">⚠️ Erros Picking %</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={overErrosPicking}
-                    onChange={(e) => setOverErrosPicking(parseFloat(e.target.value) || 0)}
-                    className="inp py-2.5 text-xs font-mono rounded-[12px] border border-white/10 bg-zinc-950/60 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:shadow-[0_0_15px_rgba(99,102,241,0.25)] transition-all duration-200"
-                  />
-                </div>
+              <div className="p-4 bg-zinc-900/60 border border-white/5 rounded-xl text-xs text-zinc-400 space-y-2">
+                <p className="font-semibold text-white flex items-center gap-2">
+                  <span className="text-indigo-400">ℹ️</span> Preenchimento Assistido pelo Console Operacional
+                </p>
+                <p>
+                  Ao selecionar um setor no modal, a <strong>Atividade</strong> é pré-preenchida automaticamente a partir dos dados do dia no Console Operacional (painel_producao), permanecendo totalmente editável antes do salvamento em banco.
+                </p>
               </div>
+            </div>
 
-              <div className="flex justify-end mt-6">
-                <button
-                  type="submit"
-                  className="bg-indigo-600 hover:bg-indigo-500 hover:scale-[1.02] active:scale-[0.98] text-white py-2.5 px-6 rounded-[12px] text-xs font-black uppercase tracking-wider cursor-pointer shadow-lg shadow-indigo-500/20 transition-all duration-200 flex items-center gap-2"
-                >
-                  <span>💾</span> Registrar Apontamento {(overrideSid === "ELOG" || overrideSid === "E-LOG") ? "E-LOG" : `S${overrideSid}`}
-                </button>
-              </div>
-            </form>
+            <OverrideOperacionalModal
+              isOpen={isOverrideModalOpen}
+              onClose={() => setIsOverrideModalOpen(false)}
+              setores={setores}
+              onUpdateSetor={onUpdateSetorProd || onUpdateSetor}
+            />
 
             {/* Setor Manager list */}
             <div className="glass-card p-6 border-l-2 border-sky-500/50">

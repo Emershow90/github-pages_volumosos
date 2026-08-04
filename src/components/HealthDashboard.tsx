@@ -48,35 +48,6 @@ export const HealthDashboard: React.FC = () => {
       }
 
       if (!rows || rows.length === 0) {
-        const listas = await SupabaseService.fetchTable<any>("lista_coleta");
-        const status = await SupabaseService.fetchTable<any>("radar_lojas_status");
-
-        if (listas && listas.length > 0) {
-          rows = listas.map((item: any) => {
-            const matchedStatus = status.find((s: any) => s.lista === item.lista) || {};
-            return {
-              lista: item.lista,
-              nome_loja: item.loja || item.nome_loja || "",
-              setor: Number(item.setor) || 0,
-              volumes: Number(item.volumes) || 0,
-              enderecos: Number(item.enderecos) || 0,
-              transportadora: item.transportadora || "",
-              corte: item.corte || "",
-              carregamento: item.carregamento || "",
-              statusSoltura: matchedStatus.statusSoltura || "Não Solta",
-              horarioSoltura: matchedStatus.horarioSoltura || null,
-              statusColeta: matchedStatus.statusColeta || "Não iniciada",
-              horarioColeta: matchedStatus.horarioColeta || null,
-              statusCarregamento: matchedStatus.statusCarregamento || "Não carregada",
-              horarioCarregamento: matchedStatus.horarioCarregamento || null,
-              statusExpedicao: matchedStatus.statusExpedicao || "Pendente",
-              ultima_atualizacao: matchedStatus.updated_at || null,
-            };
-          });
-        }
-      }
-
-      if (!rows || rows.length === 0) {
         rows = [
           { lista: "101", nome_loja: "Serrana Ltda", setor: 2, volumes: 140, enderecos: 22, transportadora: "TransGeral", corte: "10:00", carregamento: "11:30", statusSoltura: "Solta", statusColeta: "Concluída", statusCarregamento: "Carregada", statusExpedicao: "Expedida" },
           { lista: "102", nome_loja: "Eldorado S.A.", setor: 5, volumes: 85, enderecos: 14, transportadora: "Rodonaves", corte: "10:00", carregamento: "12:00", statusSoltura: "Solta", statusColeta: "Em andamento", statusCarregamento: "Carregando", statusExpedicao: "Pendente" },
@@ -90,9 +61,9 @@ export const HealthDashboard: React.FC = () => {
 
       setData(rows);
       setLastUpdated(new Date().toLocaleTimeString("pt-BR"));
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[HealthDashboard] Erro ao buscar dados de radar completo:", err);
-      setErrorMsg(err.message || String(err));
+      setErrorMsg((err as Error).message || String(err));
     } finally {
       setLoading(false);
     }

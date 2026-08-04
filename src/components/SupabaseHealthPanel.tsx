@@ -37,8 +37,6 @@ export const SupabaseHealthPanel: React.FC = () => {
         { name: "colaboradores", type: "table", description: "Cadastro e dados de produtividade dos operadores", count: 17, status: "offline" },
         { name: "store_master", type: "table", description: "Cadastro mestre de lojas parceiras e transportadoras", count: 6, status: "offline" },
         { name: "store_operations", type: "table", description: "Operações ativas de expedição e carregamento por loja", count: 12, status: "offline" },
-        { name: "lista_coleta", type: "table", description: "Listas de picking importadas para o fluxo diário", count: 32, status: "offline" },
-        { name: "radar_lojas_status", type: "table", description: "Estados detalhados de soltura, coleta e expedição", count: 32, status: "offline" },
         { name: "atividade_loja", type: "table", description: "Histórico e volume de atividades por loja", count: 8, status: "offline" },
         { name: "escalas", type: "table", description: "Planejamento semanal de turnos para os colaboradores", count: 45, status: "offline" },
         { name: "view_radar_completo", type: "view", description: "Relatório consolidado de listas de coleta e status", count: 32, status: "offline" },
@@ -94,14 +92,14 @@ export const SupabaseHealthPanel: React.FC = () => {
           count: count !== null ? count : 0,
           status: "healthy"
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
           name,
           type,
           description,
           count: null,
           status: "error",
-          errorDetails: err.message || String(err)
+          errorDetails: (err as Error).message || String(err)
         };
       }
     };
@@ -113,8 +111,6 @@ export const SupabaseHealthPanel: React.FC = () => {
         checkEntity("colaboradores", "table", "Cadastro e dados de produtividade dos operadores"),
         checkEntity("store_master", "table", "Cadastro mestre de lojas parceiras e transportadoras"),
         checkEntity("store_operations", "table", "Operações ativas de expedição e carregamento por loja"),
-        checkEntity("lista_coleta", "table", "Listas de picking importadas para o fluxo diário"),
-        checkEntity("radar_lojas_status", "table", "Estados detalhados de soltura, coleta e expedição"),
         checkEntity("atividade_loja", "table", "Histórico e volume de atividades por loja"),
         checkEntity("escalas", "table", "Planejamento semanal de turnos para os colaboradores"),
         checkEntity("view_radar_completo", "view", "Relatório consolidado de listas de coleta e status"),
@@ -122,8 +118,8 @@ export const SupabaseHealthPanel: React.FC = () => {
       ]);
 
       setItems(results);
-    } catch (err: any) {
-      setGlobalError(err.message || "Erro desconhecido ao obter integridade das tabelas.");
+    } catch (err: unknown) {
+      setGlobalError((err as Error).message || "Erro desconhecido ao obter integridade das tabelas.");
     } finally {
       setLastChecked(new Date().toLocaleTimeString("pt-BR"));
       setLoading(false);

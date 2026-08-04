@@ -171,7 +171,7 @@ export default function App() {
         resolved = true;
         clearTimeout(timeoutId);
         console.error("[Supabase Auth Error]", error);
-        setAuthError(`Erro do Supabase Auth: ${error.message}`);
+        setAuthError(`Erro do Supabase Auth: ${(error as Error).message}`);
         setAuthLoading(false);
       }
     );
@@ -262,12 +262,7 @@ export default function App() {
   }, [setores, ticker]);
 
   const [referentesSemana, setReferentesSemana] = useState<ReferenteSemana[]>(() => {
-    try {
-      const s = localStorage.getItem("sys_referentes");
-      return s ? JSON.parse(s) : initialReferentesSemana;
-    } catch {
-      return initialReferentesSemana;
-    }
+    return initialReferentesSemana;
   });
 
   useEffect(() => {
@@ -278,9 +273,7 @@ export default function App() {
   }, []);
 
   // Multi-site
-  const [currentSite] = useState<string>(() => {
-    return localStorage.getItem("sys_active_site") || "Campinas";
-  });
+  const [currentSite] = useState<string>("Campinas");
 
   // Zustand Operations Store for Radar live sync
   const operations = useStoreOperations((state) => state.operations);
@@ -339,7 +332,6 @@ export default function App() {
             : 0,
       }));
       setRadar(mapped);
-      localStorage.setItem(`sys_radar_${currentSite}`, JSON.stringify(mapped));
     }
   }, [operations, currentSite, setRadar]);
 
@@ -348,10 +340,7 @@ export default function App() {
   // Helper to load site-specific data
   const loadSiteData = (site: string) => {
     try {
-      const sSetores = localStorage.getItem(`sys_setores_${site}`);
-      const sRadar = localStorage.getItem(`sys_radar_${site}`);
-      const sColab = localStorage.getItem(`sys_colaboradores_${site}`);
-      const sCopil = localStorage.getItem(`sys_copil_${site}`);
+      const sSetores = null; const sRadar = null; const sColab = null; const sCopil = null;
 
       if (sSetores) {
         const parsedSetores = JSON.parse(sSetores) as Setor[];
@@ -379,7 +368,6 @@ export default function App() {
           baseSetores[1].ativ = 4900;
         }
         setSetores(baseSetores);
-        localStorage.setItem(`sys_setores_${site}`, JSON.stringify(baseSetores));
       }
 
       if (sRadar) {
@@ -394,21 +382,18 @@ export default function App() {
           baseRadar[1].loja = "2360 - OLINDA CENTRO";
         }
         setRadar(baseRadar);
-        localStorage.setItem(`sys_radar_${site}`, JSON.stringify(baseRadar));
       }
 
       if (sColab) {
         setColaboradores(JSON.parse(sColab));
       } else {
         setColaboradores(initialColaboradores);
-        localStorage.setItem(`sys_colaboradores_${site}`, JSON.stringify(initialColaboradores));
       }
 
       if (sCopil) {
         setCopilData(JSON.parse(sCopil));
       } else {
         setCopilData(initialCopil);
-        localStorage.setItem(`sys_copil_${site}`, JSON.stringify(initialCopil));
       }
     } catch (e) {
       console.error("Error loading site-specific data:", e);
@@ -507,7 +492,6 @@ export default function App() {
             },
             ...prev,
           ].slice(0, 25);
-          localStorage.setItem("sys_notifications", JSON.stringify(updated));
           return updated;
         });
       }
@@ -576,7 +560,6 @@ export default function App() {
   }, [screensaver]);
 
   useEffect(() => {
-    localStorage.setItem("sys_setores", JSON.stringify(setores));
     if (authLoading || !fbUser) return;
     if (setores && setores.length > 0) {
       FirebaseService.upsert("setores", setores).catch((err) => {
@@ -586,19 +569,6 @@ export default function App() {
   }, [setores, fbUser, authLoading]);
 
   useEffect(() => {
-    localStorage.setItem("sys_colaboradores", JSON.stringify(colaboradores));
-  }, [colaboradores]);
-
-  useEffect(() => {
-    localStorage.setItem("sys_capacidade", JSON.stringify(capacidade));
-  }, [capacidade]);
-
-  useEffect(() => {
-    localStorage.setItem("sys_universos", JSON.stringify(universos));
-  }, [universos]);
-
-  useEffect(() => {
-    localStorage.setItem("sys_referentes", JSON.stringify(referentesSemana));
     if (authLoading || !fbUser) return;
     if (referentesSemana && referentesSemana.length > 0) {
       FirebaseService.upsert("escalas_referentes", referentesSemana, "dia").catch((err) => {
@@ -606,34 +576,6 @@ export default function App() {
       });
     }
   }, [referentesSemana, fbUser, authLoading]);
-
-  useEffect(() => {
-    localStorage.setItem("sys_copil", JSON.stringify(copilData));
-  }, [copilData]);
-
-  useEffect(() => {
-    localStorage.setItem("sys_radar", JSON.stringify(radar));
-  }, [radar]);
-
-  useEffect(() => {
-    localStorage.setItem("sys_reapro", JSON.stringify(reaproData));
-  }, [reaproData]);
-
-  useEffect(() => {
-    localStorage.setItem("sys_bolsao", JSON.stringify(bolsaoData));
-  }, [bolsaoData]);
-
-  useEffect(() => {
-    localStorage.setItem("sys_alerts", JSON.stringify(alerts));
-  }, [alerts]);
-
-  useEffect(() => {
-    localStorage.setItem("sys_audit", JSON.stringify(audit));
-  }, [audit]);
-
-  useEffect(() => {
-    localStorage.setItem("sys_historico", JSON.stringify(historico));
-  }, [historico]);
 
   // CORE DISPATCHERS & STATE WRITERS
   const addAudit = (user: string, action: string, field: string, nVal: any, pVal?: any) => {
@@ -903,7 +845,6 @@ export default function App() {
       const standard = initialCopil[sid] || initialCopil["87"];
       copy[sid] = JSON.parse(JSON.stringify(standard));
       addAudit(currentUser, "Restaurar COPIL Padrão", sid, "Sucesso");
-      localStorage.setItem("sys_copil", JSON.stringify(copy));
       return copy;
     });
     alert(`KPIs padrão do Setor S${sid} restaurados com sucesso!`);
@@ -999,7 +940,6 @@ export default function App() {
       });
 
       addAudit(currentUser, "Importação Planilha COPIL", `${validRows.length} linhas`, "Sucesso");
-      localStorage.setItem("sys_copil", JSON.stringify(copy));
       return copy;
     });
   };
@@ -1502,7 +1442,6 @@ export default function App() {
                 onAddCopilKPI={handleAddCopilKPI}
                 onRemoveCopilKPI={handleRemoveCopilKPI}
                 onSaveCopil={() => {
-                  localStorage.setItem("sys_copil", JSON.stringify(copilData));
                   addAudit(currentUser, "Gravação COPIL", "Estado", "Sucesso");
                   alert(`KPIs do Setor S${activeSectorId} salvos e sincronizados com sucesso.`);
                 }}

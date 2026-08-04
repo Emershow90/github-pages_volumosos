@@ -21,8 +21,8 @@ export const AdminApprovalTab: React.FC = () => {
       setApprovingId(uid);
       await approveUser(uid, currentUser);
       addToast(`Acesso de ${nome} liberado com sucesso!`, "success");
-    } catch (err: any) {
-      addToast(`Falha ao aprovar usuário: ${err.message || err}`, "error");
+    } catch (err: unknown) {
+      addToast(`Falha ao aprovar usuário: ${(err as Error).message || err}`, "error");
     } finally {
       setApprovingId(null);
     }

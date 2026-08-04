@@ -59,7 +59,7 @@ interface DashboardTabProps {
   currentRole: UserRole | null;
   historico: HistoricoRegistro[];
   capacidade: CapacidadeSetor[];
-  onUpdateSetor?: (sid: string, field: string, val: any) => void;
+  onUpdateSetor?: (sid: string, field: string, val: string | number) => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -714,10 +714,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         <span>Plantão Ativo ({plantaoHoje.dia || nomeHoje}):</span>
                       </div>
                       <div className="flex flex-wrap items-center gap-4 text-zinc-300 font-mono text-[11px]">
-                        <span><strong className="text-indigo-300 font-sans">SB7 (S87):</strong> {plantaoHoje.ref87 || (plantaoHoje as any).referente_sb7 || "—"}</span>
-                        <span><strong className="text-amber-300 font-sans">Volumosos:</strong> {plantaoHoje.refVol || (plantaoHoje as any).referente_volumosos || "—"}</span>
-                        {(plantaoHoje.apoios || (plantaoHoje as any).apoio) && (
-                          <span><strong className="text-sky-300 font-sans">Apoio:</strong> {plantaoHoje.apoios || (plantaoHoje as any).apoio}</span>
+                        <span><strong className="text-indigo-300 font-sans">SB7 (S87):</strong> {plantaoHoje.ref87 || (plantaoHoje as Record<string, unknown>).referente_sb7 || "—"}</span>
+                        <span><strong className="text-amber-300 font-sans">Volumosos:</strong> {plantaoHoje.refVol || (plantaoHoje as Record<string, unknown>).referente_volumosos || "—"}</span>
+                        {(plantaoHoje.apoios || (plantaoHoje as Record<string, unknown>).apoio) && (
+                          <span><strong className="text-sky-300 font-sans">Apoio:</strong> {plantaoHoje.apoios || (plantaoHoje as Record<string, unknown>).apoio}</span>
                         )}
                       </div>
                     </div>
@@ -732,8 +732,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     const unitText = s.id === "87" ? "CAIXAS" : "COLIS";
 
                     const plantaoLider = s.id === "87" 
-                      ? (plantaoHoje?.ref87 || (plantaoHoje as any)?.referente_sb7 || s.resp) 
-                      : (plantaoHoje?.refVol || (plantaoHoje as any)?.referente_volumosos || s.resp);
+                      ? (plantaoHoje?.ref87 || (plantaoHoje as Record<string, unknown>)?.referente_sb7 || s.resp) 
+                      : (plantaoHoje?.refVol || (plantaoHoje as Record<string, unknown>)?.referente_volumosos || s.resp);
 
                     return (
                       <div
@@ -1138,9 +1138,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       <tbody className="text-xs divide-y divide-white/5 font-mono">
                         {Object.entries(copilData[copilActiveSector] || {}).flatMap(
                           ([groupName, kpis]) => {
-                            return (kpis as any[]).map((kpi: any, idx: number) => {
-                              const comp = parseFloat(kpi.comp);
-                              const real = parseFloat(kpi.real);
+                            return (kpis as Record<string, unknown>[]).map((kpi: Record<string, unknown>, idx: number) => {
+                              const comp = parseFloat((kpi.comp as string));
+                              const real = parseFloat((kpi.real as string));
                               let nota = "—";
                               if (!isNaN(comp) && !isNaN(real) && comp > 0) {
                                 nota = (kpi.inverso ? comp / real : real / comp).toFixed(2);
