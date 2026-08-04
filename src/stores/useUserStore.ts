@@ -110,8 +110,8 @@ export const useUserStore = create<UserState>((set, get) => ({
           set({ allUsers: mapped });
           return;
         }
-      } catch (err: any) {
-        console.error('Error loading all users:', err.message);
+      } catch (err: unknown) {
+        console.error('Error loading all users:', (err as Error).message);
       }
     }
     
@@ -160,8 +160,8 @@ export const useUserStore = create<UserState>((set, get) => ({
           set({ pendingUsers: mapped });
           return;
         }
-      } catch (err: any) {
-        console.error('Error loading pending users online:', err.message);
+      } catch (err: unknown) {
+        console.error('Error loading pending users online:', (err as Error).message);
       }
     }
     
@@ -202,8 +202,8 @@ export const useUserStore = create<UserState>((set, get) => ({
           .eq('id', uid);
           
         if (error) throw error;
-      } catch (err: any) {
-        console.error('Error approving user online:', err.message);
+      } catch (err: unknown) {
+        console.error('Error approving user online:', (err as Error).message);
         throw err;
       }
     }

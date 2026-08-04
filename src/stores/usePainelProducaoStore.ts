@@ -18,10 +18,8 @@ export const usePainelProducaoStore = create<PainelProducaoState>((set, get) => 
   setRegistros: (registros) => set({ registros }),
 
   upsertRegistro: async (registro) => {
-    // Generate UUID if not present
-    if (!registro.id) {
-      registro.id = `pp-${registro.sector_id}-${registro.upload_date}-${Date.now()}`;
-    }
+    // Generate deterministic ID per sector and date
+    registro.id = `pp-${registro.sector_id}-${registro.upload_date}`;
     const now = new Date().toISOString();
     registro.updated_at = now;
 
@@ -41,10 +39,10 @@ export const usePainelProducaoStore = create<PainelProducaoState>((set, get) => 
 
     set({ registros: updatedList });
 
-    // Save to IndexedDB & Supabase
+    // Save to IndexedDB & Supabase using composite constraint (sector_id,upload_date)
     try {
       await IndexedDBService.put('painel_producao', registro);
-      await SupabaseService.upsertRecord('painel_producao', registro, 'id');
+      await SupabaseService.upsertRecord('painel_producao', registro, undefined, 'sector_id,upload_date');
     } catch (err) {
       console.warn('[usePainelProducaoStore] Warning saving record:', err);
     }
