@@ -604,3 +604,23 @@ CREATE OR REPLACE TRIGGER on_pending_user_created
   FOR EACH ROW
   EXECUTE FUNCTION public.notify_admin_on_pending_user();
 
+-- Tabela: audit_logs (Rastreamento e auditoria de ações operacionais)
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id TEXT PRIMARY KEY,
+  acao TEXT NOT NULL,
+  usuario TEXT NOT NULL,
+  campo TEXT,
+  dispositivo TEXT,
+  valor_anterior TEXT,
+  valor_novo TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total audit_logs" ON public.audit_logs;
+CREATE POLICY "Acesso total audit_logs" ON public.audit_logs
+  FOR ALL USING (true) WITH CHECK (true);
+
+

@@ -39,6 +39,7 @@ export const SupabaseHealthPanel: React.FC = () => {
         { name: "store_operations", type: "table", description: "Operações ativas de expedição e carregamento por loja", count: 12, status: "offline" },
         { name: "atividade_loja", type: "table", description: "Histórico e volume de atividades por loja", count: 8, status: "offline" },
         { name: "escalas", type: "table", description: "Planejamento semanal de turnos para os colaboradores", count: 45, status: "offline" },
+        { name: "audit_logs", type: "table", description: "Rastreamento e auditoria de ações dos usuários", count: 24, status: "offline" },
         { name: "view_radar_completo", type: "view", description: "Relatório consolidado de listas de coleta e status", count: 32, status: "offline" },
         { name: "view_colaboradores_setor", type: "view", description: "Visão quantitativa de equipe operacional por setor", count: 4, status: "offline" },
       ];
@@ -113,6 +114,7 @@ export const SupabaseHealthPanel: React.FC = () => {
         checkEntity("store_operations", "table", "Operações ativas de expedição e carregamento por loja"),
         checkEntity("atividade_loja", "table", "Histórico e volume de atividades por loja"),
         checkEntity("escalas", "table", "Planejamento semanal de turnos para os colaboradores"),
+        checkEntity("audit_logs", "table", "Rastreamento e auditoria de ações dos usuários"),
         checkEntity("view_radar_completo", "view", "Relatório consolidado de listas de coleta e status"),
         checkEntity("view_colaboradores_setor", "view", "Visão quantitativa de equipe operacional por setor")
       ]);
@@ -215,7 +217,7 @@ export const SupabaseHealthPanel: React.FC = () => {
           <div>
             <div className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Esquema do Banco</div>
             <div className="text-xs font-bold text-zinc-300 font-mono mt-0.5">
-              9 Tabelas • 2 Views
+              10 Tabelas • 2 Views
             </div>
           </div>
         </div>

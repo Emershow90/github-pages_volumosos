@@ -73,7 +73,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   capacidade_operacional: ['id', 'setor', 'abertura', 'fecho_hora', 'fechoHora', 'updated_at'],
   escalas_referentes: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'ref87', 'refVol', 'apoios', 'updated_at', 'updated_by'],
   historico_consolidado: ['id', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota5s', 'nota_5s', 'erros', 'created_at', 'updated_at'],
-  audit_logs: ['id', 'data', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at', 'updated_at'],
+  audit_logs: ['id', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at', 'updated_at'],
   lideranca: ['id', 'nome', 'cargo', 'setor', 'contato', 'foto', 'created_at', 'updated_at'],
   override_operacional: ['chave', 'valor', 'created_at', 'updated_at'],
   activity_entries: ['id', 'sector_id', 'activity_date', 'user_id', 'alimento', 'montanha', 'l7_mochila', 'elog', 'reapro', 'colis', 'adhoc_categories', 'created_at', 'updated_at'],
@@ -85,6 +85,64 @@ export class SupabaseService {
   private static authStateListeners: Set<(state: AuthState) => void> = new Set();
   private static initializedAuthObserver = false;
   private static syncErrorHandlers: SyncErrorHandler[] = [];
+  private static remoteSchemaCache: Map<string, Set<string>> = new Map();
+  private static isProcessingQueue = false;
+  private static queueCooldownUntil = 0;
+
+  public static registerRemoteColumns(tableName: string, keys: string[]): void {
+    const realTable = this.getRealTableName(tableName);
+    if (!keys || keys.length === 0) return;
+    const existing = this.remoteSchemaCache.get(realTable) || new Set<string>();
+    keys.forEach((k) => existing.add(k));
+    this.remoteSchemaCache.set(realTable, existing);
+  }
+
+  public static removeInvalidColumnFromCache(tableName: string, colName: string): void {
+    const realTable = this.getRealTableName(tableName);
+    if (TABLE_COLUMNS[realTable]) {
+      TABLE_COLUMNS[realTable] = TABLE_COLUMNS[realTable].filter((c) => c !== colName);
+    }
+    if (TABLE_COLUMNS[tableName]) {
+      TABLE_COLUMNS[tableName] = TABLE_COLUMNS[tableName].filter((c) => c !== colName);
+    }
+    const cached = this.remoteSchemaCache.get(realTable);
+    if (cached) {
+      cached.delete(colName);
+    }
+  }
+
+  public static enqueueOperation(item: {
+    table: string;
+    realTable: string;
+    action: 'upsert' | 'delete';
+    record?: Record<string, unknown>;
+    primaryKey?: string;
+    keyVal?: unknown;
+  }): void {
+    try {
+      const queueStr = localStorage.getItem("sys_radar_offline_queue");
+      const queue = queueStr ? JSON.parse(queueStr) : [];
+      queue.push({
+        ...item,
+        id: `q_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        createdAt: new Date().toISOString()
+      });
+      localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
+    } catch (e) {
+      console.error("[Supabase Queue] Erro ao enfileirar operação:", e);
+    }
+  }
+
+  public static getQueueLength(): number {
+    try {
+      const queueStr = localStorage.getItem("sys_radar_offline_queue");
+      if (!queueStr) return 0;
+      const queue = JSON.parse(queueStr);
+      return Array.isArray(queue) ? queue.length : 0;
+    } catch {
+      return 0;
+    }
+  }
 
   public static logDatabaseDiagnostics(tableName: string, operation: 'fetch' | 'upsert' | 'delete', error: unknown, payload?: Record<string, unknown>): void {
     const realTable = this.getRealTableName(tableName);
@@ -134,11 +192,15 @@ export class SupabaseService {
       if ('fotoLider' in result) { result.fotolider = result.fotoLider; delete result.fotoLider; }
       if ('varFin' in result) { result.varfin = result.varFin; delete result.varFin; }
       if ('errosPicking' in result) { result.errospicking = result.errosPicking; delete result.errosPicking; }
+      if ('erros_picking' in result) { result.errospicking = result.erros_picking; delete result.erros_picking; }
       if ('reproTotal' in result) { result.reprototal = result.reproTotal; delete result.reproTotal; }
+      if ('repro_total' in result) { result.reprototal = result.repro_total; delete result.repro_total; }
       if ('infracaoSeguranca' in result) { result.infracaoseguranca = result.infracaoSeguranca; delete result.infracaoSeguranca; }
       if ('horasDKT' in result) { result.horasdkt = result.horasDKT; delete result.horasDKT; }
       if ('poliRec' in result) { result.polirec = result.poliRec; delete result.poliRec; }
       if ('poliSaid' in result) { result.polisaid = result.poliSaid; delete result.poliSaid; }
+      if ('nota_5s' in result) { result.nota5s = result.nota_5s; delete result.nota_5s; }
+      if ('capacidade' in result) { delete result.capacidade; }
     } else if (realTable === 'usuarios') {
       if (!Array.isArray(result.setoresAutorizados)) {
         if (typeof result.setoresAutorizados === 'string' && (result.setoresAutorizados as string).trim() !== '') {
@@ -161,6 +223,12 @@ export class SupabaseService {
       }
       if ('valorAnterior' in result) { result.valor_anterior = result.valorAnterior; delete result.valorAnterior; }
       if ('valorNovo' in result) { result.valor_novo = result.valorNovo; delete result.valorNovo; }
+      if ('data' in result) {
+        if (!result.created_at) {
+          result.created_at = result.data;
+        }
+        delete result.data;
+      }
     } else if (realTable === 'store_master') {
       if ('transportadoraPadrao' in result) { result.transportadorapadrao = result.transportadoraPadrao; delete result.transportadoraPadrao; }
     } else if (realTable === 'lista_coleta') {
@@ -251,6 +319,7 @@ export class SupabaseService {
     } else if (realTable === 'audit_logs') {
       if ('valor_anterior' in result && !('valorAnterior' in result)) result.valorAnterior = result.valor_anterior;
       if ('valor_novo' in result && !('valorNovo' in result)) result.valorNovo = result.valor_novo;
+      if ('created_at' in result && !('data' in result)) result.data = result.created_at;
     } else if (realTable === 'activity_entries') {
       if ('sector_id' in result && !('sectorId' in result)) result.sectorId = result.sector_id;
       if ('activity_date' in result && !('activityDate' in result)) result.activityDate = result.activity_date;
@@ -446,6 +515,7 @@ export class SupabaseService {
         if (error) throw error;
 
         if (data && data.length > 0) {
+          this.registerRemoteColumns(realTableName, Object.keys(data[0] as Record<string, unknown>));
           const mapped = data.map((row) => this.fromDbRecord(tableName, row as Record<string, unknown>) as unknown as T);
           await IndexedDBService.putMany(tableName, mapped);
           return mapped;
@@ -470,18 +540,31 @@ export class SupabaseService {
   }
 
   public static filterRecordColumns<T>(tableName: string, record: T): Record<string, unknown> {
-    const columns = TABLE_COLUMNS[tableName];
-    if (!columns) return record as Record<string, unknown>;
+    const realTable = this.getRealTableName(tableName);
+    const dbRecord = this.toDbRecord(tableName, record as Record<string, unknown>);
+
+    const staticCols = TABLE_COLUMNS[realTable] || TABLE_COLUMNS[tableName];
+    const dynamicCols = this.remoteSchemaCache.get(realTable);
 
     const filtered: Record<string, unknown> = {};
-    const rec = record as Record<string, unknown>;
-    for (const key of Object.keys(rec)) {
-      if (columns.includes(key)) {
-        filtered[key] = rec[key];
-      } else {
-        console.warn(`[Supabase Sanitizer] Ignorando coluna inválida "${key}" para tabela "${tableName}".`);
+    for (const key of Object.keys(dbRecord)) {
+      if (dynamicCols && dynamicCols.size > 0) {
+        if (dynamicCols.has(key)) {
+          filtered[key] = dbRecord[key];
+        }
+        continue;
       }
+
+      if (staticCols && staticCols.length > 0) {
+        if (staticCols.includes(key)) {
+          filtered[key] = dbRecord[key];
+        }
+        continue;
+      }
+
+      filtered[key] = dbRecord[key];
     }
+
     return filtered;
   }
 
@@ -525,8 +608,7 @@ export class SupabaseService {
     const realTableName = this.getRealTableName(tableName);
 
     // Converte record do formato do App para o formato do DB e filtra colunas válidas
-    const dbRecord = this.toDbRecord(tableName, finalizedRecord as Record<string, unknown>);
-    const filteredRecord = this.filterRecordColumns(realTableName, dbRecord);
+    const filteredRecord = this.filterRecordColumns(tableName, finalizedRecord);
 
     // Salva record local no formato do App para a UI
     await IndexedDBService.put(tableName, finalizedRecord);
@@ -548,7 +630,7 @@ export class SupabaseService {
       }
     }
 
-    if (isOnline()) {
+    if (isOnline() && Date.now() >= this.queueCooldownUntil) {
       try {
         const client = this.getClient();
         const { data, error } = await client
@@ -558,59 +640,79 @@ export class SupabaseService {
           .maybeSingle();
         
         if (data) {
+          this.registerRemoteColumns(realTableName, Object.keys(data as Record<string, unknown>));
           const dbRet = this.fromDbRecord(tableName, data) as unknown as T;
           await IndexedDBService.put(tableName, dbRet);
           return dbRet;
         }
 
         if (error) {
-          this.logDatabaseDiagnostics(tableName, 'upsert', error, filteredRecord);
-          const errMsg = error.message || '';
-          if (error.code === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
-            console.error(`[Supabase Sanitizer] [PGRST204] Erro de coluna inexistente ao salvar em ${realTableName}. Abortando inserção.`, error);
+          const errMsg = String(error.message || '');
+          const errCode = String(error.code || '');
+
+          if (errCode === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
+            const colMatch = errMsg.match(/column "([^"]+)"/i) || errMsg.match(/coluna "([^"]+)"/i);
+            if (colMatch && colMatch[1]) {
+              const invalidCol = colMatch[1];
+              console.warn(`[Supabase Sanitizer] [PGRST204] Coluna "${invalidCol}" inexistente na tabela ${realTableName}. Removendo e re-tentando...`);
+              this.removeInvalidColumnFromCache(realTableName, invalidCol);
+
+              const sanitized = this.filterRecordColumns(tableName, finalizedRecord);
+              const { data: retryData, error: retryErr } = await client
+                .from(realTableName)
+                .upsert(sanitized, { onConflict: conflictTarget })
+                .select()
+                .maybeSingle();
+
+              if (!retryErr && retryData) {
+                const dbRet = this.fromDbRecord(tableName, retryData) as unknown as T;
+                await IndexedDBService.put(tableName, dbRet);
+                return dbRet;
+              }
+            }
+
+            console.error(`[Supabase Sanitizer] Erro PGRST204 ao salvar em ${realTableName}. Salvo apenas localmente.`, error);
             const alertLog: AlertLog = {
               id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
               prioridade: 'alta',
               titulo: 'Sincronização Descartada',
-              descricao: `Alteração na tabela "${realTableName}" continha estrutura incompatível e foi descartada.`,
+              descricao: `Alteração na tabela "${realTableName}" continha estrutura incompatível e foi gravada apenas no cache local.`,
               setor: 'Sistema',
               hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
               lido: false
             };
             this.notifySyncError(alertLog);
-          } else {
-            throw error;
+            return finalizedRecord as unknown as T;
           }
+
+          if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
+            console.warn(`[Supabase] Tabela "${realTableName}" não existe no Supabase. Gravado apenas no cache local.`);
+            return finalizedRecord as unknown as T;
+          }
+
+          throw error;
         }
       } catch (err: unknown) {
         this.logDatabaseDiagnostics(tableName, 'upsert', err, filteredRecord);
-        const errObj = err as { message?: string; code?: string };
-        const errMsg = String(errObj?.message || err);
-        const errCode = String(errObj?.code || '');
-        if (errCode === 'PGRST204' || errMsg.includes('PGRST204') || errMsg.includes('column') || errMsg.includes('does not exist')) {
-          console.error(`[Supabase Sanitizer] Descartando inserção inválida devido a erro PGRST204 de coluna inexistente na tabela ${realTableName}.`, err);
-          const alertLog: AlertLog = {
-            id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-            prioridade: 'alta',
-            titulo: 'Sincronização Descartada',
-            descricao: `Alteração na tabela "${realTableName}" continha estrutura incompatível e foi descartada.`,
-            setor: 'Sistema',
-            hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-            lido: false
-          };
-          this.notifySyncError(alertLog);
-        } else {
-          console.warn(`[Supabase Offline Fallback] Erro ao enviar diretamente para ${realTableName}:${docId}. Enfileirando.`, err);
-          const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
-          queue.push({ table: tableName, realTable: realTableName, record: filteredRecord, primaryKey: keyField, action: 'upsert' });
-          localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
-        }
+        console.warn(`[Supabase Queue] Instabilidade de rede ao salvar em ${realTableName}:${docId}. Enfileirando na fila de espera.`, err);
+        this.queueCooldownUntil = Date.now() + 4000;
+        this.enqueueOperation({
+          table: tableName,
+          realTable: realTableName,
+          record: filteredRecord,
+          primaryKey: conflictTarget,
+          action: 'upsert'
+        });
       }
     } else {
-      console.log(`[Supabase Offline] Queued update for ${tableName}:${docId}`);
-      const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
-      queue.push({ table: tableName, realTable: realTableName, record: filteredRecord, primaryKey: keyField, action: 'upsert' });
-      localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
+      console.log(`[Supabase Queue] Modo offline ou conexão instável (cooldown). Operação enfileirada para ${tableName}:${docId}`);
+      this.enqueueOperation({
+        table: tableName,
+        realTable: realTableName,
+        record: filteredRecord,
+        primaryKey: conflictTarget,
+        action: 'upsert'
+      });
     }
 
     return finalizedRecord as unknown as T;
@@ -634,7 +736,7 @@ export class SupabaseService {
       return;
     }
 
-    if (isOnline()) {
+    if (isOnline() && Date.now() >= this.queueCooldownUntil) {
       try {
         const client = this.getClient();
         const { error } = await client
@@ -642,17 +744,33 @@ export class SupabaseService {
           .delete()
           .eq(keyField, keyVal);
 
-        if (error) throw error;
+        if (error) {
+          const errMsg = String(error.message || '');
+          const errCode = String(error.code || '');
+          if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
+            return;
+          }
+          throw error;
+        }
       } catch (err) {
-        console.warn(`[Supabase Offline Fallback] Erro ao deletar diretamente de ${realTableName}:${docId}. Enfileirando.`, err);
-        const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
-        queue.push({ table: tableName, realTable: realTableName, keyVal, primaryKey: keyField, action: 'delete' });
-        localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
+        console.warn(`[Supabase Queue] Erro ou instabilidade ao deletar de ${realTableName}:${docId}. Enfileirando.`, err);
+        this.queueCooldownUntil = Date.now() + 4000;
+        this.enqueueOperation({
+          table: tableName,
+          realTable: realTableName,
+          keyVal,
+          primaryKey: keyField,
+          action: 'delete'
+        });
       }
     } else {
-      const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
-      queue.push({ table: tableName, realTable: realTableName, keyVal, primaryKey: keyField, action: 'delete' });
-      localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
+      this.enqueueOperation({
+        table: tableName,
+        realTable: realTableName,
+        keyVal,
+        primaryKey: keyField,
+        action: 'delete'
+      });
     }
   }
 
@@ -734,46 +852,79 @@ export class SupabaseService {
   }
 
   public static async flushOfflineQueue(): Promise<void> {
+    if (this.isProcessingQueue) return;
     if (!isOnline()) return;
+    if (Date.now() < this.queueCooldownUntil) {
+      return;
+    }
 
-    const queueStr = localStorage.getItem("sys_radar_offline_queue");
-    if (!queueStr) return;
+    this.isProcessingQueue = true;
 
     try {
-      const queue = JSON.parse(queueStr);
-      if (queue.length === 0) return;
+      const queueStr = localStorage.getItem("sys_radar_offline_queue");
+      if (!queueStr) {
+        this.isProcessingQueue = false;
+        return;
+      }
 
-      console.log(`[Supabase Sync] Sincronizando ${queue.length} alterações pendentes offline...`);
+      const queue = JSON.parse(queueStr);
+      if (!Array.isArray(queue) || queue.length === 0) {
+        this.isProcessingQueue = false;
+        return;
+      }
+
+      console.log(`[Supabase Sync] Processando ${queue.length} alterações na fila de salvamento...`);
       const remainingQueue = [];
 
-      for (const item of queue) {
-        try {
-          const client = this.getClient() as unknown as {
-            from: (table: string) => {
-              upsert: (data: unknown, options?: any) => Promise<{ error: { code?: string; message?: string } | null }>;
-              delete: () => { eq: (col: string, val: unknown) => Promise<{ error: { code?: string; message?: string } | null }> };
-            };
-          };
-          const tbl = item.table || item.tableName;
-          if (LOCAL_ONLY_TABLES.has(tbl)) {
-            continue;
-          }
-          const realTbl = item.realTable || this.getRealTableName(tbl);
-          const pKey = item.primaryKey || item.keyField || 'id';
-          const act = String(item.action || '').toLowerCase();
+      for (let i = 0; i < queue.length; i++) {
+        const item = queue[i];
+        const tbl = item.table || item.tableName;
+        if (LOCAL_ONLY_TABLES.has(tbl)) {
+          continue;
+        }
 
-          if (act === 'upsert') {
-            const dbRecord = this.toDbRecord(tbl, item.record);
-            const filteredRecord = this.filterRecordColumns(realTbl, dbRecord);
+        if (!isOnline()) {
+          remainingQueue.push(...queue.slice(i));
+          break;
+        }
+
+        const realTbl = item.realTable || this.getRealTableName(tbl);
+        const pKey = item.primaryKey || item.keyField || 'id';
+        const act = String(item.action || 'upsert').toLowerCase();
+
+        try {
+          const client = this.getClient();
+
+          if (act === 'upsert' && item.record) {
+            const filteredRecord = this.filterRecordColumns(tbl, item.record);
 
             const { error } = await client
               .from(realTbl)
               .upsert(filteredRecord, { onConflict: pKey });
 
             if (error) {
-              const errMsg = error.message || '';
-              if (error.code === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
-                console.error(`[Supabase Sync] [PGRST204] Coluna inexistente detectada na tabela ${realTbl}. Gerando alerta visual e removendo item inválido.`, error);
+              const errMsg = String(error.message || '');
+              const errCode = String(error.code || '');
+
+              if (errCode === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
+                const colMatch = errMsg.match(/column "([^"]+)"/i) || errMsg.match(/coluna "([^"]+)"/i);
+                if (colMatch && colMatch[1]) {
+                  const invalidCol = colMatch[1];
+                  console.warn(`[Supabase Sync] Coluna "${invalidCol}" inexistente na tabela "${realTbl}". Removendo do esquema e re-tentando...`);
+                  this.removeInvalidColumnFromCache(realTbl, invalidCol);
+
+                  const sanitized = this.filterRecordColumns(tbl, item.record);
+                  const { error: retryErr } = await client
+                    .from(realTbl)
+                    .upsert(sanitized, { onConflict: pKey });
+
+                  if (!retryErr) {
+                    console.log(`[Supabase Sync] Reenvio sanitizado para "${realTbl}" concluído.`);
+                    continue;
+                  }
+                }
+
+                console.error(`[Supabase Sync] [PGRST204] Estrutura incompatível na tabela ${realTbl}. Descartando da fila.`, error);
                 const alertLog: AlertLog = {
                   id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
                   prioridade: 'alta',
@@ -786,37 +937,34 @@ export class SupabaseService {
                 this.notifySyncError(alertLog);
                 continue;
               }
+
+              if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
+                console.warn(`[Supabase Sync] Tabela "${realTbl}" não existe no Supabase. Descartando da fila.`);
+                continue;
+              }
+
               throw error;
             }
-          } else if (act === 'delete') {
+          } else if (act === 'delete' && item.keyVal) {
             const { error } = await client
               .from(realTbl)
               .delete()
               .eq(pKey, item.keyVal);
-            if (error) throw error;
+
+            if (error) {
+              const errMsg = String(error.message || '');
+              const errCode = String(error.code || '');
+              if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
+                continue;
+              }
+              throw error;
+            }
           }
         } catch (err: unknown) {
-          const tblName = item.table || item.tableName;
-          console.error(`[Supabase Sync] Erro ao sincronizar item offline para tabela "${tblName}":`, err);
-          
-          const errObj = err as { message?: string; code?: string };
-          const errMsg = String(errObj?.message || err);
-          const errCode = String(errObj?.code || '');
-          if (errCode === 'PGRST204' || errMsg.includes('PGRST204') || errMsg.includes('column') || errMsg.includes('does not exist')) {
-            console.warn(`[Supabase Sync] Ignorando e descartando alteração com coluna inválida de ${tblName} da fila para evitar travamentos.`);
-            const alertLog: AlertLog = {
-              id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-              prioridade: 'alta',
-              titulo: 'Sincronização Descartada',
-              descricao: `Alteração na tabela "${tblName}" continha estrutura incompatível e foi descartada da fila offline.`,
-              setor: 'Sistema',
-              hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-              lido: false
-            };
-            this.notifySyncError(alertLog);
-          } else {
-            remainingQueue.push(item);
-          }
+          console.warn(`[Supabase Sync] Instabilidade de rede ao sincronizar item para "${tbl}". Ativando cooldown de 4s.`, err);
+          this.queueCooldownUntil = Date.now() + 4000;
+          remainingQueue.push(...queue.slice(i));
+          break;
         }
       }
 
@@ -828,6 +976,8 @@ export class SupabaseService {
       }
     } catch (e) {
       console.error("[Supabase Sync] Erro ao analisar fila offline:", e);
+    } finally {
+      this.isProcessingQueue = false;
     }
   }
 
