@@ -73,7 +73,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   capacidade_operacional: ['id', 'setor', 'abertura', 'fecho_hora', 'fechoHora', 'updated_at'],
   escalas_referentes: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'ref87', 'refVol', 'apoios', 'updated_at', 'updated_by'],
   historico_consolidado: ['id', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota5s', 'nota_5s', 'erros', 'created_at', 'updated_at'],
-  audit_logs: ['id', 'data', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at', 'updated_at'],
+  audit_logs: ['id', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at', 'updated_at'],
   lideranca: ['id', 'nome', 'cargo', 'setor', 'contato', 'foto', 'created_at', 'updated_at'],
   override_operacional: ['chave', 'valor', 'created_at', 'updated_at'],
   activity_entries: ['id', 'sector_id', 'activity_date', 'user_id', 'alimento', 'montanha', 'l7_mochila', 'elog', 'reapro', 'colis', 'adhoc_categories', 'created_at', 'updated_at'],
@@ -134,11 +134,15 @@ export class SupabaseService {
       if ('fotoLider' in result) { result.fotolider = result.fotoLider; delete result.fotoLider; }
       if ('varFin' in result) { result.varfin = result.varFin; delete result.varFin; }
       if ('errosPicking' in result) { result.errospicking = result.errosPicking; delete result.errosPicking; }
+      if ('erros_picking' in result) { result.errospicking = result.erros_picking; delete result.erros_picking; }
       if ('reproTotal' in result) { result.reprototal = result.reproTotal; delete result.reproTotal; }
+      if ('repro_total' in result) { result.reprototal = result.repro_total; delete result.repro_total; }
       if ('infracaoSeguranca' in result) { result.infracaoseguranca = result.infracaoSeguranca; delete result.infracaoSeguranca; }
       if ('horasDKT' in result) { result.horasdkt = result.horasDKT; delete result.horasDKT; }
       if ('poliRec' in result) { result.polirec = result.poliRec; delete result.poliRec; }
       if ('poliSaid' in result) { result.polisaid = result.poliSaid; delete result.poliSaid; }
+      if ('nota_5s' in result) { result.nota5s = result.nota_5s; delete result.nota_5s; }
+      if ('capacidade' in result) { delete result.capacidade; }
     } else if (realTable === 'usuarios') {
       if (!Array.isArray(result.setoresAutorizados)) {
         if (typeof result.setoresAutorizados === 'string' && (result.setoresAutorizados as string).trim() !== '') {
@@ -161,10 +165,27 @@ export class SupabaseService {
       }
       if ('valorAnterior' in result) { result.valor_anterior = result.valorAnterior; delete result.valorAnterior; }
       if ('valorNovo' in result) { result.valor_novo = result.valorNovo; delete result.valorNovo; }
+      if ('data' in result) {
+        if (!result.created_at) {
+          result.created_at = result.data;
+        }
+        delete result.data;
+      }
     } else if (realTable === 'store_master') {
       if ('transportadoraPadrao' in result) { result.transportadorapadrao = result.transportadoraPadrao; delete result.transportadoraPadrao; }
     } else if (realTable === 'lista_coleta') {
       if ('atividadeRelacionada' in result) { result.atividaderelacionada = result.atividadeRelacionada; delete result.atividadeRelacionada; }
+    } else if (realTable === 'radar_lojas_status') {
+      if ('statusSoltura' in result) { result.status_soltura = result.statusSoltura; delete result.statusSoltura; }
+      if ('horarioSoltura' in result) { result.horario_soltura = result.horarioSoltura; delete result.horarioSoltura; }
+      if ('soltoPor' in result) { result.solto_por = result.soltoPor; delete result.soltoPor; }
+      if ('statusColeta' in result) { result.status_coleta = result.statusColeta; delete result.statusColeta; }
+      if ('horarioColeta' in result) { result.horario_coleta = result.horarioColeta; delete result.horarioColeta; }
+      if ('coletadoPor' in result) { result.coletado_por = result.coletadoPor; delete result.coletadoPor; }
+      if ('statusCarregamento' in result) { result.status_carregamento = result.statusCarregamento; delete result.statusCarregamento; }
+      if ('horarioCarregamento' in result) { result.horario_carregamento = result.horarioCarregamento; delete result.horarioCarregamento; }
+      if ('carregadoPor' in result) { result.carregado_por = result.carregadoPor; delete result.carregadoPor; }
+      if ('statusExpedicao' in result) { result.status_expedicao = result.statusExpedicao; delete result.statusExpedicao; }
     } else if (realTable === 'capacidade') {
       if ('setor_id' in result) { result.setor = result.setor_id; delete result.setor_id; }
       if ('fechoHora' in result) { result.fecho_hora = result.fechoHora; delete result.fechoHora; }
@@ -184,6 +205,12 @@ export class SupabaseService {
       if ('carregadoPor' in result) { result.carregado_por = result.carregadoPor; delete result.carregadoPor; }
       if ('statusExpedicao' in result) { result.status_expedicao = result.statusExpedicao; delete result.statusExpedicao; }
       if ('perdeuCorte' in result) { result.perdeu_corte = result.perdeuCorte; delete result.perdeuCorte; }
+    } else if (realTable === 'atividade_loja') {
+      if ('programacaoId' in result) { result.programacao_id = result.programacaoId; delete result.programacaoId; }
+      if ('lojaId' in result) { result.loja_id = result.lojaId; delete result.lojaId; }
+      if ('tipoAtividade' in result) { result.tipo_atividade = result.tipoAtividade; delete result.tipoAtividade; }
+      if ('colisProgramados' in result) { result.colis_programados = result.colisProgramados; delete result.colisProgramados; }
+      if ('colisColetados' in result) { result.colis_coletados = result.colisColetados; delete result.colisColetados; }
     } else if (realTable === 'historico_consolidado') {
       if ('nota5s' in result) { result.nota_5s = result.nota5s; delete result.nota5s; }
     } else if (realTable === 'escala_semanal') {
@@ -234,6 +261,7 @@ export class SupabaseService {
     } else if (realTable === 'audit_logs') {
       if ('valor_anterior' in result && !('valorAnterior' in result)) result.valorAnterior = result.valor_anterior;
       if ('valor_novo' in result && !('valorNovo' in result)) result.valorNovo = result.valor_novo;
+      if ('created_at' in result && !('data' in result)) result.data = result.created_at;
     } else if (realTable === 'activity_entries') {
       if ('sector_id' in result && !('sectorId' in result)) result.sectorId = result.sector_id;
       if ('activity_date' in result && !('activityDate' in result)) result.activityDate = result.activity_date;
@@ -246,12 +274,33 @@ export class SupabaseService {
       if ('transportadorapadrao' in result && !('transportadoraPadrao' in result)) result.transportadoraPadrao = result.transportadorapadrao;
     } else if (realTable === 'lista_coleta') {
       if ('atividaderelacionada' in result && !('atividadeRelacionada' in result)) result.atividadeRelacionada = result.atividaderelacionada;
+    } else if (realTable === 'radar_lojas_status') {
+      if ('status_soltura' in result && !('statusSoltura' in result)) result.statusSoltura = result.status_soltura;
+      if ('statussoltura' in result && !('statusSoltura' in result)) result.statusSoltura = result.statussoltura;
+      if ('horario_soltura' in result && !('horarioSoltura' in result)) result.horarioSoltura = result.horario_soltura;
+      if ('horariosoltura' in result && !('horarioSoltura' in result)) result.horarioSoltura = result.horariosoltura;
+      if ('solto_por' in result && !('soltoPor' in result)) result.soltoPor = result.solto_por;
+      if ('soltopor' in result && !('soltoPor' in result)) result.soltoPor = result.soltopor;
+      if ('status_coleta' in result && !('statusColeta' in result)) result.statusColeta = result.status_coleta;
+      if ('statuscoleta' in result && !('statusColeta' in result)) result.statusColeta = result.statuscoleta;
+      if ('horario_coleta' in result && !('horarioColeta' in result)) result.horarioColeta = result.horario_coleta;
+      if ('horariocoleta' in result && !('horarioColeta' in result)) result.horarioColeta = result.horariocoleta;
+      if ('coletado_por' in result && !('coletadoPor' in result)) result.coletadoPor = result.coletado_por;
+      if ('coletadopor' in result && !('coletadoPor' in result)) result.coletadoPor = result.coletadopor;
+      if ('status_carregamento' in result && !('statusCarregamento' in result)) result.statusCarregamento = result.status_carregamento;
+      if ('statuscarregamento' in result && !('statusCarregamento' in result)) result.statusCarregamento = result.statuscarregamento;
+      if ('horario_carregamento' in result && !('horarioCarregamento' in result)) result.horarioCarregamento = result.horario_carregamento;
+      if ('horariocarregamento' in result && !('horarioCarregamento' in result)) result.horarioCarregamento = result.horariocarregamento;
+      if ('carregado_por' in result && !('carregadoPor' in result)) result.carregadoPor = result.carregado_por;
+      if ('carregadopor' in result && !('carregadoPor' in result)) result.carregadoPor = result.carregadopor;
+      if ('status_expedicao' in result && !('statusExpedicao' in result)) result.statusExpedicao = result.status_expedicao;
+      if ('statusexpedicao' in result && !('statusExpedicao' in result)) result.statusExpedicao = result.statusexpedicao;
     } else if (realTable === 'capacidade') {
       if ('setor' in result && !('setor_id' in result)) result.setor_id = result.setor;
       if ('fecho_hora' in result && !('fechoHora' in result)) result.fechoHora = result.fecho_hora;
     } else if (realTable === 'store_operations') {
       if ('programacao_id' in result && !('programacaoId' in result)) result.programacaoId = result.programacao_id;
-      if ('loja_id' in result && !('lojaId' in result)) result.lojaId = result.lojaId;
+      if ('loja_id' in result && !('lojaId' in result)) result.lojaId = result.loja_id;
       if ('nome_loja' in result && !('nomeLoja' in result)) result.nomeLoja = result.nome_loja;
       if ('atividade_relacionada' in result && !('atividadeRelacionada' in result)) result.atividadeRelacionada = result.atividade_relacionada;
       if ('status_soltura' in result && !('statusSoltura' in result)) result.statusSoltura = result.status_soltura;
@@ -265,6 +314,12 @@ export class SupabaseService {
       if ('carregado_por' in result && !('carregadoPor' in result)) result.carregadoPor = result.carregado_por;
       if ('status_expedicao' in result && !('statusExpedicao' in result)) result.statusExpedicao = result.status_expedicao;
       if ('perdeu_corte' in result && !('perdeuCorte' in result)) result.perdeuCorte = result.perdeu_corte;
+    } else if (realTable === 'atividade_loja') {
+      if ('programacao_id' in result && !('programacaoId' in result)) result.programacaoId = result.programacao_id;
+      if ('loja_id' in result && !('lojaId' in result)) result.lojaId = result.loja_id;
+      if ('tipo_atividade' in result && !('tipoAtividade' in result)) result.tipoAtividade = result.tipo_atividade;
+      if ('colis_programados' in result && !('colisProgramados' in result)) result.colisProgramados = result.colis_programados;
+      if ('colis_coletados' in result && !('colisColetados' in result)) result.colisColetados = result.colis_coletados;
     } else if (realTable === 'historico_consolidado') {
       if ('nota_5s' in result && !('nota5s' in result)) result.nota5s = result.nota_5s;
     } else if (realTable === 'escala_semanal') {
@@ -434,8 +489,6 @@ export class SupabaseService {
     for (const key of Object.keys(rec)) {
       if (columns.includes(key)) {
         filtered[key] = rec[key];
-      } else {
-        console.warn(`[Supabase Sanitizer] Ignorando coluna inválida "${key}" para tabela "${tableName}".`);
       }
     }
     return filtered;
