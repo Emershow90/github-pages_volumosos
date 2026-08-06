@@ -1,16 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Valores padrão do projeto Supabase para conexões estáticas/deploy
-const DEFAULT_SUPABASE_URL = "https://ojuewwutcymfqxzpdtci.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_CgGDu_1Z6Bptd4mA3Ri33w_v0KuKcW7";
-
+// NOTE: removed hardcoded default URL / anon key to avoid silent fallback to a different Supabase project.
+// The application MUST receive Supabase settings via environment variables in CI / preview / production.
 const env = ((import.meta as unknown as { env?: Record<string, string> }).env) || {};
 
 export const SUPABASE_URL = 
   env.VITE_SUPABASE_URL || 
   env.NEXT_PUBLIC_SUPABASE_URL || 
-  env.SUPABASE_URL || 
-  DEFAULT_SUPABASE_URL;
+  env.SUPABASE_URL;
 
 export const SUPABASE_ANON_KEY = 
   env.VITE_SUPABASE_ANON_KEY || 
@@ -18,13 +15,19 @@ export const SUPABASE_ANON_KEY =
   env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
   env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
   env.SUPABASE_PUBLISHABLE_KEY || 
-  env.SUPABASE_ANON_KEY || 
-  DEFAULT_SUPABASE_ANON_KEY;
+  env.SUPABASE_ANON_KEY;
 
 export const isStaticBuild = !SUPABASE_URL || !SUPABASE_ANON_KEY;
 
+// Diagnostic logs: explicit error messages when required env vars are missing to avoid silent fallbacks.
+if (!SUPABASE_URL) {
+  console.error('[Supabase Init Error] Missing Supabase URL. Provide one of: VITE_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_URL.');
+}
+if (!SUPABASE_ANON_KEY) {
+  console.error('[Supabase Init Error] Missing Supabase ANON key. Provide one of: VITE_SUPABASE_ANON_KEY, VITE_SUPABASE_PUBLISHABLE_KEY, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_ANON_KEY.');
+}
 if (isStaticBuild) {
-  console.warn('[Supabase Init Log] No VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY / VITE_SUPABASE_PUBLISHABLE_KEY found. Running in offline/mock mode.');
+  console.warn('[Supabase Init] Running in offline/mock mode because Supabase URL or ANON key is missing. See previous errors for required env vars.');
 }
 
 export const supabase = isStaticBuild
@@ -74,4 +77,3 @@ export function checkSupabaseConnection(): {
     hasKey: true
   };
 }
-
