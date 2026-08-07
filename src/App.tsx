@@ -31,8 +31,9 @@ import { ExecutivoTab, AnalyticsTab } from "./components/ExecutiveAndAnalyticsTa
 import {
   CapacidadeTab,
   ProdutividadeTab,
-  CopilTab,
 } from "./components/TransactionalAndOperationalTabs";
+import { CopilTab } from "./components/CopilTab";
+import { ConexoesTab } from "./components/ConexoesTab";
 import {
   EquipaTab,
   HistoricoTab,
@@ -1435,42 +1436,22 @@ export default function App() {
             >
               <CopilTab
                 setores={setores}
-                copilData={copilData}
+                currentRole={currentRole}
                 activeSectorId={activeSectorId}
                 setActiveSectorId={setActiveSectorId}
-                onUpdateCopilKPI={handleUpdateCopilKPI}
-                onAddCopilKPI={handleAddCopilKPI}
-                onRemoveCopilKPI={handleRemoveCopilKPI}
-                onSaveCopil={() => {
-                  addAudit(currentUser, "Gravação COPIL", "Estado", "Sucesso");
-                  alert(`KPIs do Setor S${activeSectorId} salvos e sincronizados com sucesso.`);
-                }}
-                onExportCopilCSV={() => {
-                  let csv = "Pilar;Indicador;Meta;Realizado;Resultado\n";
-                  const activeCopil = copilData[activeSectorId];
-                  if (activeCopil) {
-                    ["operacionais", "economico", "seguranca"].forEach((g) => {
-                      const list = (activeCopil as any)[g] || [];
-                      list.forEach((k: any) => {
-                        csv += `${g.toUpperCase()};${k.kpi};${k.comp};${k.real};${calcCopilNota(
-                          k
-                        )}\n`;
-                      });
-                    });
-                  }
-                  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-                  const link = document.createElement("a");
-                  link.href = URL.createObjectURL(blob);
-                  link.setAttribute("download", `copil_matriz_S${activeSectorId}.csv`);
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                }}
-                currentRole={currentRole}
-                calcCopilNota={calcCopilNota}
-                onRestoreDefaultKPIs={handleRestoreDefaultKPIs}
-                onBulkImportKPIs={handleBulkImportKPIs}
               />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "conexoes" && (
+            <ProtectedRoute
+              userRole={currentRole}
+              allowedRoles={[
+                UserRole.Admin,
+                UserRole.Coordenador,
+              ]}
+            >
+              <ConexoesTab currentRole={currentRole} />
             </ProtectedRoute>
           )}
 

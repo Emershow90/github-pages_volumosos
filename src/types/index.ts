@@ -5,5 +5,6 @@ export * from './Setor';
 export * from './Usuario';
 export * from './OCR';
 export * from './COPIL';
+export * from './Conexao';
 export * from './ActivityEntry';
 export * from './PainelProducao';

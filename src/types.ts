@@ -17,6 +17,8 @@ import { Setor } from './types/Setor';
 
 export * from './types/ActivityEntry';
 export * from './types/Setor';
+export * from './types/COPIL';
+export * from './types/Conexao';
 
 export interface Colaborador {
   id: string;

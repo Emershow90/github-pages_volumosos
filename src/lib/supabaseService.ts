@@ -77,7 +77,10 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   lideranca: ['id', 'nome', 'cargo', 'setor', 'contato', 'foto', 'created_at', 'updated_at'],
   override_operacional: ['chave', 'valor', 'created_at', 'updated_at'],
   activity_entries: ['id', 'sector_id', 'activity_date', 'user_id', 'alimento', 'montanha', 'l7_mochila', 'elog', 'reapro', 'colis', 'adhoc_categories', 'created_at', 'updated_at'],
-  painel_producao: ['id', 'sector_id', 'upload_date', 'feito_hoje', 'feito_ontem', 'maquina_full', 'rafale_full', 'uploaded_by', 'arquivo_nome', 'created_at', 'updated_at']
+  painel_producao: ['id', 'sector_id', 'upload_date', 'feito_hoje', 'feito_ontem', 'maquina_full', 'rafale_full', 'uploaded_by', 'arquivo_nome', 'created_at', 'updated_at'],
+  matriz_performance: ['id', 'setor', 'semana', 'ano', 'pilotagem', 'volume_que_caiu', 'percentual', 'horas_planning', 'horas_terceiros', 'poli_entrada', 'poli_saida', 'capacidade', 'total_coletado', 'produtividade', 'promessa', 'lead_time', 'aderencia', 'created_at', 'updated_at'],
+  conexoes: ['id', 'nome', 'tipo', 'url', 'credenciais', 'configuracao', 'destino', 'status', 'ultima_sincronizacao', 'registros', 'created_at', 'updated_at'],
+  sync_logs: ['id', 'conexao_id', 'data_inicio', 'data_fim', 'status', 'registros_afetados', 'mensagem_erro', 'created_at']
 };
 
 export class SupabaseService {
@@ -851,6 +854,11 @@ export class SupabaseService {
     };
   }
 
+  public static subscribeToTable(tableName: string, callback: () => void): { unsubscribe: () => void } {
+    const unsub = this.subscribe(tableName, () => callback());
+    return { unsubscribe: unsub };
+  }
+
   public static async flushOfflineQueue(): Promise<void> {
     if (this.isProcessingQueue) return;
     if (!isOnline()) return;
@@ -893,7 +901,7 @@ export class SupabaseService {
         const act = String(item.action || 'upsert').toLowerCase();
 
         try {
-          const client = this.getClient();
+          const client = this.getClient() as any;
 
           if (act === 'upsert' && item.record) {
             const filteredRecord = this.filterRecordColumns(tbl, item.record);

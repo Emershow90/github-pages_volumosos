@@ -12,6 +12,7 @@ import {
   User,
   Bell,
   FileText,
+  Link2,
 } from "lucide-react";
 
 interface NavigationPanelProps {
@@ -192,6 +193,14 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           >
             <Layers size={11} />
             <span className="truncate">Ajustes</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("conexoes")}
+            className={`nav-btn py-1 px-1 text-[10px] ${activeTab === "conexoes" ? "active" : ""}`}
+            title="Conexões & Integrações Externa"
+          >
+            <Link2 size={11} className="text-purple-400" />
+            <span className="truncate font-bold text-purple-300">Conexões</span>
           </button>
         </div>
       </div>
