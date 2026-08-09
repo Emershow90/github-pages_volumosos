@@ -59,21 +59,21 @@ const LOCAL_ONLY_TABLES = new Set([
 ]);
 
 const TABLE_COLUMNS: Record<string, string[]> = {
-  store_master: ['id', 'nome', 'cidade', 'uf', 'transportadoraPadrao', 'transportadorapadrao', 'observacoes', 'created_at', 'updated_at'],
-  setores: ['id', 'numero', 'nome', 'resp', 'fotoLider', 'fotolider', 'meta', 'horario', 'situacao', 'ativ', 'promessa', 'varFin', 'varfin', 'bsi', 'nota5s', 'errosPicking', 'errospicking', 'reproTotal', 'reprototal', 'infracaoSeguranca', 'infracaoseguranca', 'horasDKT', 'horasdkt', 'poliRec', 'polirec', 'rdl', 'poliSaid', 'polisaid', 'coletado', 'uph', 'created_at', 'updated_at'],
-  lista_coleta: ['lista', 'loja', 'setor', 'corte', 'carregamento', 'transportadora', 'volumes', 'enderecos', 'atividadeRelacionada', 'atividaderelacionada', 'created_at', 'updated_at'],
-  radar_lojas_status: ['lista', 'created_at', 'updated_at', 'updated_by'],
-  store_operations: ['id', 'programacaoId', 'programacao_id', 'lojaId', 'loja_id', 'nomeLoja', 'nome_loja', 'setor', 'transportadora', 'corte', 'carregamento', 'volumes', 'enderecos', 'atividadeRelacionada', 'atividade_relacionada', 'statusSoltura', 'status_soltura', 'horarioSoltura', 'horario_soltura', 'soltoPor', 'solto_por', 'statusColeta', 'status_coleta', 'horarioColeta', 'horario_coleta', 'coletadoPor', 'coletado_por', 'statusCarregamento', 'status_carregamento', 'horarioCarregamento', 'horario_carregamento', 'carregadoPor', 'carregado_por', 'statusExpedicao', 'status_expedicao', 'perdeuCorte', 'perdeu_corte', 'updated_at', 'updated_by', 'created_at'],
-  atividade_loja: ['id', 'setor', 'updated_at', 'created_at'],
-  usuarios: ['id', 'email', 'nome', 'role', 'setoresAutorizados', 'setoresautorizados', 'situacao', 'cargo', 'unidade', 'avatar_url', 'aprovado_por', 'data_aprovacao', 'created_at', 'updated_at'],
+  store_master: ['id', 'nome', 'cidade', 'uf', 'transportadorapadrao', 'observacoes', 'created_at', 'updated_at'],
+  setores: ['id', 'numero', 'nome', 'resp', 'fotolider', 'meta', 'horario', 'situacao', 'ativ', 'promessa', 'varfin', 'bsi', 'nota5s', 'errospicking', 'reprototal', 'infracaoseguranca', 'horasdkt', 'polirec', 'rdl', 'polisaid', 'coletado', 'uph', 'created_at', 'updated_at'],
+  lista_coleta: ['lista', 'loja', 'setor', 'corte', 'carregamento', 'transportadora', 'volumes', 'enderecos', 'atividaderelacionada', 'created_at', 'updated_at'],
+  radar_lojas_status: ['lista', 'status_soltura', 'horario_soltura', 'solto_por', 'status_coleta', 'horario_coleta', 'coletado_por', 'status_carregamento', 'horario_carregamento', 'carregado_por', 'status_expedicao', 'created_at', 'updated_at', 'updated_by'],
+  store_operations: ['id', 'programacao_id', 'loja_id', 'nome_loja', 'setor', 'transportadora', 'corte', 'carregamento', 'volumes', 'enderecos', 'atividade_relacionada', 'status_soltura', 'horario_soltura', 'solto_por', 'status_coleta', 'horario_coleta', 'coletado_por', 'status_carregamento', 'horario_carregamento', 'carregado_por', 'status_expedicao', 'perdeu_corte', 'updated_at', 'updated_by', 'created_at'],
+  atividade_loja: ['id', 'setor', 'programacao_id', 'loja_id', 'tipo_atividade', 'colis_programados', 'colis_coletados', 'updated_at', 'created_at'],
+  usuarios: ['id', 'email', 'nome', 'role', 'setoresautorizados', 'situacao', 'cargo', 'unidade', 'avatar_url', 'aprovado_por', 'data_aprovacao', 'created_at', 'updated_at'],
   colaboradores: ['id', 'nome', 'setor', 'status', 'cargo', 'horas', 'foto', 'created_at', 'updated_at'],
   escalas: ['id', 'colaborador_id', 'data', 'turno', 'status', 'created_at', 'updated_at'],
-  escala_semanal: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'ref87', 'refVol', 'apoios', 'updated_at', 'updated_by'],
-  capacidade: ['id', 'setor', 'abertura', 'fecho_hora', 'fechoHora', 'updated_at'],
-  capacidade_operacional: ['id', 'setor', 'abertura', 'fecho_hora', 'fechoHora', 'updated_at'],
-  escalas_referentes: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'ref87', 'refVol', 'apoios', 'updated_at', 'updated_by'],
-  historico_consolidado: ['id', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota5s', 'nota_5s', 'erros', 'created_at', 'updated_at'],
-  audit_logs: ['id', 'acao', 'usuario', 'campo', 'dispositivo', 'valorAnterior', 'valor_anterior', 'valorNovo', 'valor_novo', 'created_at', 'updated_at'],
+  escala_semanal: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'updated_at', 'updated_by'],
+  capacidade: ['id', 'setor', 'abertura', 'fecho_hora', 'updated_at'],
+  capacidade_operacional: ['id', 'setor', 'abertura', 'fecho_hora', 'updated_at'],
+  escalas_referentes: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'updated_at', 'updated_by'],
+  historico_consolidado: ['id', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota_5s', 'erros', 'created_at', 'updated_at'],
+  audit_logs: ['id', 'acao', 'usuario', 'campo', 'dispositivo', 'valor_anterior', 'valor_novo', 'created_at', 'updated_at'],
   lideranca: ['id', 'nome', 'cargo', 'setor', 'contato', 'foto', 'created_at', 'updated_at'],
   override_operacional: ['chave', 'valor', 'created_at', 'updated_at'],
   activity_entries: ['id', 'sector_id', 'activity_date', 'user_id', 'alimento', 'montanha', 'l7_mochila', 'elog', 'reapro', 'colis', 'adhoc_categories', 'created_at', 'updated_at'],
@@ -214,6 +214,7 @@ export class SupabaseService {
       if ('poliRec' in result) { result.polirec = result.poliRec; delete result.poliRec; }
       if ('poliSaid' in result) { result.polisaid = result.poliSaid; delete result.poliSaid; }
       if ('nota_5s' in result) { result.nota5s = result.nota_5s; delete result.nota_5s; }
+      if ('equipe' in result) { delete result.equipe; }
       if ('capacidade' in result) { delete result.capacidade; }
     } else if (realTable === 'usuarios') {
       if (!Array.isArray(result.setoresAutorizados)) {
@@ -664,14 +665,20 @@ export class SupabaseService {
           const errMsg = String(error.message || '');
           const errCode = String(error.code || '');
 
-          if (errCode === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
-            const colMatch = errMsg.match(/column "([^"]+)"/i) || errMsg.match(/coluna "([^"]+)"/i);
+          if (errCode === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist') || errMsg.includes('schema cache')) {
+            const colMatch =
+              errMsg.match(/column ['"]?([^'"]+)['"]?/i) ||
+              errMsg.match(/['"]?([^'"]+)['"]? column/i) ||
+              errMsg.match(/coluna ['"]?([^'"]+)['"]?/i) ||
+              errMsg.match(/column ([^\s,]+)/i);
             if (colMatch && colMatch[1]) {
-              const invalidCol = colMatch[1];
+              const invalidCol = colMatch[1].trim();
               console.warn(`[Supabase Sanitizer] [PGRST204] Coluna "${invalidCol}" inexistente na tabela ${realTableName}. Removendo e re-tentando...`);
               this.removeInvalidColumnFromCache(realTableName, invalidCol);
 
               const sanitized = this.filterRecordColumns(tableName, finalizedRecord);
+              delete sanitized[invalidCol];
+
               const { data: retryData, error: retryErr } = await client
                 .from(realTableName)
                 .upsert(sanitized, { onConflict: conflictTarget })
