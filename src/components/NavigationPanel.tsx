@@ -1,5 +1,6 @@
 import React from "react";
 import { UserRole } from "../types";
+import { OnlineIndicator } from "./OnlineIndicator";
 import {
   Layers,
   Shield,
@@ -32,9 +33,12 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
     <nav className="bg-[#08080a] border-b border-white/5 px-4 md:px-6 py-2.5 grid grid-cols-1 md:grid-cols-4 gap-3 relative z-40 shadow-[0_4px_15px_rgba(0,0,0,0.6)]">
       {/* MONITORAMENTO */}
       <div className="border border-white/5 bg-[#0b0b0f] rounded-lg p-1.5 flex flex-col gap-1.5 shadow-sm">
-        <div className="flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-mono font-black uppercase text-indigo-400 tracking-wider">
-          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
-          Monitoramento
+        <div className="flex items-center justify-between px-2 py-0.5">
+          <div className="flex items-center gap-1.5 text-[9px] font-mono font-black uppercase text-indigo-400 tracking-wider">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+            Monitoramento
+          </div>
+          <OnlineIndicator />
         </div>
         <div className="grid grid-cols-3 gap-1">
           <button
