@@ -68,6 +68,6 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
 
   updateScreensaver: (screensaver) => {
     set({ screensaver });
-    localStorage.setItem('sys_screensaver', JSON.stringify(screensaver));
+    localStorage.setItem('screensaver_config', JSON.stringify(screensaver));
   },
 }));

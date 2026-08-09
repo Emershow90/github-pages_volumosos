@@ -41,7 +41,7 @@ export function handleSupabaseError(error: unknown, operationType: OperationType
 
 export const isOnline = (): boolean => {
   if (isStaticBuild) return false;
-  const isSimOffline = localStorage.getItem("sys_radar_sim_offline") === "true";
+  const isSimOffline = localStorage.getItem("radar_sim_offline") === "true";
   return !isSimOffline && navigator.onLine;
 };
 
@@ -134,14 +134,14 @@ export class SupabaseService {
     keyVal?: unknown;
   }): void {
     try {
-      const queueStr = localStorage.getItem("sys_radar_offline_queue");
+      const queueStr = localStorage.getItem("radar_offline_queue");
       const queue = queueStr ? JSON.parse(queueStr) : [];
       queue.push({
         ...item,
         id: `q_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         createdAt: new Date().toISOString()
       });
-      localStorage.setItem("sys_radar_offline_queue", JSON.stringify(queue));
+      localStorage.setItem("radar_offline_queue", JSON.stringify(queue));
     } catch (e) {
       console.error("[Supabase Queue] Erro ao enfileirar operação:", e);
     }
@@ -149,7 +149,7 @@ export class SupabaseService {
 
   public static getQueueLength(): number {
     try {
-      const queueStr = localStorage.getItem("sys_radar_offline_queue");
+      const queueStr = localStorage.getItem("radar_offline_queue");
       if (!queueStr) return 0;
       const queue = JSON.parse(queueStr);
       return Array.isArray(queue) ? queue.length : 0;
@@ -880,7 +880,7 @@ export class SupabaseService {
     this.isProcessingQueue = true;
 
     try {
-      const queueStr = localStorage.getItem("sys_radar_offline_queue");
+      const queueStr = localStorage.getItem("radar_offline_queue");
       if (!queueStr) {
         this.isProcessingQueue = false;
         return;
@@ -988,9 +988,9 @@ export class SupabaseService {
       }
 
       if (remainingQueue.length > 0) {
-        localStorage.setItem("sys_radar_offline_queue", JSON.stringify(remainingQueue));
+        localStorage.setItem("radar_offline_queue", JSON.stringify(remainingQueue));
       } else {
-        localStorage.removeItem("sys_radar_offline_queue");
+        localStorage.removeItem("radar_offline_queue");
         console.log(`[Supabase Sync] Sincronização offline concluída com sucesso.`);
       }
     } catch (e) {

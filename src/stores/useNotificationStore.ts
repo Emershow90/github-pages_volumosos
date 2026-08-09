@@ -10,7 +10,7 @@ interface NotificationState {
 }
 
 const getInitialAlerts = (): AlertLog[] => {
-  const s = localStorage.getItem('sys_alerts');
+  const s = localStorage.getItem('tower_alerts');
   if (s) {
     try {
       return JSON.parse(s);
@@ -32,23 +32,23 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       lido: false,
     };
     const updated = [newAlert, ...state.alerts];
-    localStorage.setItem('sys_alerts', JSON.stringify(updated));
+    localStorage.setItem('tower_alerts', JSON.stringify(updated));
     return { alerts: updated };
   }),
   
   markAsRead: (id) => set((state) => {
     const updated = state.alerts.map((a) => (a.id === id ? { ...a, lido: true } : a));
-    localStorage.setItem('sys_alerts', JSON.stringify(updated));
+    localStorage.setItem('tower_alerts', JSON.stringify(updated));
     return { alerts: updated };
   }),
   
   clearAlerts: () => set(() => {
-    localStorage.setItem('sys_alerts', JSON.stringify([]));
+    localStorage.setItem('tower_alerts', JSON.stringify([]));
     return { alerts: [] };
   }),
 
   setAlerts: (alerts) => set(() => {
-    localStorage.setItem('sys_alerts', JSON.stringify(alerts));
+    localStorage.setItem('tower_alerts', JSON.stringify(alerts));
     return { alerts };
   }),
 }));

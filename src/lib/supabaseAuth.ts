@@ -108,7 +108,7 @@ const safeLocalStorage = {
 
 // Sincronizar usuário logado inicial do localStorage se houver
 if (typeof window !== 'undefined') {
-  const cachedUser = safeLocalStorage.getItem('sys_active_user_session');
+  const cachedUser = safeLocalStorage.getItem('active_user_session');
   if (cachedUser) {
     try {
       const parsed = JSON.parse(cachedUser);
@@ -139,11 +139,11 @@ export const auth = {
           displayName: u.user_metadata?.displayName || u.user_metadata?.full_name || u.email?.split('@')[0],
           getIdToken: async () => session.access_token || ""
         };
-        safeLocalStorage.setItem('sys_active_user_session', JSON.stringify(currentMockUser));
+        safeLocalStorage.setItem('active_user_session', JSON.stringify(currentMockUser));
         cb(auth.currentUser);
       } else {
         currentMockUser = null;
-        safeLocalStorage.removeItem('sys_active_user_session');
+        safeLocalStorage.removeItem('active_user_session');
         cb(null);
       }
     });
@@ -156,14 +156,14 @@ export const auth = {
       await supabase!.auth.signOut();
     }
     currentMockUser = null;
-    safeLocalStorage.removeItem('sys_active_user_session');
+    safeLocalStorage.removeItem('active_user_session');
     safeLocalStorage.removeItem('current_user');
     safeLocalStorage.removeItem('current_role');
     safeLocalStorage.removeItem('current_status');
     // Clear profile caches
     for (let i = 0; i < safeLocalStorage.length; i++) {
       const key = safeLocalStorage.key(i);
-      if (key?.startsWith('sys_cached_profile_')) {
+      if (key?.startsWith('cached_profile_')) {
         safeLocalStorage.removeItem(key);
       }
     }
@@ -175,7 +175,7 @@ let isSigningIn = false;
 let cachedAccessToken: string | null = null;
 
 export const getUserProfile = async (uid: string): Promise<Usuario | null> => {
-  const localKey = `sys_cached_profile_${uid}`;
+  const localKey = `cached_profile_${uid}`;
   
   if (isStaticBuild) {
     const cached = localStorage.getItem(localKey);
@@ -239,7 +239,7 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
 
   const email = user.email || '';
   const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com' || email.toLowerCase() === 'emerson.oliveira@decathlon.com';
-  const localKey = `sys_cached_profile_${userId}`;
+  const localKey = `cached_profile_${userId}`;
 
   try {
     let existing = await getUserProfile(userId);
@@ -359,7 +359,7 @@ export const googleSignIn = async (): Promise<{ user: any; accessToken: string }
       getIdToken: async () => "local-token"
     };
     currentMockUser = mockUser;
-    localStorage.setItem('sys_active_user_session', JSON.stringify(mockUser));
+    localStorage.setItem('active_user_session', JSON.stringify(mockUser));
     await ensureUserProfile(mockUser);
     return { user: mockUser, accessToken: "mock-token" };
   }
@@ -398,7 +398,7 @@ export const microsoftSignIn = async (): Promise<{ user: any; accessToken: strin
       getIdToken: async () => "local-token"
     };
     currentMockUser = mockUser;
-    localStorage.setItem('sys_active_user_session', JSON.stringify(mockUser));
+    localStorage.setItem('active_user_session', JSON.stringify(mockUser));
     await ensureUserProfile(mockUser);
     return { user: mockUser, accessToken: "mock-token" };
   }
@@ -438,7 +438,7 @@ export const loginWithEmail = async (email: string, password: string): Promise<a
       getIdToken: async () => "local-token"
     };
     currentMockUser = mockUser;
-    localStorage.setItem('sys_active_user_session', JSON.stringify(mockUser));
+    localStorage.setItem('active_user_session', JSON.stringify(mockUser));
     return mockUser;
   }
 
@@ -466,7 +466,7 @@ export const loginWithEmail = async (email: string, password: string): Promise<a
             getIdToken: async () => signUpData.session?.access_token || ""
           };
           currentMockUser = mappedUser;
-          localStorage.setItem('sys_active_user_session', JSON.stringify(mappedUser));
+          localStorage.setItem('active_user_session', JSON.stringify(mappedUser));
           return mappedUser;
         }
       } catch (e) {
@@ -484,7 +484,7 @@ export const loginWithEmail = async (email: string, password: string): Promise<a
     getIdToken: async () => data.session?.access_token || ""
   };
   currentMockUser = mappedUser;
-  localStorage.setItem('sys_active_user_session', JSON.stringify(mappedUser));
+  localStorage.setItem('active_user_session', JSON.stringify(mappedUser));
   return mappedUser;
 };
 
@@ -503,7 +503,7 @@ export const signUpWithEmail = async (
       getIdToken: async () => "local-token"
     };
     currentMockUser = mockUser;
-    localStorage.setItem('sys_active_user_session', JSON.stringify(mockUser));
+    localStorage.setItem('active_user_session', JSON.stringify(mockUser));
     
     const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com' || email.toLowerCase() === 'emerson.oliveira@decathlon.com';
     const profile: Usuario = {
@@ -515,7 +515,7 @@ export const signUpWithEmail = async (
       cargo: isOwner ? 'ADMINISTRADOR' : 'AGUARDANDO_APROVACAO',
       unidade: "CD Principal"
     };
-    localStorage.setItem(`sys_cached_profile_${mockUser.uid}`, JSON.stringify(profile));
+    localStorage.setItem(`cached_profile_${mockUser.uid}`, JSON.stringify(profile));
     return { user: mockUser, profile };
   }
 
@@ -541,7 +541,7 @@ export const signUpWithEmail = async (
   };
 
   currentMockUser = mappedUser;
-  localStorage.setItem('sys_active_user_session', JSON.stringify(mappedUser));
+  localStorage.setItem('active_user_session', JSON.stringify(mappedUser));
 
   const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com' || email.toLowerCase() === 'emerson.oliveira@decathlon.com';
   const userProfile: Usuario = {
@@ -572,7 +572,7 @@ export const signUpWithEmail = async (
     .from('usuarios')
     .upsert(filteredRecord);
 
-  localStorage.setItem(`sys_cached_profile_${u.id}`, JSON.stringify(userProfile));
+  localStorage.setItem(`cached_profile_${u.id}`, JSON.stringify(userProfile));
   return { user: mappedUser, profile: userProfile };
 };
 

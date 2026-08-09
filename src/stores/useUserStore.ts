@@ -94,18 +94,18 @@ export const useUserStore = create<UserState>((set, get) => ({
           .select('*');
         if (error) throw error;
         if (data) {
-          const mapped: Usuario[] = data.map((dbRecord: any) => ({
-            uid: dbRecord.id,
-            email: dbRecord.email,
-            nome: dbRecord.nome,
-            role: dbRecord.role as UserRole,
-            setoresAutorizados: dbRecord.setoresAutorizados || [],
-            foto: dbRecord.avatar_url,
-            cargo: dbRecord.cargo,
-            unidade: dbRecord.unidade,
-            situacao: dbRecord.situacao,
-            aprovado_por: dbRecord.aprovado_por,
-            data_aprovacao: dbRecord.data_aprovacao,
+          const mapped: Usuario[] = data.map((dbRecord: Record<string, unknown>) => ({
+            uid: String(dbRecord.id || ''),
+            email: String(dbRecord.email || ''),
+            nome: String(dbRecord.nome || ''),
+            role: (dbRecord.role as UserRole) || UserRole.Guest,
+            setoresAutorizados: (dbRecord.setoresAutorizados as string[]) || [],
+            foto: dbRecord.avatar_url as string | undefined,
+            cargo: dbRecord.cargo as string | undefined,
+            unidade: dbRecord.unidade as string | undefined,
+            situacao: (dbRecord.situacao as Usuario['situacao']) || 'Pendente',
+            aprovado_por: dbRecord.aprovado_por as string | undefined,
+            data_aprovacao: dbRecord.data_aprovacao as string | undefined,
           }));
           set({ allUsers: mapped });
           return;
@@ -119,7 +119,7 @@ export const useUserStore = create<UserState>((set, get) => ({
     const mapped: Usuario[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key?.startsWith('sys_cached_profile_')) {
+      if (key?.startsWith('cached_profile_')) {
         try {
           const cached = localStorage.getItem(key);
           if (cached) {
@@ -144,18 +144,18 @@ export const useUserStore = create<UserState>((set, get) => ({
         if (error) throw error;
         
         if (data) {
-          const mapped: Usuario[] = data.map((dbRecord: any) => ({
-            uid: dbRecord.id,
-            email: dbRecord.email,
-            nome: dbRecord.nome,
-            role: dbRecord.role as UserRole,
-            setoresAutorizados: dbRecord.setoresAutorizados || [],
-            foto: dbRecord.avatar_url,
-            cargo: dbRecord.cargo,
-            unidade: dbRecord.unidade,
-            situacao: dbRecord.situacao,
-            aprovado_por: dbRecord.aprovado_por,
-            data_aprovacao: dbRecord.data_aprovacao,
+          const mapped: Usuario[] = data.map((dbRecord: Record<string, unknown>) => ({
+            uid: String(dbRecord.id || ''),
+            email: String(dbRecord.email || ''),
+            nome: String(dbRecord.nome || ''),
+            role: (dbRecord.role as UserRole) || UserRole.Guest,
+            setoresAutorizados: (dbRecord.setoresAutorizados as string[]) || [],
+            foto: dbRecord.avatar_url as string | undefined,
+            cargo: dbRecord.cargo as string | undefined,
+            unidade: dbRecord.unidade as string | undefined,
+            situacao: (dbRecord.situacao as Usuario['situacao']) || 'Pendente',
+            aprovado_por: dbRecord.aprovado_por as string | undefined,
+            data_aprovacao: dbRecord.data_aprovacao as string | undefined,
           }));
           set({ pendingUsers: mapped });
           return;
@@ -169,7 +169,7 @@ export const useUserStore = create<UserState>((set, get) => ({
     const mapped: Usuario[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key?.startsWith('sys_cached_profile_')) {
+      if (key?.startsWith('cached_profile_')) {
         try {
           const cached = localStorage.getItem(key);
           if (cached) {
@@ -209,7 +209,7 @@ export const useUserStore = create<UserState>((set, get) => ({
     }
     
     // Always sync offline cache/localStorage
-    const localKey = `sys_cached_profile_${uid}`;
+    const localKey = `cached_profile_${uid}`;
     const cached = localStorage.getItem(localKey);
     if (cached) {
       try {
@@ -242,20 +242,20 @@ export const useUserStore = create<UserState>((set, get) => ({
             filter: `id=eq.${uid}`
           },
           (payload) => {
-            const updatedProfile = payload.new as any;
+            const updatedProfile = payload.new as Record<string, unknown>;
             if (updatedProfile && updatedProfile.situacao === 'Ativo') {
-              get().addToast(`Sua conta foi aprovada por ${updatedProfile.aprovado_por || 'um administrador'}!`, 'success');
+              get().addToast(`Sua conta foi aprovada por ${String(updatedProfile.aprovado_por || 'um administrador')}!`, 'success');
               get().setCurrentStatus('Ativo');
               
               // Cache locally too
-              const localKey = `sys_cached_profile_${uid}`;
+              const localKey = `cached_profile_${uid}`;
               const cached = localStorage.getItem(localKey);
               if (cached) {
                 try {
-                  const p = JSON.parse(cached);
+                  const p = JSON.parse(cached) as Usuario;
                   p.situacao = 'Ativo';
-                  p.aprovado_por = updatedProfile.aprovado_por;
-                  p.data_aprovacao = updatedProfile.data_aprovacao;
+                  p.aprovado_por = String(updatedProfile.aprovado_por || '');
+                  p.data_aprovacao = String(updatedProfile.data_aprovacao || '');
                   localStorage.setItem(localKey, JSON.stringify(p));
                 } catch (e) {}
               }
@@ -271,7 +271,7 @@ export const useUserStore = create<UserState>((set, get) => ({
     
     // Offline simulated poll (every 3 seconds)
     const intervalId = setInterval(() => {
-      const localKey = `sys_cached_profile_${uid}`;
+      const localKey = `cached_profile_${uid}`;
       const cached = localStorage.getItem(localKey);
       if (cached) {
         try {

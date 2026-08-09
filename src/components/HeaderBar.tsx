@@ -147,7 +147,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                     onClick={() => {
                       setNotifications((prev) => {
                         const updated = prev.map((n) => ({ ...n, read: true }));
-                        localStorage.setItem("sys_notifications", JSON.stringify(updated));
+                        localStorage.setItem("tower_notifications", JSON.stringify(updated));
                         return updated;
                       });
                     }}
@@ -159,7 +159,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                   <button
                     onClick={() => {
                       setNotifications([]);
-                      localStorage.removeItem("sys_notifications");
+                      localStorage.removeItem("tower_notifications");
                     }}
                     className="text-[8px] text-zinc-500 hover:text-zinc-300 font-bold uppercase"
                   >
@@ -196,7 +196,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                               item.id === n.id ? { ...item, read: true } : item
                             );
                             localStorage.setItem(
-                              "sys_notifications",
+                              "tower_notifications",
                               JSON.stringify(updated)
                             );
                             return updated;

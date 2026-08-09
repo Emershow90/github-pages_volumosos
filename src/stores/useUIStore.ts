@@ -7,7 +7,7 @@ interface UIStoreState {
   showTerminal: boolean;
   terminalInput: string;
   terminalLogs: string[];
-  notifications: any[];
+  notifications: unknown[];
   screensaver: ScreensaverConfig;
 
   setActiveTab: (tab: string) => void;
@@ -15,7 +15,7 @@ interface UIStoreState {
   setShowTerminal: (show: boolean) => void;
   setTerminalInput: (input: string) => void;
   setTerminalLogs: (logs: string[] | ((prev: string[]) => string[])) => void;
-  setNotifications: (notifications: any[] | ((prev: any[]) => any[])) => void;
+  setNotifications: (notifications: unknown[] | ((prev: unknown[]) => unknown[])) => void;
   setScreensaver: (screensaver: ScreensaverConfig | ((prev: ScreensaverConfig) => ScreensaverConfig)) => void;
 }
 
@@ -38,7 +38,7 @@ export const useUIStore = create<UIStoreState>((set) => ({
     `BRAZIL TIME (BRT): ${new Date().toLocaleTimeString("pt-BR")}`,
     "AMBAR V1.0 - PRONTO PARA OPERAÇÕES."
   ],
-  notifications: getLocalOrDefault('sys_notifications', [
+  notifications: getLocalOrDefault('tower_notifications', [
     {
       id: "1",
       title: "Lista Liberada",
@@ -100,7 +100,7 @@ export const useUIStore = create<UIStoreState>((set) => ({
 
   setNotifications: (val) => set((state) => {
     const next = typeof val === 'function' ? val(state.notifications) : val;
-    localStorage.setItem('sys_notifications', JSON.stringify(next));
+    localStorage.setItem('tower_notifications', JSON.stringify(next));
     return { notifications: next };
   }),
 

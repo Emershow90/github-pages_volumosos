@@ -1082,7 +1082,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
   const [importHistory, setImportHistory] = useState<any[]>(() => {
     try {
-      const cached = localStorage.getItem("sys_json_import_history");
+      const cached = localStorage.getItem("json_import_history");
       return cached ? JSON.parse(cached) : [];
     } catch {
       return [];
@@ -1091,7 +1091,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
   const [importSettings, setImportSettings] = useState(() => {
     try {
-      const cached = localStorage.getItem("sys_json_import_settings");
+      const cached = localStorage.getItem("json_import_settings");
       return cached ? JSON.parse(cached) : {
         ignoreInvalid: true,
         strictValidation: true,
@@ -1110,7 +1110,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   const updateImportSetting = (field: string, val: boolean) => {
     setImportSettings((prev: any) => {
       const updated = { ...prev, [field]: val };
-      localStorage.setItem("sys_json_import_settings", JSON.stringify(updated));
+      localStorage.setItem("json_import_settings", JSON.stringify(updated));
       return updated;
     });
   };
@@ -1727,7 +1727,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
       const updatedHistory = [auditLogHistoryItem, ...importHistory];
       setImportHistory(updatedHistory);
-      localStorage.setItem("sys_json_import_history", JSON.stringify(updatedHistory));
+      localStorage.setItem("json_import_history", JSON.stringify(updatedHistory));
 
       showFeedback(`Sucesso! ${itemsToImport.length} listas processadas e salvas com a estratégia "${jsonStrategy.toUpperCase()}".`, "success");
       setJsonInput("");
@@ -2491,7 +2491,7 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                             onClick={() => {
                               if (onSaveRadar) {
                                 onSaveRadar(parsedPreview);
-                                localStorage.setItem("sys_radar", JSON.stringify(parsedPreview));
+                                localStorage.setItem("radar", JSON.stringify(parsedPreview));
                                 alert(`Sucesso! ${parsedPreview.length} lojas do OCR foram enviadas e sincronizadas com o Radar de Lojas na aba Operacional!`);
                               }
                             }}
@@ -2565,7 +2565,7 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                         onClick={() => {
                           if (confirm("Limpar todo o histórico de importação?")) {
                             setImportHistory([]);
-                            localStorage.removeItem("sys_json_import_history");
+                            localStorage.removeItem("json_import_history");
                           }
                         }}
                         className="text-[10px] text-red-400 hover:text-red-300 uppercase font-bold"

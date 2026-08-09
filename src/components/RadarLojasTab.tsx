@@ -121,7 +121,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
     const interval = setInterval(() => {
       const online = isOnline();
       setOnlineState(online);
-      const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
+      const queue = JSON.parse(localStorage.getItem("radar_offline_queue") || "[]");
       setOfflineQueueLength(queue.length);
 
       // Auto-flush queue if online and has pending items
@@ -149,8 +149,8 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
 
   // Connectivity switch
   const handleToggleOffline = async () => {
-    const simOffline = localStorage.getItem("sys_radar_sim_offline") === "true";
-    localStorage.setItem("sys_radar_sim_offline", simOffline ? "false" : "true");
+    const simOffline = localStorage.getItem("radar_sim_offline") === "true";
+    localStorage.setItem("radar_sim_offline", simOffline ? "false" : "true");
     const nextState = !simOffline;
     setOnlineState(nextState);
     triggerFeedback(`Modo ${nextState ? "ONLINE" : "OFFLINE"} ativado.`);
@@ -201,7 +201,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
       }
 
       // Atualizar contador da fila
-      const queue = JSON.parse(localStorage.getItem("sys_radar_offline_queue") || "[]");
+      const queue = JSON.parse(localStorage.getItem("radar_offline_queue") || "[]");
       setOfflineQueueLength(queue.length);
 
       if (queue.length === 0) {
