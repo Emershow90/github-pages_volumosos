@@ -84,6 +84,17 @@ const TABLE_COLUMNS: Record<string, string[]> = {
 };
 
 export class SupabaseService {
+  public static async checkConnection(): Promise<boolean> {
+    if (isStaticBuild) return false;
+    if (!navigator.onLine) return false;
+    try {
+      const { error } = await supabase.from('setores').select('id').limit(1);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
   private static authState: AuthState = 'loading';
   private static authStateListeners: Set<(state: AuthState) => void> = new Set();
   private static initializedAuthObserver = false;

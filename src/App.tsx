@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
+import { ToastProvider } from "./hooks/useToast";
 import {
   Setor,
   Colaborador,
@@ -67,7 +68,7 @@ import { auth, getUserProfile, ensureUserProfile, logoutUser } from "./lib/supab
 import LoginScreen from "./components/LoginScreen";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
-export default function App() {
+function App() {
   // Global States from Zustand (Unified User and Auth states)
   const {
     currentUser,
@@ -1659,5 +1660,13 @@ export default function App() {
         currentUser={currentUser}
       />
     </div>
+  );
+}
+
+export default function AppRoot() {
+  return (
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   );
 }

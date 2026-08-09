@@ -299,4 +299,73 @@ export class ConexoesService {
       }
     }
   }
+
+  /**
+   * Realiza uma requisição fetch para a URL da planilha informada, valida o status HTTP 200,
+   * e analisa uma linha de dados de amostra para garantir compatibilidade com o OverrideOperacionalForm.
+   */
+  public static async testarConexaoPlanilha(url: string): Promise<{
+    success: boolean;
+    statusCode: number;
+    sampleRow?: string[];
+    message: string;
+  }> {
+    if (!url) {
+      return {
+        success: false,
+        statusCode: 0,
+        message: 'URL da planilha não informada.',
+      };
+    }
+
+    try {
+      let res = await fetch(url);
+
+      if (!res.ok) {
+        // Tenta buscar via proxy de CORS caso a requisição direta seja bloqueada
+        const corsProxy = 'https://api.allorigins.win/raw?url=';
+        res = await fetch(`${corsProxy}${encodeURIComponent(url)}`);
+      }
+
+      if (!res.ok || res.status !== 200) {
+        return {
+          success: false,
+          statusCode: res.status,
+          message: `Erro no acesso à planilha: Status HTTP ${res.status}`,
+        };
+      }
+
+      const text = await res.text();
+      const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+
+      if (lines.length === 0) {
+        return {
+          success: false,
+          statusCode: res.status,
+          message: 'Planilha acessada com sucesso (200 OK), porém não contém linhas de dados.',
+        };
+      }
+
+      // Amostra de linha de dados (se houver mais de 1 linha assume que linha 0 é cabeçalho e linha 1 é dados)
+      const sampleLine = lines.length > 1 ? lines[1] : lines[0];
+      const sampleRow = sampleLine.split(',').map((col) => col.replace(/^"|"$/g, '').trim());
+
+      return {
+        success: true,
+        statusCode: 200,
+        sampleRow,
+        message: 'Conexão estabelecida com sucesso (HTTP 200) e estrutura de dados de amostra válida.',
+      };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        statusCode: 0,
+        message: `Falha na conexão com a planilha: ${errorMsg}`,
+      };
+    }
+  }
 }
+
+export const testarConexaoPlanilha = ConexoesService.testarConexaoPlanilha;
+

@@ -3,8 +3,9 @@ import { Setor } from '../types/Setor';
 import { Settings, X, AlertTriangle, Save, Sparkles } from 'lucide-react';
 import { SupabaseService as FirebaseService } from '../lib/supabaseService';
 import { fetchPublicSpreadsheetMetrics, PublicSpreadsheetMetricsMap } from '../lib/googleSheetsPublicSource';
+import { useToast } from '../hooks/useToast';
 
-interface OverrideOperacionalModalProps {
+export interface OverrideOperacionalModalProps {
   isOpen: boolean;
   onClose: () => void;
   setores: Setor[];
@@ -17,6 +18,7 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
   setores,
   onUpdateSetor,
 }) => {
+  const toast = useToast();
   const [selectedSector, setSelectedSector] = useState<string>('');
   const [formData, setFormData] = useState<Record<string, string>>({
     ativ: '',
@@ -29,10 +31,18 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
   });
 
   const [publicMetrics, setPublicMetrics] = useState<PublicSpreadsheetMetricsMap | null>(null);
+
   const [suggestedAtiv, setSuggestedAtiv] = useState<string>('');
   const [suggestedUph, setSuggestedUph] = useState<string>('');
+  const [suggestedPromessa, setSuggestedPromessa] = useState<string>('');
+  const [suggestedBsi, setSuggestedBsi] = useState<string>('');
+  const [suggestedErros, setSuggestedErros] = useState<string>('');
+
   const [isAtivSuggested, setIsAtivSuggested] = useState(false);
   const [isUphSuggested, setIsUphSuggested] = useState(false);
+  const [isPromessaSuggested, setIsPromessaSuggested] = useState(false);
+  const [isBsiSuggested, setIsBsiSuggested] = useState(false);
+  const [isErrosSuggested, setIsErrosSuggested] = useState(false);
 
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -52,50 +62,96 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
       });
       setSuggestedAtiv('');
       setSuggestedUph('');
+      setSuggestedPromessa('');
+      setSuggestedBsi('');
+      setSuggestedErros('');
+
       setIsAtivSuggested(false);
       setIsUphSuggested(false);
+      setIsPromessaSuggested(false);
+      setIsBsiSuggested(false);
+      setIsErrosSuggested(false);
+
       setIsConfirming(false);
       setIsSaving(false);
 
       fetchPublicSpreadsheetMetrics()
-        .then((data) => setPublicMetrics(data))
+        .then((pubData) => {
+          setPublicMetrics(pubData);
+        })
         .catch((err: unknown) => {
-          console.error('Erro ao buscar métricas da planilha pública:', err);
-          setPublicMetrics(null);
+          const msg = err instanceof Error ? err.message : String(err);
+          toast.error(`Erro ao carregar dados da planilha: ${msg}`);
         });
     }
   }, [isOpen]);
 
-  // Pre-fill ATIVIDADE & UPH from public Google Sheets metrics when a sector is selected
+  // Pre-fill metrics from public Google Sheets when a sector is selected
   useEffect(() => {
     if (!selectedSector || !publicMetrics) {
       setIsAtivSuggested(false);
       setIsUphSuggested(false);
+      setIsPromessaSuggested(false);
+      setIsBsiSuggested(false);
+      setIsErrosSuggested(false);
+
       setSuggestedAtiv('');
       setSuggestedUph('');
+      setSuggestedPromessa('');
+      setSuggestedBsi('');
+      setSuggestedErros('');
       return;
     }
 
-    const metrics = publicMetrics[selectedSector];
-    if (metrics) {
-      const ativStr = metrics.atividadeTotal !== null && metrics.atividadeTotal > 0 ? metrics.atividadeTotal.toString() : '';
-      const uphStr = metrics.uph > 0 ? metrics.uph.toString() : '';
+    const pub = publicMetrics[selectedSector] || publicMetrics[selectedSector.replace('-', '')];
+
+    if (pub) {
+      const ativStr = pub.atividadeTotal !== null && pub.atividadeTotal !== undefined
+        ? pub.atividadeTotal.toString()
+        : '';
+
+      const uphStr = pub.uph > 0 ? pub.uph.toString() : '';
+      const promStr = pub.promessa !== null && pub.promessa !== undefined ? pub.promessa.toString() : '95';
+      const bsiStr = pub.bsi !== null && pub.bsi !== undefined ? pub.bsi.toString() : '0';
+      const errStr = pub.errosPicking !== null && pub.errosPicking !== undefined ? pub.errosPicking.toString() : '0';
 
       setSuggestedAtiv(ativStr);
       setSuggestedUph(uphStr);
+      setSuggestedPromessa(promStr);
+      setSuggestedBsi(bsiStr);
+      setSuggestedErros(errStr);
+
       setIsAtivSuggested(Boolean(ativStr));
       setIsUphSuggested(Boolean(uphStr));
+      setIsPromessaSuggested(Boolean(promStr));
+      setIsBsiSuggested(Boolean(bsiStr));
+      setIsErrosSuggested(Boolean(errStr));
 
       setFormData((prev) => ({
         ...prev,
         ativ: ativStr,
         uph: uphStr,
+        promessa: promStr,
+        bsi: bsiStr,
+        errosPicking: errStr,
       }));
     } else {
-      setIsAtivSuggested(false);
-      setIsUphSuggested(false);
       setSuggestedAtiv('');
       setSuggestedUph('');
+      setSuggestedPromessa('');
+      setSuggestedBsi('');
+      setSuggestedErros('');
+
+      setIsAtivSuggested(false);
+      setIsUphSuggested(false);
+      setIsPromessaSuggested(false);
+      setIsBsiSuggested(false);
+      setIsErrosSuggested(false);
+
+      setFormData((prev) => ({
+        ...prev,
+        ativ: '',
+      }));
     }
   }, [selectedSector, publicMetrics]);
 
@@ -108,6 +164,15 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
     }
     if (field === 'uph' && isUphSuggested && value !== suggestedUph) {
       setIsUphSuggested(false);
+    }
+    if (field === 'promessa' && isPromessaSuggested && value !== suggestedPromessa) {
+      setIsPromessaSuggested(false);
+    }
+    if (field === 'bsi' && isBsiSuggested && value !== suggestedBsi) {
+      setIsBsiSuggested(false);
+    }
+    if (field === 'errosPicking' && isErrosSuggested && value !== suggestedErros) {
+      setIsErrosSuggested(false);
     }
   };
 
@@ -138,12 +203,30 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
       // Update Supabase directly to ensure atomic update of just these fields
       const updatedSector = { ...activeS, ...updatedFields };
       await FirebaseService.upsertRecord('setores', updatedSector, 'id');
-      
+
+      // TAREFA 4: Log de ações no audit_logs
+      try {
+        await FirebaseService.upsertRecord(
+          'audit_logs',
+          {
+            id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            acao: 'override_salvo',
+            setor_id: selectedSector,
+            dados: formData,
+            usuario: 'operador@sistema.local',
+            timestamp: new Date().toISOString(),
+          },
+          'id'
+        );
+      } catch (auditErr) {
+        console.warn('Erro ao gravar log de auditoria:', auditErr);
+      }
+
+      toast.success('Override operacional salvo com sucesso!');
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('Erro ao salvar override:', msg);
-      alert('Erro ao salvar os dados: ' + msg);
+      toast.error('Erro ao salvar os dados: ' + msg);
     } finally {
       setIsSaving(false);
     }
@@ -215,10 +298,31 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
                       badge={isUphSuggested ? "Sugerido pela Planilha" : undefined}
                     />
                     <FieldInput label="Repro Total" field="reproTotal" value={formData.reproTotal} placeholder={activeSectorData?.reproTotal?.toString()} onChange={handleInputChange} />
-                    <FieldInput label="Promessa (%)" field="promessa" value={formData.promessa} placeholder={activeSectorData?.promessa?.toString()} onChange={handleInputChange} />
+                    <FieldInput 
+                      label="Promessa (%)" 
+                      field="promessa" 
+                      value={formData.promessa} 
+                      placeholder={activeSectorData?.promessa?.toString()} 
+                      onChange={handleInputChange} 
+                      badge={isPromessaSuggested ? "Sugerido pela Planilha" : undefined}
+                    />
                     <FieldInput label="Auditoria 5S" field="nota5s" value={formData.nota5s} placeholder={activeSectorData?.nota5s?.toString()} onChange={handleInputChange} />
-                    <FieldInput label="BSI" field="bsi" value={formData.bsi} placeholder={activeSectorData?.bsi?.toString()} onChange={handleInputChange} />
-                    <FieldInput label="Erros Picking" field="errosPicking" value={formData.errosPicking} placeholder={activeSectorData?.errosPicking?.toString()} onChange={handleInputChange} />
+                    <FieldInput 
+                      label="BSI" 
+                      field="bsi" 
+                      value={formData.bsi} 
+                      placeholder={activeSectorData?.bsi?.toString()} 
+                      onChange={handleInputChange} 
+                      badge={isBsiSuggested ? "Sugerido pela Planilha" : undefined}
+                    />
+                    <FieldInput 
+                      label="Erros Picking" 
+                      field="errosPicking" 
+                      value={formData.errosPicking} 
+                      placeholder={activeSectorData?.errosPicking?.toString()} 
+                      onChange={handleInputChange} 
+                      badge={isErrosSuggested ? "Sugerido pela Planilha" : undefined}
+                    />
                   </div>
                 </div>
               )}
@@ -236,7 +340,12 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
                   {Object.entries(formData).map(([field, val]) => {
                     const isChanged = val !== '';
                     const oldVal = (activeSectorData as Record<string, unknown>)?.[field];
-                    const isSuggested = (field === 'ativ' && isAtivSuggested) || (field === 'uph' && isUphSuggested);
+                    const isSuggested = 
+                      (field === 'ativ' && isAtivSuggested) || 
+                      (field === 'uph' && isUphSuggested) ||
+                      (field === 'promessa' && isPromessaSuggested) ||
+                      (field === 'bsi' && isBsiSuggested) ||
+                      (field === 'errosPicking' && isErrosSuggested);
                     return (
                       <div key={field} className="flex justify-between text-sm items-center">
                         <span className="text-zinc-400 font-mono capitalize">{field}</span>
@@ -342,3 +451,5 @@ const FieldInput = ({
     />
   </div>
 );
+
+export const OverrideOperacionalForm = OverrideOperacionalModal;

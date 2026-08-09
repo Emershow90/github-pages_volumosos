@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Conexao, SyncLog, UserRole } from "../types";
 import { SupabaseService } from "../lib/supabaseService";
 import { ConexoesService } from "../services/conexoesService";
+import { useToast } from "../hooks/useToast";
 import {
   Link2,
   Plus,
@@ -24,6 +25,7 @@ interface ConexoesTabProps {
 }
 
 export const ConexoesTab: React.FC<ConexoesTabProps> = ({ currentRole }) => {
+  const toast = useToast();
   const [conexoes, setConexoes] = useState<Conexao[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -57,7 +59,8 @@ export const ConexoesTab: React.FC<ConexoesTabProps> = ({ currentRole }) => {
         setSyncLogs(logs.sort((a, b) => new Date(b.data_inicio).getTime() - new Date(a.data_inicio).getTime()));
       }
     } catch (e) {
-      console.error("[ConexoesTab] Erro ao carregar dados:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`[ConexoesTab] Erro ao carregar dados: ${msg}`);
     } finally {
       setIsLoading(false);
     }
@@ -115,9 +118,11 @@ export const ConexoesTab: React.FC<ConexoesTabProps> = ({ currentRole }) => {
           registros_afetados: 15,
         });
       }
+      toast.success("Sincronização concluída com sucesso!");
       await loadConexoesData();
     } catch (e) {
-      console.error("[ConexoesTab] Erro na sincronização manual:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(`Erro na sincronização manual: ${msg}`);
     } finally {
       setIsSyncingId(null);
     }

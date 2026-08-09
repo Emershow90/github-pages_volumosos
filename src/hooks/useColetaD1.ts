@@ -3,10 +3,6 @@ import {
   fetchPublicSpreadsheetMetrics,
   PublicSpreadsheetMetricsMap,
 } from '../lib/googleSheetsPublicSource';
-import {
-  fetchMetricasComplementares,
-  MetricasComplementaresMap,
-} from '../lib/googleSheetsMetricsPublicSource';
 
 export interface SectorColetaD1 {
   setorId: string;
@@ -20,7 +16,6 @@ export interface SectorColetaD1 {
 
 export function useColetaD1() {
   const [metrics, setMetrics] = useState<PublicSpreadsheetMetricsMap | null>(null);
-  const [complementares, setComplementares] = useState<MetricasComplementaresMap | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,12 +23,8 @@ export function useColetaD1() {
     try {
       setLoading(true);
       setError(null);
-      const [pubMetrics, compMetrics] = await Promise.all([
-        fetchPublicSpreadsheetMetrics().catch(() => ({})),
-        fetchMetricasComplementares().catch(() => ({})),
-      ]);
+      const pubMetrics = await fetchPublicSpreadsheetMetrics().catch(() => ({}));
       setMetrics(pubMetrics);
-      setComplementares(compMetrics);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
@@ -50,13 +41,12 @@ export function useColetaD1() {
     const sectorIds = ['87', '88', '89', '90', 'ELOG'];
     return sectorIds.map((sid) => {
       const base = metrics?.[sid];
-      const comp = complementares?.[sid];
 
       const atividadeTotal = base?.atividadeTotal ?? 0;
-      const uph = comp?.uph ?? base?.uph ?? 0;
-      const promessa = comp?.promessa ?? 95;
-      const bsi = comp?.bsi ?? 0;
-      const errosPicking = comp?.errosPicking ?? 0;
+      const uph = base?.uph ?? 0;
+      const promessa = 95;
+      const bsi = 0;
+      const errosPicking = 0;
 
       let status: 'atencao' | 'normal' | 'critico' = 'normal';
       if (promessa < 90 || errosPicking > 50) {
@@ -75,7 +65,7 @@ export function useColetaD1() {
         status,
       } as SectorColetaD1;
     });
-  }, [metrics, complementares]);
+  }, [metrics]);
 
   const totals = useMemo(() => {
     const totalAtividade = sectorsProjections.reduce((acc, s) => acc + s.atividadeTotal, 0);

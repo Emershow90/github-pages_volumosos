@@ -49,12 +49,7 @@ import {
   initAuth
 } from "../lib/supabaseAuth";
 import { OverrideOperacionalModal } from "./OverrideOperacionalModal";
-import {
-  getServiceAccountCredentials,
-  saveServiceAccountJson,
-  clearServiceAccountCredentials,
-  getServiceAccountToken
-} from "../lib/googleAuthService";
+
 import { SupabaseService as FirebaseService } from "../lib/supabaseService";
 import { IndexedDBService } from "../lib/indexedDb";
 import { ListaColetaItem, RadarLojaStatus } from "../types";
@@ -103,7 +98,7 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
   // Google Integration states
   const [googleUser, setGoogleUser] = useState<any>(null);
   const [googleToken, setGoogleToken] = useState<string | null>(null);
-  const [saCreds, setSaCreds] = useState<any>(null);
+
   const [spreadsheetId, setSpreadsheetId] = useState<string>("");
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -115,8 +110,6 @@ export const EquipaTab: React.FC<EquipaTabProps> = ({
   useEffect(() => {
     const savedId = localStorage.getItem("google_sheets_scale_id");
     setSpreadsheetId(savedId || "");
-    const creds = getServiceAccountCredentials();
-    setSaCreds(creds);
   }, []);
 
   // Initialize auth state listener

@@ -61,7 +61,7 @@ import { supabase, isStaticBuild } from './supabase';
 import { UserRole, Usuario } from '../types/Usuario';
 import { IndexedDBService } from './indexedDb';
 import { SupabaseService } from './supabaseService';
-import { getServiceAccountToken, getServiceAccountCredentials } from './googleAuthService';
+
 
 // Define a safe mock user interface
 export interface SupabaseUser {
@@ -350,27 +350,6 @@ export const initAuth = (
 };
 
 export const googleSignIn = async (): Promise<{ user: any; accessToken: string } | null> => {
-  // Check if Service Account is available first
-  try {
-    const creds = getServiceAccountCredentials();
-    if (creds) {
-      const saToken = await getServiceAccountToken();
-      if (saToken) {
-        const saUser: SupabaseUser = {
-          uid: "service-account-google",
-          id: "service-account-google",
-          email: creds.client_email,
-          displayName: "Service Account Google",
-          getIdToken: async () => saToken
-        };
-        currentMockUser = saUser;
-        return { user: saUser, accessToken: saToken };
-      }
-    }
-  } catch (saErr) {
-    console.warn("Service Account check warning:", saErr);
-  }
-
   if (isStaticBuild) {
     const mockUser: SupabaseUser = {
       uid: "local-google",
@@ -401,19 +380,7 @@ export const googleSignIn = async (): Promise<{ user: any; accessToken: string }
     console.error('Sign in error:', error);
     const errMsg = error?.msg || error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
     if (errMsg.includes('Unsupported provider') || errMsg.includes('not enabled')) {
-      console.warn('[Google OAuth] Provedor Google não ativado no Supabase Console. Alternando para Service Account / modo local.');
-      const saToken = await getServiceAccountToken();
-      if (saToken) {
-        const creds = getServiceAccountCredentials();
-        const saUser = {
-          uid: "service-account-google",
-          id: "service-account-google",
-          email: creds?.client_email || "service-account@google.com",
-          displayName: "Service Account Google",
-          getIdToken: async () => saToken
-        };
-        return { user: saUser, accessToken: saToken };
-      }
+      console.warn('[Google OAuth] Provedor Google não ativado no Supabase Console.');
     }
     throw error;
   } finally {

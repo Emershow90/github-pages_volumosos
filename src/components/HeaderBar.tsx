@@ -1,6 +1,7 @@
 import React from "react";
 import { Setor, UserRole } from "../types";
 import { Bell } from "lucide-react";
+import { OnlineIndicator } from "./OnlineIndicator";
 
 export interface HeaderBarNotification {
   id: string;
@@ -71,6 +72,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
       {/* Real-Time clocks and profiles */}
       <div className="flex items-center gap-4 md:gap-6">
+        <OnlineIndicator />
         <div className="hidden sm:flex items-center gap-4 text-xs font-mono">
           <div className="text-right">
             <p className="text-white font-black">{timeState.local || "00:00:00"}</p>
