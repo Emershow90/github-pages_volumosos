@@ -96,8 +96,8 @@ export const PainelTab: React.FC = () => {
                       <span className="font-medium text-slate-200">Setor {sector.setorId}</span>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-bold text-slate-300">{sector.uph} UPH</div>
-                      <div className="text-xs text-slate-500">{sector.promessa}% Prom.</div>
+                      <div className="text-sm font-bold text-slate-100">{sector.atividadeTotal ? sector.atividadeTotal.toLocaleString('pt-BR') : 0} vol.</div>
+                      <div className="text-xs text-slate-400">{sector.uph} UPH • {sector.promessa}% Prom.</div>
                     </div>
                   </div>
                 ))}

@@ -54,6 +54,7 @@ import { realtimeSync } from "./services/realtimeSyncService";
 import { SupabaseService as FirebaseService } from "./lib/supabaseService";
 
 // Layout & Modular UI Components
+import { OverrideTab } from "./components/OverrideTab";
 import { HeaderBar } from "./components/HeaderBar";
 import { NavigationPanel } from "./components/NavigationPanel";
 import { TerminalDrawer } from "./components/TerminalDrawer";
@@ -561,23 +562,7 @@ function App() {
     localStorage.setItem("screensaver_config", JSON.stringify(screensaver));
   }, [screensaver]);
 
-  useEffect(() => {
-    if (authLoading || !fbUser) return;
-    if (setores && setores.length > 0) {
-      FirebaseService.upsert("setores", setores).catch((err) => {
-        console.error("Failed to push sectors to DB:", err);
-      });
-    }
-  }, [setores, fbUser, authLoading]);
 
-  useEffect(() => {
-    if (authLoading || !fbUser) return;
-    if (referentesSemana && referentesSemana.length > 0) {
-      FirebaseService.upsert("escalas_referentes", referentesSemana, "dia").catch((err) => {
-        console.error("Failed to push schedule to DB:", err);
-      });
-    }
-  }, [referentesSemana, fbUser, authLoading]);
 
   // CORE DISPATCHERS & STATE WRITERS
   const addAudit = (user: string, action: string, field: string, nVal: any, pVal?: any) => {
@@ -1336,90 +1321,9 @@ function App() {
                 UserRole.Expedicao,
               ]}
             >
-              <ConfigTab
+              <OverrideTab
                 setores={setores}
-                colaboradores={colaboradores}
-                referentesSemana={referentesSemana}
-                screensaver={screensaver}
-                coordenador={currentUser}
-                fotoCoordenador=""
-                initialSubCat="override"
-                onSaveRadar={handleSaveRadar}
-                onUpdateReferente={(idx, field, val) => {
-                  setReferentesSemana((prev) => {
-                    const copy = [...prev];
-                    copy[idx] = { ...copy[idx], [field]: val };
-                    return copy;
-                  });
-                }}
-                onAddReferente={() => {
-                  setReferentesSemana((prev) => [
-                    ...prev,
-                    { dia: "segunda", ref87: "Novo Líder", refVol: "Apoio Volumoso" },
-                  ]);
-                }}
-                onRemoveReferente={(idx) => {
-                  setReferentesSemana((prev) => prev.filter((_, i) => i !== idx));
-                }}
-                onAddSetor={async (id, resp, foto) => {
-                  const numero = parseInt(id.replace(/\D/g, "")) || 0;
-                  const newSec: Setor = {
-                    id,
-                    numero,
-                    nome: id.toUpperCase() === 'E-LOG' ? 'E-LOG' : `Setor ${id}`,
-                    resp,
-                    ativ: 0,
-                    uph: 0,
-                    promessa: 100,
-                    nota5s: 100,
-                    bsi: 100,
-                    reproTotal: 0,
-                    errosPicking: 0,
-                    horasDKT: 0,
-                    poliRec: 0,
-                    rdl: 0,
-                    poliSaid: 0,
-                    coletado: 0,
-                    varFin: 0,
-                    infracaoSeguranca: false,
-                    fotoLider: foto,
-                    situacao: "Ativo",
-                    meta: 0,
-                  };
-                  
-                  // Atomic insert for both Setor and Capacidade via Supabase 
-                  // using 'setor' as the unique conflict target for Capacidade
-                  try {
-                    await FirebaseService.upsertRecord('setores', newSec, 'id');
-                    const newCap = { id, setor: id, abertura: 0, fechoHora: 0 };
-                    await FirebaseService.upsertRecord('capacidade', newCap, 'setor');
-                    
-                    // Optimistic update
-                    setSetores((prev) => [...prev, newSec]);
-                  } catch (err) {
-                    console.error("Error creating new sector & capacity:", err);
-                    alert("Erro ao criar o setor no servidor.");
-                  }
-                }}
-                onRemoveSetor={(idx) => {
-                  setSetores((prev) => prev.filter((_, i) => i !== idx));
-                }}
-                onUpdateSetor={(sid, field, val) => {
-                  setSetores((prev) =>
-                    prev.map((s) => (s.id === sid ? { ...s, [field]: val } : s))
-                  );
-                }}
-                onUpdateSetorProd={handleUpdateSetorProd}
-                onUpdateCoordenador={(nome) => {
-                  setCurrentUser(nome);
-                }}
-                onUpdateScreensaver={(cfg) => {
-                  setScreensaver(cfg);
-                  alert("Configuração da tela de descanso gravada.");
-                }}
-                onExportBackup={() => {}}
-                onImportBackup={() => {}}
-                onLogout={() => {}}
+                onUpdateSetor={handleUpdateSetorProd}
               />
             </ProtectedRoute>
           )}
@@ -1441,18 +1345,6 @@ function App() {
                 activeSectorId={activeSectorId}
                 setActiveSectorId={setActiveSectorId}
               />
-            </ProtectedRoute>
-          )}
-
-          {activeTab === "conexoes" && (
-            <ProtectedRoute
-              userRole={currentRole}
-              allowedRoles={[
-                UserRole.Admin,
-                UserRole.Coordenador,
-              ]}
-            >
-              <ConexoesTab currentRole={currentRole} />
             </ProtectedRoute>
           )}
 
@@ -1514,6 +1406,12 @@ function App() {
             </ProtectedRoute>
           )}
 
+          {activeTab === "conexoes" && (
+            <ProtectedRoute userRole={currentRole} allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Referente]}>
+              <ConexoesTab />
+            </ProtectedRoute>
+          )}
+
           {activeTab === "config" && (
             <ProtectedRoute userRole={currentRole} allowedRoles={[UserRole.Admin]}>
               <ConfigTab
@@ -1528,17 +1426,28 @@ function App() {
                   setReferentesSemana((prev) => {
                     const copy = [...prev];
                     copy[idx] = { ...copy[idx], [field]: val };
+                    FirebaseService.upsertRecord("escalas_referentes", copy[idx], "dia" as any)
+                      .catch((err) => console.error("Failed to persist referente:", err));
                     return copy;
                   });
                 }}
                 onAddReferente={() => {
-                  setReferentesSemana((prev) => [
-                    ...prev,
-                    { dia: "segunda", ref87: "Novo Líder", refVol: "Apoio Volumoso" },
-                  ]);
+                  setReferentesSemana((prev) => {
+                    const newRec = { dia: "segunda", ref87: "Novo Líder", refVol: "Apoio Volumoso" };
+                    FirebaseService.upsertRecord("escalas_referentes", newRec as any, "dia" as any)
+                      .catch((err) => console.error("Failed to persist new referente:", err));
+                    return [...prev, newRec];
+                  });
                 }}
                 onRemoveReferente={(idx) => {
-                  setReferentesSemana((prev) => prev.filter((_, i) => i !== idx));
+                  setReferentesSemana((prev) => {
+                    const rec = prev[idx];
+                    if (rec && rec.dia) {
+                      FirebaseService.deleteRecord("escalas_referentes", rec.dia, "dia")
+                        .catch((err) => console.error("Failed to delete referente:", err));
+                    }
+                    return prev.filter((_, i) => i !== idx);
+                  });
                 }}
                 onAddSetor={async (id, resp, foto) => {
                   const numero = parseInt(id.replace(/\D/g, "")) || 0;
@@ -1639,14 +1548,16 @@ function App() {
       </div>
 
       {/* FLOATING TERMINAL TOGGLE */}
-      <TerminalDrawer
-        showTerminal={showTerminal}
-        setShowTerminal={setShowTerminal}
-        terminalLogs={terminalLogs}
-        terminalInput={terminalInput}
-        setTerminalInput={setTerminalInput}
-        handleTerminalSubmit={handleTerminalSubmit}
-      />
+      {currentRole === UserRole.Admin && (
+        <TerminalDrawer
+          showTerminal={showTerminal}
+          setShowTerminal={setShowTerminal}
+          terminalLogs={terminalLogs}
+          terminalInput={terminalInput}
+          setTerminalInput={setTerminalInput}
+          handleTerminalSubmit={handleTerminalSubmit}
+        />
+      )}
 
       {/* TOAST NOTIFICATIONS CONTAINER */}
       <ToastContainer toasts={toasts} removeToast={removeToast} />

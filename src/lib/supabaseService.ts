@@ -125,6 +125,22 @@ export class SupabaseService {
     }
   }
 
+  private static extractInvalidColumnFromError(errMsg: string): string | null {
+    const colMatch =
+      errMsg.match(/find the ['"]([^'"]+)['"] column/i) ||
+      errMsg.match(/column ['"]([^'"]+)['"]/i) ||
+      errMsg.match(/coluna ['"]([^'"]+)['"]/i) ||
+      errMsg.match(/['"]([^'"]+)['"] column/i) ||
+      errMsg.match(/['"]([^'"]+)['"] coluna/i);
+    if (colMatch && colMatch[1]) {
+      const col = colMatch[1].trim();
+      if (col && col !== 'of' && col !== 'table' && col !== 'the' && col !== 'schema' && col !== 'in') {
+        return col;
+      }
+    }
+    return null;
+  }
+
   public static enqueueOperation(item: {
     table: string;
     realTable: string;
@@ -588,7 +604,7 @@ export class SupabaseService {
     recordOrRecords: T | T[],
     keyField?: string | undefined,
     onConflict?: string
-  ): Promise<any> {
+  ): Promise<T | T[]> {
     if (Array.isArray(recordOrRecords)) {
       return Promise.all(recordOrRecords.map((r) => this.upsertRecord(tableName, r as any, keyField as any, onConflict)));
     }
@@ -666,13 +682,8 @@ export class SupabaseService {
           const errCode = String(error.code || '');
 
           if (errCode === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist') || errMsg.includes('schema cache')) {
-            const colMatch =
-              errMsg.match(/column ['"]?([^'"]+)['"]?/i) ||
-              errMsg.match(/['"]?([^'"]+)['"]? column/i) ||
-              errMsg.match(/coluna ['"]?([^'"]+)['"]?/i) ||
-              errMsg.match(/column ([^\s,]+)/i);
-            if (colMatch && colMatch[1]) {
-              const invalidCol = colMatch[1].trim();
+            const invalidCol = this.extractInvalidColumnFromError(errMsg);
+            if (invalidCol) {
               console.warn(`[Supabase Sanitizer] [PGRST204] Coluna "${invalidCol}" inexistente na tabela ${realTableName}. Removendo e re-tentando...`);
               this.removeInvalidColumnFromCache(realTableName, invalidCol);
 
@@ -933,9 +944,8 @@ export class SupabaseService {
               const errCode = String(error.code || '');
 
               if (errCode === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
-                const colMatch = errMsg.match(/column "([^"]+)"/i) || errMsg.match(/coluna "([^"]+)"/i);
-                if (colMatch && colMatch[1]) {
-                  const invalidCol = colMatch[1];
+                const invalidCol = this.extractInvalidColumnFromError(errMsg);
+                if (invalidCol) {
                   console.warn(`[Supabase Sync] Coluna "${invalidCol}" inexistente na tabela "${realTbl}". Removendo do esquema e re-tentando...`);
                   this.removeInvalidColumnFromCache(realTbl, invalidCol);
 

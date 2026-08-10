@@ -1,517 +1,311 @@
-import React, { useState, useEffect } from "react";
-import { Conexao, SyncLog, UserRole } from "../types";
-import { SupabaseService } from "../lib/supabaseService";
-import { ConexoesService } from "../services/conexoesService";
-import { useToast } from "../hooks/useToast";
-import {
-  Link2,
-  Plus,
-  RefreshCw,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Database,
-  Play,
-  Trash2,
-  Power,
-  Edit,
-  AlertTriangle,
+import React, { useState, useEffect } from 'react';
+import { 
+  Link2, 
+  Database, 
+  RefreshCw, 
+  CheckCircle2, 
+  XCircle, 
+  Clock, 
+  HardDrive, 
+  ExternalLink, 
+  Layers, 
+  Trash2, 
+  Zap,
   Activity,
-  FileSpreadsheet,
-} from "lucide-react";
+  Table
+} from 'lucide-react';
+import { ConexoesService, SyncResult, ConnectionDetail } from '../services/conexoesService';
+import { useToast } from '../hooks/useToast';
+import { SupabaseService } from '../lib/supabaseService';
 
-interface ConexoesTabProps {
-  currentRole: UserRole | string | null;
-}
-
-export const ConexoesTab: React.FC<ConexoesTabProps> = ({ currentRole }) => {
+export const ConexoesTab: React.FC = () => {
   const toast = useToast();
-  const [conexoes, setConexoes] = useState<Conexao[]>([]);
-  const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isSyncingId, setIsSyncingId] = useState<string | null>(null);
-  const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<{ id: string; success: boolean } | null>(null);
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+  const [isTestingDb, setIsTestingDb] = useState(false);
+  const [dbStatus, setDbStatus] = useState<{ healthy: boolean; latencyMs: number } | null>(null);
+  const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null);
+  const [tableCounts, setTableCounts] = useState<Record<string, number>>({});
+  const [loadingTables, setLoadingTables] = useState(false);
 
-  // Modal State
-  const [showModal, setShowModal] = useState<boolean>(false);
-  const [editingConexao, setEditingConexao] = useState<Partial<Conexao> | null>(null);
+  const connections: ConnectionDetail[] = [
+    {
+      id: 'google_sheets_controladoria',
+      name: 'Planilha Controladoria (CSV Google Sheets)',
+      type: 'google_sheets',
+      status: lastSyncResult?.success === false ? 'error' : 'connected',
+      lastSync: lastSyncResult?.timestamp || 'Automatico (Cache 5 min)',
+      description: 'Feed de métricas operacionais da Controladoria com UPH e volume de atividade.',
+      endpointUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?output=csv',
+      recordCount: lastSyncResult?.importedCount,
+    },
+    {
+      id: 'supabase_database',
+      name: 'Supabase PostgreSQL & Realtime',
+      type: 'database',
+      status: dbStatus ? (dbStatus.healthy ? 'connected' : 'disconnected') : 'connected',
+      lastSync: dbStatus ? `${dbStatus.latencyMs}ms de latência` : 'Realtime Ativo (onSnapshot)',
+      description: 'Persistência em nuvem centralizada para setores, colaboradores, históricos e escalas.',
+      recordCount: (Object.values(tableCounts) as number[]).reduce((a: number, b: number) => a + b, 0),
+    },
+    {
+      id: 'indexeddb_cache',
+      name: 'IndexedDB Local Cache & Offline Queue',
+      type: 'indexeddb',
+      status: 'connected',
+      lastSync: 'Sincronizado localmente',
+      description: 'Armazenamento offline de alta performance com resiliência de queda de conexão.',
+    },
+  ];
 
-  // Form State
-  const [formNome, setFormNome] = useState("");
-  const [formTipo, setFormTipo] = useState<"google_sheets" | "postgres" | "api_rest">("google_sheets");
-  const [formUrl, setFormUrl] = useState("");
-  const [formDestino, setFormDestino] = useState("matriz_performance");
-  const [formFrequencia, setFormFrequencia] = useState<string>("diaria");
-
-  const isAdminOrCoord = currentRole === UserRole.Admin || currentRole === UserRole.Coordenador || currentRole === "admin";
-
-  const loadConexoesData = async () => {
-    setIsLoading(true);
+  const handleTestDatabase = async () => {
+    setIsTestingDb(true);
     try {
-      // Garante inicialização da conexão padrão
-      const conns = await ConexoesService.initializeDefaultConnections();
-      setConexoes(conns);
-
-      // Carrega logs de sincronização
-      const logs = await SupabaseService.fetchTable<SyncLog>("sync_logs");
-      if (logs) {
-        setSyncLogs(logs.sort((a, b) => new Date(b.data_inicio).getTime() - new Date(a.data_inicio).getTime()));
+      const res = await ConexoesService.checkDatabaseHealth();
+      setDbStatus(res);
+      if (res.healthy) {
+        toast.success(`Supabase Online! Latência: ${res.latencyMs}ms`);
+      } else {
+        toast.error('Não foi possível conectar ao Supabase.');
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error(`[ConexoesTab] Erro ao carregar dados: ${msg}`);
+    } catch {
+      toast.error('Erro ao verificar saúde do banco de dados.');
     } finally {
-      setIsLoading(false);
+      setIsTestingDb(false);
+    }
+  };
+
+  const handleSyncSheets = async () => {
+    setIsSyncingSheets(true);
+    try {
+      const result = await ConexoesService.syncControladoriaSheet();
+      setLastSyncResult(result);
+      if (result.success) {
+        toast.success(`Sincronização concluída! ${result.importedCount} setores atualizados.`);
+        loadTableCounts();
+      } else {
+        toast.error(`Falha na sincronização: ${result.error || 'Erro desconhecido'}`);
+      }
+    } catch (err) {
+      toast.error(`Erro: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsSyncingSheets(false);
+    }
+  };
+
+  const handleClearCache = async () => {
+    try {
+      await ConexoesService.resetCache();
+      toast.success('Cache local da planilha limpo com sucesso.');
+    } catch {
+      toast.error('Erro ao limpar cache local.');
+    }
+  };
+
+  const loadTableCounts = async () => {
+    setLoadingTables(true);
+    try {
+      const [setores, colabs, matriz, historico, escalas] = await Promise.all([
+        SupabaseService.fetchTable('setores').catch(() => []),
+        SupabaseService.fetchTable('colaboradores').catch(() => []),
+        SupabaseService.fetchTable('matriz_performance').catch(() => []),
+        SupabaseService.fetchTable('historico_consolidado').catch(() => []),
+        SupabaseService.fetchTable('escalas_referentes').catch(() => []),
+      ]);
+      setTableCounts({
+        setores: setores.length,
+        colaboradores: colabs.length,
+        matriz_performance: matriz.length,
+        historico_consolidado: historico.length,
+        escalas_referentes: escalas.length,
+      });
+    } catch (err) {
+      console.error('[ConexoesTab] Erro ao carregar registros das tabelas:', err);
+    } finally {
+      setLoadingTables(false);
     }
   };
 
   useEffect(() => {
-    loadConexoesData();
-
-    const sub1 = SupabaseService.subscribeToTable("conexoes", () => loadConexoesData());
-    const sub2 = SupabaseService.subscribeToTable("sync_logs", () => loadConexoesData());
-
-    return () => {
-      sub1?.unsubscribe();
-      sub2?.unsubscribe();
-    };
+    loadTableCounts();
+    handleTestDatabase();
   }, []);
 
-  const handleTestConnection = async (conexao: Conexao) => {
-    setTestingId(conexao.id);
-    setTestResult(null);
-    try {
-      const ok = await ConexoesService.testConnection(conexao);
-      setTestResult({ id: conexao.id, success: ok });
-    } catch {
-      setTestResult({ id: conexao.id, success: false });
-    } finally {
-      setTestingId(null);
-      setTimeout(() => setTestResult(null), 4000);
-    }
-  };
-
-  const handleSyncNow = async (conexao: Conexao) => {
-    setIsSyncingId(conexao.id);
-    try {
-      if (conexao.id === "controladoria-volumosos" || conexao.destino === "matriz_performance") {
-        await ConexoesService.syncControladoriaSheet(conexao.id);
-      } else if (conexao.id === "override-operacional" || conexao.destino === "override_operacional") {
-        await ConexoesService.syncOverrideSheet(conexao.id);
-      } else {
-        // Mock generico para outras conexões
-        const now = new Date().toISOString();
-        await SupabaseService.upsertRecord("conexoes", {
-          id: conexao.id,
-          status: "online",
-          ultima_sincronizacao: now,
-          registros: Math.floor(Math.random() * 50) + 10,
-        });
-
-        await SupabaseService.upsertRecord("sync_logs", {
-          id: `log_${Date.now()}`,
-          conexao_id: conexao.id,
-          data_inicio: now,
-          data_fim: now,
-          status: "sucesso",
-          registros_afetados: 15,
-        });
-      }
-      toast.success("Sincronização concluída com sucesso!");
-      await loadConexoesData();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error(`Erro na sincronização manual: ${msg}`);
-    } finally {
-      setIsSyncingId(null);
-    }
-  };
-
-  const handleToggleStatus = async (conexao: Conexao) => {
-    const newStatus = conexao.status === "online" ? "offline" : "online";
-    await SupabaseService.upsertRecord("conexoes", { id: conexao.id, status: newStatus }, "id");
-    await loadConexoesData();
-  };
-
-  const handleDeleteConexao = async (id: string) => {
-    if (window.confirm("Tem certeza que deseja remover esta conexão e seu histórico?")) {
-      await SupabaseService.deleteRecord("conexoes", id, "id");
-      await loadConexoesData();
-    }
-  };
-
-  const handleOpenModal = (conexao?: Conexao) => {
-    if (conexao) {
-      setEditingConexao(conexao);
-      setFormNome(conexao.nome);
-      setFormTipo(conexao.tipo);
-      setFormUrl(conexao.url || "");
-      setFormDestino(conexao.destino);
-      setFormFrequencia(conexao.configuracao?.frequencia || "diaria");
-    } else {
-      setEditingConexao(null);
-      setFormNome("");
-      setFormTipo("google_sheets");
-      setFormUrl("");
-      setFormDestino("matriz_performance");
-      setFormFrequencia("diaria");
-    }
-    setShowModal(true);
-  };
-
-  const handleSaveForm = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formNome.trim()) return;
-
-    const id = editingConexao?.id || `conn_${Date.now()}`;
-    const record: Conexao = {
-      id,
-      nome: formNome.trim(),
-      tipo: formTipo,
-      url: formUrl.trim(),
-      destino: formDestino,
-      status: "online",
-      registros: editingConexao?.registros || 0,
-      configuracao: {
-        frequencia: formFrequencia as any,
-      },
-    };
-
-    await SupabaseService.upsertRecord("conexoes", record, "id");
-    setShowModal(false);
-    await loadConexoesData();
-  };
-
   return (
-    <div className="space-y-6">
-      {/* HEADER BAR */}
-      <div className="glass-card p-6 border-l-2 border-purple-500/50 bg-[#07070a]/98">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="space-y-6 animate-in fade-in duration-200">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-900/80 p-6 rounded-2xl border border-zinc-800 backdrop-blur-md">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-purple-500/10 rounded-xl border border-purple-500/20 text-purple-400">
+              <Link2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight">Conexões & Integrações Operacionais</h2>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Painel de gerenciamento de fontes de dados, sincronização com a Controladoria e resiliência offline.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <button
+            onClick={handleSyncSheets}
+            disabled={isSyncingSheets}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-lg shadow-purple-600/20 cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 ${isSyncingSheets ? 'animate-spin' : ''}`} />
+            {isSyncingSheets ? 'Sincronizando...' : 'Sincronizar Controladoria'}
+          </button>
+        </div>
+      </div>
+
+      {/* Connection Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {connections.map((conn) => (
+          <div
+            key={conn.id}
+            className="bg-zinc-900/60 p-5 rounded-2xl border border-zinc-800/80 hover:border-zinc-700/80 transition-all flex flex-col justify-between space-y-4 shadow-sm"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  {conn.type === 'google_sheets' && <Table className="w-5 h-5 text-emerald-400" />}
+                  {conn.type === 'database' && <Database className="w-5 h-5 text-blue-400" />}
+                  {conn.type === 'indexeddb' && <HardDrive className="w-5 h-5 text-amber-400" />}
+                  <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">{conn.type}</span>
+                </div>
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${
+                    conn.status === 'connected'
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                  }`}
+                >
+                  {conn.status === 'connected' ? (
+                    <>
+                      <CheckCircle2 className="w-3 h-3" />
+                      Conectado
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-3 h-3" />
+                      Desconectado
+                    </>
+                  )}
+                </span>
+              </div>
+
+              <h3 className="text-sm font-bold text-white mb-1">{conn.name}</h3>
+              <p className="text-xs text-zinc-400 leading-relaxed mb-3">{conn.description}</p>
+
+              {conn.endpointUrl && (
+                <div className="bg-black/40 p-2 rounded-lg border border-zinc-800/80 text-[11px] text-zinc-500 truncate mb-3 flex items-center justify-between gap-2">
+                  <span className="truncate">{conn.endpointUrl}</span>
+                  <a
+                    href={conn.endpointUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-purple-400 hover:text-purple-300 transition-colors shrink-0"
+                    title="Abrir URL"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-zinc-800/60 flex items-center justify-between text-xs text-zinc-400">
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-zinc-500" />
+                <span>{conn.lastSync}</span>
+              </div>
+              {conn.recordCount !== undefined && (
+                <div className="flex items-center gap-1 font-mono text-zinc-300">
+                  <Layers className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>{conn.recordCount} registros</span>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Database Tables Overview & Quick Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Table Registries */}
+        <div className="lg:col-span-2 bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800/80 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Database className="w-5 h-5 text-purple-400" />
+              <h3 className="text-sm font-bold text-white">Mapeamento de Tabelas no Supabase</h3>
+            </div>
+            <button
+              onClick={loadTableCounts}
+              disabled={loadingTables}
+              className="p-1.5 text-zinc-400 hover:text-white bg-zinc-800/60 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+              title="Recarregar Contagem"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingTables ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              { label: 'Setores', key: 'setores', color: 'text-blue-400' },
+              { label: 'Colaboradores', key: 'colaboradores', color: 'text-emerald-400' },
+              { label: 'Matriz Performance', key: 'matriz_performance', color: 'text-purple-400' },
+              { label: 'Histórico Consolidado', key: 'historico_consolidado', color: 'text-amber-400' },
+              { label: 'Escalas Referentes', key: 'escalas_referentes', color: 'text-cyan-400' },
+            ].map((tbl) => (
+              <div
+                key={tbl.key}
+                className="bg-black/30 p-3.5 rounded-xl border border-zinc-800/60 flex flex-col justify-between space-y-1"
+              >
+                <span className="text-[11px] text-zinc-400 font-medium">{tbl.label}</span>
+                <div className="flex items-baseline justify-between">
+                  <span className={`text-base font-bold font-mono ${tbl.color}`}>
+                    {loadingTables ? '...' : tableCounts[tbl.key] ?? 0}
+                  </span>
+                  <span className="text-[10px] text-zinc-500 uppercase">linhas</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Action Controls */}
+        <div className="bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800/80 space-y-4 flex flex-col justify-between">
           <div>
-            <h2 className="text-xl font-black text-white uppercase tracking-wider flex items-center gap-2">
-              <Link2 className="text-purple-400" size={22} />
-              Central de Conexões & Integradores de Dados
-            </h2>
-            <p className="text-xs text-zinc-400 mt-1">
-              Gerencie integrações com fontes externas (Google Sheets, PostgreSQL, APIs REST) e monitore logs de execução.
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="w-5 h-5 text-amber-400" />
+              <h3 className="text-sm font-bold text-white">Ações de Manutenção</h3>
+            </div>
+            <p className="text-xs text-zinc-400 leading-relaxed mb-4">
+              Executar diagnósticos e redefinição de caches para garantir a integridade do estado realtime.
             </p>
           </div>
 
-          {isAdminOrCoord && (
+          <div className="space-y-2.5">
             <button
-              onClick={() => handleOpenModal()}
-              className="btn-primary text-xs flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500"
+              onClick={handleTestDatabase}
+              disabled={isTestingDb}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-medium transition-colors border border-zinc-700/60 cursor-pointer"
             >
-              <Plus size={14} />
-              + Nova Conexão
+              <Activity className="w-4 h-4 text-blue-400" />
+              {isTestingDb ? 'Testando Conexão...' : 'Testar Conexão Supabase'}
             </button>
-          )}
-        </div>
-      </div>
 
-      {/* LISTAGEM DE CONEXÕES CONFIGURADAS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {isLoading ? (
-          <div className="col-span-full text-center py-12 text-zinc-500 font-mono text-xs animate-pulse">
-            Carregando conexões cadastradas...
-          </div>
-        ) : conexoes.length === 0 ? (
-          <div className="col-span-full glass-card p-8 text-center text-zinc-400">
-            <AlertTriangle className="mx-auto text-amber-400 mb-2" size={28} />
-            <p className="text-xs font-bold uppercase tracking-wider">Nenhuma conexão cadastrada no momento.</p>
-          </div>
-        ) : (
-          conexoes.map((conn) => {
-            const isSyncing = isSyncingId === conn.id;
-            const isTesting = testingId === conn.id;
-            const isTestOk = testResult?.id === conn.id && testResult.success;
-            const isTestFail = testResult?.id === conn.id && !testResult.success;
-
-            return (
-              <div key={conn.id} className="glass-card p-5 border-l-2 border-indigo-500/50 flex flex-col justify-between relative overflow-hidden">
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-2">
-                      {conn.tipo === "google_sheets" ? (
-                        <FileSpreadsheet className="text-emerald-400" size={18} />
-                      ) : (
-                        <Database className="text-sky-400" size={18} />
-                      )}
-                      <div>
-                        <h4 className="text-xs font-black text-white uppercase tracking-wider">{conn.nome}</h4>
-                        <span className="text-[10px] text-zinc-500 uppercase font-mono">{conn.tipo}</span>
-                      </div>
-                    </div>
-
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
-                        conn.status === "online"
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                          : conn.status === "offline"
-                          ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                          : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                      }`}
-                    >
-                      ● {conn.status}
-                    </span>
-                  </div>
-
-                  <div className="bg-black/30 p-3 rounded-lg border border-white/5 space-y-1.5 text-[11px] font-mono mb-4 text-zinc-300">
-                    <div className="flex justify-between">
-                      <span className="text-zinc-500">Destino (Supabase):</span>
-                      <span className="text-indigo-300 font-bold">{conn.destino}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-zinc-500">Registros Importados:</span>
-                      <span className="text-emerald-400 font-bold">{conn.registros || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-zinc-500">Última Sincronização:</span>
-                      <span className="text-zinc-400">
-                        {conn.ultima_sincronizacao
-                          ? new Date(conn.ultima_sincronizacao).toLocaleString("pt-BR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "Nunca"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {testResult?.id === conn.id && (
-                    <div
-                      className={`text-[10px] p-2 rounded mb-3 flex items-center gap-1.5 font-bold uppercase ${
-                        isTestOk ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"
-                      }`}
-                    >
-                      {isTestOk ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                      {isTestOk ? "Conexão Testada com Sucesso!" : "Falha na Conexão com Fonte."}
-                    </div>
-                  )}
-                </div>
-
-                {/* BOTÕES DE AÇÃO */}
-                <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-1 flex-wrap">
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => handleTestConnection(conn)}
-                      disabled={isTesting}
-                      className="bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1"
-                      title="Testar Conectividade"
-                    >
-                      <Activity size={10} className={isTesting ? "animate-spin" : ""} />
-                      Testar
-                    </button>
-                    <button
-                      onClick={() => handleSyncNow(conn)}
-                      disabled={isSyncing}
-                      className="bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1"
-                      title="Sincronizar Agora"
-                    >
-                      <RefreshCw size={10} className={isSyncing ? "animate-spin" : ""} />
-                      Sincronizar
-                    </button>
-                  </div>
-
-                  {isAdminOrCoord && (
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleToggleStatus(conn)}
-                        className={`p-1.5 rounded border transition cursor-pointer ${
-                          conn.status === "online"
-                            ? "bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20"
-                            : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
-                        }`}
-                        title={conn.status === "online" ? "Pausar Conexão" : "Reativar Conexão"}
-                      >
-                        <Power size={12} />
-                      </button>
-                      <button
-                        onClick={() => handleOpenModal(conn)}
-                        className="bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 p-1.5 rounded transition cursor-pointer"
-                        title="Editar Conexão"
-                      >
-                        <Edit size={12} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteConexao(conn.id)}
-                        className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 p-1.5 rounded transition cursor-pointer"
-                        title="Remover Conexão"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* HISTÓRICO DE SINCRONIZAÇÃO (SYNC LOGS) */}
-      <div className="glass-card p-6 border-l-2 border-indigo-500/50">
-        <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 mb-4">
-          <Clock className="text-indigo-400" size={18} />
-          Histórico Operacional de Sincronizações (Sync Logs)
-        </h3>
-
-        {syncLogs.length === 0 ? (
-          <div className="text-center py-6 text-zinc-500 font-mono text-xs">
-            Nenhum log de sincronização registrado ainda.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse font-mono">
-              <thead>
-                <tr className="border-b border-white/10 bg-black/40 text-[10px] font-black uppercase text-zinc-400">
-                  <th className="py-2.5 px-3">Data / Hora</th>
-                  <th className="py-2.5 px-3">ID Conexão</th>
-                  <th className="py-2.5 px-3 text-center">Status</th>
-                  <th className="py-2.5 px-3 text-right">Registros Afetados</th>
-                  <th className="py-2.5 px-3">Mensagem / Observação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {syncLogs.slice(0, 10).map((log) => (
-                  <tr key={log.id} className="hover:bg-white/[0.02] transition">
-                    <td className="py-2.5 px-3 text-zinc-300">
-                      {new Date(log.data_inicio).toLocaleString("pt-BR")}
-                    </td>
-                    <td className="py-2.5 px-3 text-indigo-400 font-bold">{log.conexao_id}</td>
-                    <td className="py-2.5 px-3 text-center">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
-                          log.status === "sucesso"
-                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                            : "bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                        }`}
-                      >
-                        {log.status}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-emerald-400">
-                      +{log.registros_afetados}
-                    </td>
-                    <td className="py-2.5 px-3 text-zinc-400 truncate max-w-xs">
-                      {log.mensagem_erro || "Sincronização concluída com sucesso."}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* MODAL CRIAÇÃO / EDIÇÃO DE CONEXÃO */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="glass-card max-w-lg w-full p-6 border-indigo-500/50 space-y-4">
-            <h3 className="text-base font-black text-white uppercase tracking-wider border-b border-white/10 pb-3 flex justify-between items-center">
-              <span>{editingConexao ? "Editar Conexão" : "Nova Conexão de Dados"}</span>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-zinc-500 hover:text-white text-xs font-bold"
-              >
-                ✕
-              </button>
-            </h3>
-
-            <form onSubmit={handleSaveForm} className="space-y-4">
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block mb-1">
-                  Nome da Conexão
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formNome}
-                  onChange={(e) => setFormNome(e.target.value)}
-                  placeholder="Ex: Controladoria - Volumosos"
-                  className="inp py-2 px-3 text-xs"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block mb-1">
-                    Tipo de Fonte
-                  </label>
-                  <select
-                    value={formTipo}
-                    onChange={(e) => setFormTipo(e.target.value as any)}
-                    className="inp py-2 px-3 text-xs"
-                  >
-                    <option value="google_sheets">Google Sheets (CSV/HTML)</option>
-                    <option value="postgres">PostgreSQL Relacional</option>
-                    <option value="api_rest">API REST Externa</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block mb-1">
-                    Frequência Auto
-                  </label>
-                  <select
-                    value={formFrequencia}
-                    onChange={(e) => setFormFrequencia(e.target.value)}
-                    className="inp py-2 px-3 text-xs"
-                  >
-                    <option value="diaria">Diária (06:00 BRT)</option>
-                    <option value="horaria">A cada hora</option>
-                    <option value="semanal">Semanal</option>
-                    <option value="manual">Apenas Manual</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block mb-1">
-                  URL / Endpoint de Integração
-                </label>
-                <input
-                  type="text"
-                  value={formUrl}
-                  onChange={(e) => setFormUrl(e.target.value)}
-                  placeholder="https://docs.google.com/spreadsheets/d/e/..."
-                  className="inp py-2 px-3 text-xs font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block mb-1">
-                  Tabela de Destino no Supabase
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formDestino}
-                  onChange={(e) => setFormDestino(e.target.value)}
-                  placeholder="matriz_performance"
-                  className="inp py-2 px-3 text-xs font-mono"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-white/10 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="btn-secondary text-xs"
-                >
-                  Cancelar
-                </button>
-                <button type="submit" className="btn-primary text-xs">
-                  Salvar Conexão
-                </button>
-              </div>
-            </form>
+            <button
+              onClick={handleClearCache}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-medium transition-colors border border-zinc-700/60 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4 text-amber-400" />
+              Limpar Cache da Planilha (IndexedDB)
+            </button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

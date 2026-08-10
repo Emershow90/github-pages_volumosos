@@ -1777,12 +1777,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
         >
           📋 Liderança &amp; Escala
         </button>
-        <button
-          onClick={() => setSubCat("override")}
-          className={`cfg-nav ${subCat === "override" ? "active" : ""}`}
-        >
-          ⚙️ Override Operacional
-        </button>
+        
         <button
           onClick={() => setSubCat("importacao")}
           className={`cfg-nav ${subCat === "importacao" ? "active" : ""}`}
@@ -1962,119 +1957,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
           </div>
         )}
 
-        {/* CATEGORY: OVERRIDE */}
-        {subCat === "override" && (
-          <div className="space-y-6">
-            <div className="glass-card p-6 border border-white/10 bg-zinc-950/40 relative overflow-hidden rounded-[20px] shadow-2xl">
-              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6 pb-4 border-b border-white/5">
-                <div>
-                  <h3 className="text-sm font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                    <span className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg">⚡</span>
-                    Override Operacional
-                  </h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Central unificada para modificação manual de métricas operacionais dos setores (Atividade, UPH, Repro, Promessa, 5S, BSI e Erros).
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsOverrideModalOpen(true)}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white py-3 px-6 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all cursor-pointer shrink-0"
-                >
-                  <Settings size={16} />
-                  Abrir Modal de Override
-                </button>
-              </div>
-
-              <div className="p-4 bg-zinc-900/60 border border-white/5 rounded-xl text-xs text-zinc-400 space-y-2">
-                <p className="font-semibold text-white flex items-center gap-2">
-                  <span className="text-indigo-400">ℹ️</span> Preenchimento Assistido pelo Console Operacional
-                </p>
-                <p>
-                  Ao selecionar um setor no modal, a <strong>Atividade</strong> é pré-preenchida automaticamente a partir dos dados do dia no Console Operacional (painel_producao), permanecendo totalmente editável antes do salvamento em banco.
-                </p>
-              </div>
-            </div>
-
-            <OverrideOperacionalModal
-              isOpen={isOverrideModalOpen}
-              onClose={() => setIsOverrideModalOpen(false)}
-              setores={setores}
-              onUpdateSetor={onUpdateSetorProd || onUpdateSetor}
-            />
-
-            {/* Setor Manager list */}
-            <div className="glass-card p-6 border-l-2 border-sky-500/50">
-              <h3 className="text-sm font-black text-sky-400 uppercase tracking-widest mb-6">Gestão de Setores</h3>
-              <form onSubmit={handleCreateSetor} className="bg-black/30 p-4 rounded-xl border border-white/5 mb-6">
-                <p className="text-xs font-bold text-white uppercase mb-3">+ Criar Novo Setor</p>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                  <div>
-                    <label className="text-[0.55rem] text-zinc-500 uppercase block mb-1">Setor ID (Num)</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 91"
-                      value={newSid}
-                      onChange={(e) => setNewSid(e.target.value)}
-                      className="inp py-1.5 focus:outline-none"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[0.55rem] text-zinc-500 uppercase block mb-1">Líder Responsável</label>
-                    <input
-                      type="text"
-                      placeholder="Nome completo"
-                      value={newSResp}
-                      onChange={(e) => setNewSResp(e.target.value)}
-                      className="inp py-1.5 focus:outline-none"
-                      required
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-[0.55rem] text-zinc-500 uppercase block mb-1">URL da Foto</label>
-                    <input
-                      type="url"
-                      placeholder="https://exemplo.com/lider.jpg"
-                      value={newSFoto}
-                      onChange={(e) => setNewSFoto(e.target.value)}
-                      className="inp py-1.5 focus:outline-none"
-                    />
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  className="mt-4 bg-sky-600 hover:bg-sky-500 text-white py-2 rounded-lg text-xs font-bold uppercase transition"
-                >
-                  Criar Novo Setor
-                </button>
-              </form>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {setores.map((s, idx) => (
-                  <div key={s.id} className="bg-black/40 p-4 rounded-xl border border-white/5 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-black text-white">S{s.id}</p>
-                      <p className="text-[10px] text-zinc-500 mt-1 uppercase truncate max-w-[180px]">{s.resp}</p>
-                    </div>
-                    {setores.length > 1 && (
-                      <button
-                        onClick={() => {
-                          if (confirm(`Remover setor ${s.id}?`)) {
-                            onRemoveSetor(idx);
-                          }
-                        }}
-                        className="text-red-400 hover:text-red-300 font-bold hover:bg-red-500/10 p-2 rounded"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        
 
         {/* CATEGORY: IMPORTAÇÃO DE DADOS */}
         {subCat === "importacao" && (

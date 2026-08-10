@@ -1,7 +1,7 @@
+import { ConexoesService } from "../services/conexoesService";
 import React, { useState, useEffect, useMemo } from "react";
 import { MatrizPerformanceItem, Setor, UserRole } from "../types";
 import { SupabaseService } from "../lib/supabaseService";
-import { ConexoesService } from "../services/conexoesService";
 import {
   BarChart,
   Bar,
@@ -53,12 +53,7 @@ export const CopilTab: React.FC<CopilTabProps> = ({
       if (data && data.length > 0) {
         setMatrizData(data);
       } else {
-        // Inicializar com dados da sincronização da planilha se estiver vazio
-        const res = await ConexoesService.syncControladoriaSheet();
-        if (res.success) {
-          const freshData = await SupabaseService.fetchTable<MatrizPerformanceItem>("matriz_performance");
-          setMatrizData(freshData || []);
-        }
+        
       }
     } catch (err) {
       console.error("[COPIL Tab] Erro ao carregar matriz_performance:", err);
