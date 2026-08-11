@@ -55,7 +55,8 @@ const TABLE_NAME_MAP: Record<string, string> = {
 const LOCAL_ONLY_TABLES = new Set([
   'alertas_operacionais',
   'copil_matriz',
-  'universos_trabalho'
+  'universos_trabalho',
+  'plano_carregamento'
 ]);
 
 const TABLE_COLUMNS: Record<string, string[]> = {
@@ -63,6 +64,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   setores: ['id', 'numero', 'nome', 'resp', 'fotolider', 'meta', 'horario', 'situacao', 'ativ', 'promessa', 'varfin', 'bsi', 'nota5s', 'errospicking', 'reprototal', 'infracaoseguranca', 'horasdkt', 'polirec', 'rdl', 'polisaid', 'coletado', 'uph', 'created_at', 'updated_at'],
   lista_coleta: ['lista', 'loja', 'setor', 'corte', 'carregamento', 'transportadora', 'volumes', 'enderecos', 'atividaderelacionada', 'created_at', 'updated_at'],
   radar_lojas_status: ['lista', 'status_soltura', 'horario_soltura', 'solto_por', 'status_coleta', 'horario_coleta', 'coletado_por', 'status_carregamento', 'horario_carregamento', 'carregado_por', 'status_expedicao', 'created_at', 'updated_at', 'updated_by'],
+  plano_carregamento: ['id', 'data', 'dia_semana', 'hora_carregamento', 'cod_loja', 'nome_loja', 'created_at'],
   store_operations: ['id', 'programacao_id', 'loja_id', 'nome_loja', 'setor', 'transportadora', 'corte', 'carregamento', 'volumes', 'enderecos', 'atividade_relacionada', 'status_soltura', 'horario_soltura', 'solto_por', 'status_coleta', 'horario_coleta', 'coletado_por', 'status_carregamento', 'horario_carregamento', 'carregado_por', 'status_expedicao', 'perdeu_corte', 'updated_at', 'updated_by', 'created_at'],
   atividade_loja: ['id', 'setor', 'programacao_id', 'loja_id', 'tipo_atividade', 'colis_programados', 'colis_coletados', 'updated_at', 'created_at'],
   usuarios: ['id', 'email', 'nome', 'role', 'setoresautorizados', 'situacao', 'cargo', 'unidade', 'avatar_url', 'aprovado_por', 'data_aprovacao', 'created_at', 'updated_at'],
@@ -185,13 +187,15 @@ export class SupabaseService {
 
     let errorCategory = 'ERRO DE OPERAÇÃO';
     if (code === 'PGRST205' || code === '42P01' || status === 404 || msg.includes('404') || msg.includes('Could not find')) {
-      errorCategory = 'PGRST205 (TABELA INEXISTENTE NO SUPABASE)';
+      console.warn(`[Supabase Fallback] Tabela "${tableName}" não encontrada no Supabase (${code}). Operação mantida no cache local.`);
+      return;
+    } else if (code === '42501' || msg.includes('row-level security') || msg.includes('RLS')) {
+      console.warn(`[Supabase Fallback] Acesso à tabela "${tableName}" restrito por RLS (${code}). Operação mantida no cache local.`);
+      return;
     } else if (code === 'PGRST204' || msg.includes('column') || msg.includes('does not exist')) {
       errorCategory = 'PGRST204 (COLUNA INEXISTENTE NA TABELA)';
     } else if (code === '22P02' || msg.includes('uuid') || msg.includes('invalid input syntax')) {
       errorCategory = '22P02 (TIPO DE DADO INCOMPATÍVEL / SINTAXE DE COLUNA INVALIDA - Ex: UUID)';
-    } else if (code === '42501' || msg.includes('row-level security') || msg.includes('RLS')) {
-      errorCategory = '42501 (REGRAS RLS DE SEGURANÇA BLOQUEARAM O ACESSO)';
     }
 
     console.error(`🚨 [Supabase Diagnostic Log] ${errorCategory} na operação "${operation}" na tabela "${tableName}" (DB table: "${realTable}")`);
@@ -278,6 +282,11 @@ export class SupabaseService {
     } else if (realTable === 'capacidade') {
       if ('setor_id' in result) { result.setor = result.setor_id; delete result.setor_id; }
       if ('fechoHora' in result) { result.fecho_hora = result.fechoHora; delete result.fechoHora; }
+    } else if (realTable === 'plano_carregamento') {
+      if ('diaSemana' in result) { result.dia_semana = result.diaSemana; delete result.diaSemana; }
+      if ('horaCarregamento' in result) { result.hora_carregamento = result.horaCarregamento; delete result.horaCarregamento; }
+      if ('codLoja' in result) { result.cod_loja = result.codLoja; delete result.codLoja; }
+      if ('nomeLoja' in result) { result.nome_loja = result.nomeLoja; delete result.nomeLoja; }
     } else if (realTable === 'store_operations') {
       if ('programacaoId' in result) { result.programacao_id = result.programacaoId; delete result.programacaoId; }
       if ('lojaId' in result) { result.loja_id = result.lojaId; delete result.lojaId; }
@@ -681,6 +690,11 @@ export class SupabaseService {
           const errMsg = String(error.message || '');
           const errCode = String(error.code || '');
 
+          if (errCode === '42501' || errMsg.includes('row-level security')) {
+            console.error(`[Supabase] Violacao RLS (42501) na tabela "${realTableName}". O usuario nao tem permissao. Gravado apenas no cache local.`);
+            return finalizedRecord as unknown as T;
+          }
+
           if (errCode === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist') || errMsg.includes('schema cache')) {
             const invalidCol = this.extractInvalidColumnFromError(errMsg);
             if (invalidCol) {
@@ -717,7 +731,11 @@ export class SupabaseService {
             return finalizedRecord as unknown as T;
           }
 
-          if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
+          
+
+              
+
+              if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
             console.warn(`[Supabase] Tabela "${realTableName}" não existe no Supabase. Gravado apenas no cache local.`);
             return finalizedRecord as unknown as T;
           }
@@ -779,6 +797,12 @@ export class SupabaseService {
         if (error) {
           const errMsg = String(error.message || '');
           const errCode = String(error.code || '');
+
+          if (errCode === '42501' || errMsg.includes('row-level security')) {
+            console.error(`[Supabase] Violacao RLS (42501) na tabela "${realTableName}". O usuario nao tem permissao. Exclusão feita apenas no cache local.`);
+            return;
+          }
+
           if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
             return;
           }
@@ -943,6 +967,23 @@ export class SupabaseService {
               const errMsg = String(error.message || '');
               const errCode = String(error.code || '');
 
+
+              
+                            if (errCode === '42501' || errMsg.includes('row-level security')) {
+                console.error(`[Supabase Sync] Violacao RLS (42501) na tabela "${realTbl}". O usuario nao tem permissao. Descartando da fila.`);
+                const alertLog = {
+                  id: `alert_rls_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                  prioridade: 'alta' as const,
+                  titulo: 'Falha de Permissão (RLS)',
+                  descricao: `Tentativa de salvar na tabela "${realTbl}" negada pelo banco de dados (Acesso Negado).`,
+                  setor: 'Sistema',
+                  hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                  lido: false
+                };
+                this.notifySyncError(alertLog);
+                continue;
+              }
+
               if (errCode === 'PGRST204' || errMsg.includes('column') || errMsg.includes('does not exist')) {
                 const invalidCol = this.extractInvalidColumnFromError(errMsg);
                 if (invalidCol) {
@@ -990,7 +1031,24 @@ export class SupabaseService {
             if (error) {
               const errMsg = String(error.message || '');
               const errCode = String(error.code || '');
-              if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
+
+              
+              if (errCode === '42501' || errMsg.includes('row-level security')) {
+                console.error(`[Supabase Sync] Violacao RLS (42501) na tabela "${realTbl}". O usuario nao tem permissao. Descartando da fila.`);
+                const alertLog = {
+                  id: `alert_rls_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                  prioridade: 'alta' as const,
+                  titulo: 'Falha de Permissão (RLS)',
+                  descricao: `Tentativa de salvar na tabela "${realTbl}" negada pelo banco de dados (Acesso Negado).`,
+                  setor: 'Sistema',
+                  hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                  lido: false
+                };
+                this.notifySyncError(alertLog);
+                continue;
+              }
+
+if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
                 continue;
               }
               throw error;

@@ -209,7 +209,7 @@ export class StoreService {
    * Treats current snapshot as an initial load.
    */
   public static async migrateLegacyToOperations(user: string): Promise<number> {
-    const programacaoId = "2026-07-05"; // Default baseline programming date
+    const programacaoId = new Date().toISOString().split("T")[0]; // Default baseline programming date
     const timestamp = new Date().toISOString();
 
     try {

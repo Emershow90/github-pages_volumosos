@@ -59,6 +59,8 @@ import { HeaderBar } from "./components/HeaderBar";
 import { NavigationPanel } from "./components/NavigationPanel";
 import { TerminalDrawer } from "./components/TerminalDrawer";
 import { ToastContainer } from "./components/ToastContainer";
+import { OperationToastContainer } from "./components/OperationToastContainer";
+import { useOperationNotifications } from "./hooks/useOperationNotifications";
 import { ScreensaverOverlay } from "./components/ScreensaverOverlay";
 
 // Utils & Helpers
@@ -70,6 +72,7 @@ import LoginScreen from "./components/LoginScreen";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 function App() {
+  useOperationNotifications();
   // Global States from Zustand (Unified User and Auth states)
   const {
     currentUser,
@@ -296,7 +299,7 @@ function App() {
       return;
     }
 
-    const targetDate = "2026-07-05";
+    const targetDate = new Date().toISOString().split("T")[0]; // Dynamic today
     realtimeSync.startListeningProgramacao(targetDate);
     realtimeSync.startListeningAtividades(targetDate);
     realtimeSync.startListeningSetores();
@@ -687,54 +690,11 @@ function App() {
   };
 
   const handleSaveRadar = React.useCallback(
-    async (newRadar: RadarLoja[]) => {
-      setRadar(newRadar);
-
-      const currentOps = useStoreOperations.getState().operations;
-      for (const r of newRadar) {
-        const parts = r.loja.split(" - ");
-        const lojaId = parts[0] || `LJ`;
-        const nomeLoja = parts[1] || `Loja ${lojaId}`;
-        const opId = `op-${lojaId}-${r.corte}`;
-
-        let statusColeta: "Não iniciada" | "Em andamento" | "Coletada" = "Não iniciada";
-        if (r.prog === 100) statusColeta = "Coletada";
-        else if (r.prog > 0) statusColeta = "Em andamento";
-
-        const existing = currentOps[opId];
-        const updatedOp = {
-          id: opId,
-          programacaoId: existing?.programacaoId || "2026-07-05",
-          lojaId,
-          nomeLoja,
-          setor: existing?.setor || "S87",
-          transportadora: existing?.transportadora || "MOBI",
-          corte: r.corte,
-          carregamento: existing?.carregamento || "15:00",
-          volumes: r.vol,
-          enderecos: r.ativ,
-          statusSoltura: existing?.statusSoltura || "Solta",
-          horarioSoltura: existing?.horarioSoltura || null,
-          soltoPor: existing?.soltoPor || null,
-          statusColeta,
-          horarioColeta: existing?.horarioColeta || null,
-          coletadoPor: existing?.coletadoPor || null,
-          statusCarregamento:
-            existing?.statusCarregamento || (r.prog === 100 ? "Carregada" : "Não carregada"),
-          horarioCarregamento: existing?.horarioCarregamento || null,
-          carregadoPor: existing?.carregadoPor || null,
-          statusExpedicao: existing?.statusExpedicao || "Pendente",
-          perdeuCorte: existing?.perdeuCorte || false,
-          updated_at: new Date().toISOString(),
-          updated_by: currentUser || "Sistema",
-        };
-
-        await FirebaseService.upsertRecord("store_operations", updatedOp).catch((err) =>
-          console.error("Failed to upsert store operation from radar edit:", err)
-        );
-      }
+    (newRadar: RadarLoja[]) => {
+      // Legacy radar sync disabled. Radar now reads directly from useStoreOperations.
+      // Do nothing to prevent ID format mismatch loops.
     },
-    [currentUser, setRadar]
+    []
   );
 
   const handleMarkAlertLido = (id: string) => {
@@ -1324,6 +1284,7 @@ function App() {
               <OverrideTab
                 setores={setores}
                 onUpdateSetor={handleUpdateSetorProd}
+                currentUser={currentUser}
               />
             </ProtectedRoute>
           )}
@@ -1561,6 +1522,7 @@ function App() {
 
       {/* TOAST NOTIFICATIONS CONTAINER */}
       <ToastContainer toasts={toasts} removeToast={removeToast} />
+      <OperationToastContainer />
 
       {/* INACTIVITY SCREENSAVER CANVAS OVERLAY */}
       <ScreensaverOverlay

@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import { AlertLog } from '../types';
+import { ToastNotification } from '../types/Notification';
 
 interface NotificationState {
+  toasts: ToastNotification[];
+  addToast: (toast: Omit<ToastNotification, 'id' | 'timestamp'>) => void;
+  removeToast: (id: string) => void;
+  clearAllToasts: () => void;
+
   alerts: AlertLog[];
   addAlert: (alert: Omit<AlertLog, 'id' | 'hora' | 'lido'>) => void;
   markAsRead: (id: string) => void;
@@ -23,6 +29,24 @@ const getInitialAlerts = (): AlertLog[] => {
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
   alerts: getInitialAlerts(),
+  toasts: [],
+  addToast: (toastData) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    set((state) => ({
+      toasts: [
+        ...state.toasts,
+        { ...toastData, id, timestamp: Date.now() } as ToastNotification
+      ]
+    }));
+    setTimeout(() => {
+      set((state) => ({
+        toasts: state.toasts.filter((t) => t.id !== id)
+      }));
+    }, toastData.duration || 5000);
+  },
+  removeToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
+  clearAllToasts: () => set({ toasts: [] }),
+
   
   addAlert: (alertData) => set((state) => {
     const newAlert: AlertLog = {

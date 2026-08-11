@@ -48,3 +48,6 @@ Qualquer alteração ou correção no sistema, por menor que seja, deve seguir o
 4.  **IMPLEMENTAÇÃO:** Escrita do código limpo, modular e altamente otimizado.
 5.  **VALIDACAO:** Execução de linter (`npm run lint`) e build (`npm run build`) para assegurar integridade.
 6.  **DOCUMENTAÇÃO:** Registro das modificações nos canais apropriados.
+
+## 📡 6. Radar Live & Módulo Operacional
+A documentação da arquitetura, cruzamentos com plano de carga, gestão de estado, tabelas (store_operations) e regras de negócio da máquina de estado da aba Radar Live está documentada e versionada no arquivo `docs/RADAR_LIVE.md`. Qualquer alteração nesta funcionalidade ou hooks relacionados (ex: `usePlanoCarregamentoRisk`) exige a leitura prévia deste artefato para evitar quebras silenciosas.

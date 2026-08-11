@@ -9,12 +9,14 @@ export interface OverrideOperacionalFormProps {
   setores: Setor[];
   onUpdateSetor: (id: string, field: string, value: number) => void;
   onClose?: () => void;
+  currentUser: string;
 }
 
 export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = ({
   setores,
   onUpdateSetor,
   onClose,
+  currentUser,
 }) => {
   const toast = useToast();
   const [selectedSector, setSelectedSector] = useState<string>('');
@@ -35,12 +37,14 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
   const [suggestedPromessa, setSuggestedPromessa] = useState<string>('');
   const [suggestedBsi, setSuggestedBsi] = useState<string>('');
   const [suggestedErros, setSuggestedErros] = useState<string>('');
+  
 
-  const [isAtivSuggested, setIsAtivSuggested] = useState(false);
-  const [isUphSuggested, setIsUphSuggested] = useState(false);
   const [isPromessaSuggested, setIsPromessaSuggested] = useState(false);
   const [isBsiSuggested, setIsBsiSuggested] = useState(false);
   const [isErrosSuggested, setIsErrosSuggested] = useState(false);
+
+  const [isAtivSuggested, setIsAtivSuggested] = useState(false);
+  const [isUphSuggested, setIsUphSuggested] = useState(false);
 
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -59,15 +63,9 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
     });
     setSuggestedAtiv('');
     setSuggestedUph('');
-    setSuggestedPromessa('');
-    setSuggestedBsi('');
-    setSuggestedErros('');
 
     setIsAtivSuggested(false);
     setIsUphSuggested(false);
-    setIsPromessaSuggested(false);
-    setIsBsiSuggested(false);
-    setIsErrosSuggested(false);
 
     setIsConfirming(false);
     setIsSaving(false);
@@ -87,16 +85,10 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
     if (!selectedSector || !publicMetrics) {
       setIsAtivSuggested(false);
       setIsUphSuggested(false);
-      setIsPromessaSuggested(false);
-      setIsBsiSuggested(false);
-      setIsErrosSuggested(false);
-
+      
       setSuggestedAtiv('');
       setSuggestedUph('');
-      setSuggestedPromessa('');
-      setSuggestedBsi('');
-      setSuggestedErros('');
-      return;
+            return;
     }
 
     const pub = publicMetrics[selectedSector] || publicMetrics[selectedSector.replace('-', '')];
@@ -107,9 +99,9 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
         : '';
 
       const uphStr = pub.uph > 0 ? pub.uph.toString() : '';
-      const promStr = pub.promessa !== null && pub.promessa !== undefined ? pub.promessa.toString() : '95';
-      const bsiStr = pub.bsi !== null && pub.bsi !== undefined ? pub.bsi.toString() : '0';
-      const errStr = pub.errosPicking !== null && pub.errosPicking !== undefined ? pub.errosPicking.toString() : '0';
+      const promStr = pub.promessa != null ? pub.promessa.toString() : '';
+      const bsiStr = pub.bsi != null ? pub.bsi.toString() : '';
+      const errStr = pub.errosPicking != null ? pub.errosPicking.toString() : '';
 
       setSuggestedAtiv(ativStr);
       setSuggestedUph(uphStr);
@@ -127,23 +119,14 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
         ...prev,
         ativ: ativStr,
         uph: uphStr,
-        promessa: promStr,
-        bsi: bsiStr,
-        errosPicking: errStr,
       }));
     } else {
       setSuggestedAtiv('');
       setSuggestedUph('');
-      setSuggestedPromessa('');
-      setSuggestedBsi('');
-      setSuggestedErros('');
-
+      
       setIsAtivSuggested(false);
       setIsUphSuggested(false);
-      setIsPromessaSuggested(false);
-      setIsBsiSuggested(false);
-      setIsErrosSuggested(false);
-
+      
       setFormData((prev) => ({
         ...prev,
         ativ: '',
@@ -161,14 +144,11 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
       setIsUphSuggested(false);
     }
     if (field === 'promessa' && isPromessaSuggested && value !== suggestedPromessa) {
-      setIsPromessaSuggested(false);
-    }
+      }
     if (field === 'bsi' && isBsiSuggested && value !== suggestedBsi) {
-      setIsBsiSuggested(false);
-    }
+      }
     if (field === 'errosPicking' && isErrosSuggested && value !== suggestedErros) {
-      setIsErrosSuggested(false);
-    }
+      }
   };
 
   const hasChanges = Object.values(formData).some((v) => v !== '');
@@ -208,7 +188,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
             acao: 'override_salvo',
             setor_id: selectedSector,
             dados: formData,
-            usuario: 'operador@sistema.local',
+            usuario: currentUser,
             timestamp: new Date().toISOString(),
           },
           'id'
@@ -323,10 +303,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
                     const oldVal = (activeSectorData as Record<string, unknown>)?.[field];
                     const isSuggested = 
                       (field === 'ativ' && isAtivSuggested) || 
-                      (field === 'uph' && isUphSuggested) ||
-                      (field === 'promessa' && isPromessaSuggested) ||
-                      (field === 'bsi' && isBsiSuggested) ||
-                      (field === 'errosPicking' && isErrosSuggested);
+                      (field === 'uph' && isUphSuggested);
                     return (
                       <div key={field} className="flex justify-between text-sm items-center">
                         <span className="text-zinc-400 font-mono capitalize">{field}</span>

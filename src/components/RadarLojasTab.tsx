@@ -37,6 +37,7 @@ import { useAtividadeLoja } from "../stores/useAtividadeLoja";
 import { useUserStore } from "../stores/useUserStore";
 import { useNotificationStore } from "../stores/useNotificationStore";
 import { StoreService } from "../services/storeService";
+import { fetchPlanoCarregamento, PlanoCarregamentoRow } from "../lib/googleSheetsPublicSource";
 import { BusinessRules } from "../services/businessRules";
 import { SupabaseService as FirebaseService, isOnline } from "../lib/supabaseService";
 import { realtimeSync } from "../services/realtimeSyncService";
@@ -72,8 +73,78 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
   // Local interaction state
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"grouped" | "individual" | "table">("grouped");
-  
+
+  const [planoCarregamento, setPlanoCarregamento] = useState<PlanoCarregamentoRow[]>([]);
+  const [isSyncingPlano, setIsSyncingPlano] = useState(false);
+
+  // Load plano de hoje on mount
+  useEffect(() => {
+    const loadPlano = async () => {
+      try {
+        const todayIso = new Date().toISOString().split('T')[0];
+        const data = await fetchPlanoCarregamento();
+        if (data && data.length > 0) {
+          const todayPlan = data.filter(d => d.data === todayIso);
+          setPlanoCarregamento(todayPlan);
+        }
+      } catch (err) {
+        console.warn('Erro ao carregar plano local:', err);
+      }
+    };
+    loadPlano();
+  }, []);
+
+  const handleSyncPlano = async () => {
+    setIsSyncingPlano(true);
+    try {
+      const rows = await fetchPlanoCarregamento();
+      // UPSERT ALL
+      for (const row of rows) {
+        const id = `${row.data}_${row.codLoja}_${row.horaCarregamento}`;
+        await FirebaseService.upsertRecord('plano_carregamento', { id, ...row }, 'id');
+      }
+      
+      const todayIso = new Date().toISOString().split('T')[0];
+      const todayPlan = rows.filter(r => r.data === todayIso);
+      setPlanoCarregamento(todayPlan);
+      
+      triggerFeedback(`Plano Sincronizado com sucesso! (${todayPlan.length} lojas hoje)`);
+    } catch (err) {
+      console.error(err);
+      triggerFeedback('Erro ao sincronizar Plano de Carregamento', true);
+    } finally {
+      setIsSyncingPlano(false);
+    }
+  };
+
+  const getPlanoRiskLevel = (op: StoreOperation) => {
+    if (op.statusCarregamento === 'Carregada' || op.statusExpedicao !== 'Pendente') return 'green';
+    
+    // Find plano for this store
+    const todayIso = new Date().toISOString().split('T')[0];
+    const plano = planoCarregamento.find(p => p.codLoja === op.lojaId && p.data === todayIso);
+    if (!plano) return 'gray';
+
+    const now = new Date();
+    const [hora, min] = plano.horaCarregamento.split(':');
+    const planoTime = new Date();
+    planoTime.setHours(parseInt(hora, 10), parseInt(min || "0", 10), 0, 0);
+
+    const diffHours = (planoTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+    if (diffHours <= 1.0) {
+      if (op.statusColeta !== 'Coletada') return 'red';
+      return 'yellow';
+    } else if (diffHours <= 2.0) {
+      if (op.statusColeta === 'Não iniciada') return 'red';
+      if (op.statusColeta === 'Em andamento') return 'yellow';
+      return 'green';
+    }
+    
+    return 'green';
+  };
+
+    
   // User profile sector settings for operational checks
   const [userSectors, setUserSectors] = useState<string[]>(["S87", "S88", "S89", "S90"]);
   
@@ -181,7 +252,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
       await FirebaseService.flushOfflineQueue();
       
       // Carregar os dados atualizados de volta do banco para garantir o live sync
-      const targetDate = "2026-07-05";
+      const targetDate = new Date().toISOString().split("T")[0];
       const dbOps = await FirebaseService.fetchTable<StoreOperation>('store_operations');
       if (dbOps && dbOps.length > 0) {
         const filtered = dbOps.filter(op => op.programacaoId === targetDate);
@@ -387,7 +458,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
 
     setOcrLoading(true);
     try {
-      const result = await StoreService.parseOcrText(ocrInputText, "2026-07-05");
+      const result = await StoreService.parseOcrText(ocrInputText, new Date().toISOString().split("T")[0]);
       setParsedRows(result.rows);
       
       if (result.discrepancies.length > 0) {
@@ -581,7 +652,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
       transportadora: newTransportadora.trim().toUpperCase(),
       volumes: Number(newVolumes),
       enderecos: Number(newEnderecos),
-      dataProgramacao: "2026-07-05",
+      dataProgramacao: new Date().toISOString().split("T")[0],
       atividadeRelacionada: newSector === 'S87' ? 'Picking' : newSector === 'S88' ? 'Volumosos' : 'Colis'
     };
 
@@ -662,7 +733,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
 
       // Also delete corresponding activities in activity_loja
       const ativs = useAtividadeLoja.getState().atividades;
-      const targetDate = "2026-07-05";
+      const targetDate = new Date().toISOString().split("T")[0];
       const ativsList = Object.values(ativs).filter(a => a.programacaoId === targetDate);
       for (const ativ of ativsList) {
         await FirebaseService.deleteRecord('atividade_loja', ativ.id);
@@ -759,101 +830,75 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
       </AnimatePresence>
 
       {/* Real-time KPI Overview Bar */}
-      <div className="col-span-12 grid grid-cols-2 md:grid-cols-5 gap-3">
-        {/* KPI 1: Total */}
+      <div className="col-span-12 grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* KPI 1: Progresso Geral */}
         <div className="bg-[#0e0e15]/90 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/10 transition">
           <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 rounded-full blur-xl group-hover:bg-blue-500/10 transition" />
           <div className="flex items-center justify-between">
-            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Total de Fluxos</span>
+            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Progresso Coleta</span>
             <div className="p-1 rounded bg-blue-500/10 text-blue-400">
-              <Activity size={12} />
+              <CheckSquare size={12} />
             </div>
           </div>
           <div className="mt-2.5">
-            <span className="text-2xl font-black text-white font-mono">{filteredOps.length}</span>
-            <p className="text-[8.5px] text-zinc-500 mt-0.5">Rotas monitoradas hoje</p>
-          </div>
-        </div>
-
-        {/* KPI 2: Não Soltos */}
-        <div className="bg-[#0e0e15]/90 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/10 transition">
-          <div className="absolute top-0 right-0 w-16 h-16 bg-zinc-500/5 rounded-full blur-xl group-hover:bg-zinc-500/10 transition" />
-          <div className="flex items-center justify-between">
-            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Aguardando Soltura</span>
-            <div className="p-1 rounded bg-zinc-800 text-zinc-400">
-              <Clock size={12} />
-            </div>
-          </div>
-          <div className="mt-2.5">
-            <span className="text-2xl font-black text-zinc-300 font-mono">
-              {filteredOps.filter(o => o.statusSoltura !== 'Solta').length}
+            <span className="text-2xl font-black text-white font-mono">
+              {filteredOps.filter(o => o.statusColeta === 'Coletada').length} / {filteredOps.length}
             </span>
-            <p className="text-[8.5px] text-zinc-500 mt-0.5">Pendentes de liberação</p>
+            <p className="text-[8.5px] text-zinc-500 mt-0.5">Rotas coletadas hoje</p>
           </div>
         </div>
 
-        {/* KPI 3: Em Andamento */}
+        {/* KPI 2: Em Risco */}
         <div className="bg-[#0e0e15]/90 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/10 transition">
           <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full blur-xl group-hover:bg-amber-500/10 transition" />
           <div className="flex items-center justify-between">
-            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Em Andamento</span>
-            <div className="p-1 rounded bg-amber-500/10 text-amber-400 animate-pulse">
-              <RefreshCw size={12} />
+            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Lojas em Risco</span>
+            <div className="p-1 rounded bg-amber-500/10 text-amber-400">
+              <AlertTriangle size={12} />
             </div>
           </div>
           <div className="mt-2.5">
             <span className="text-2xl font-black text-amber-400 font-mono">
-              {filteredOps.filter(o => o.statusSoltura === 'Solta' && o.statusExpedicao === 'Pendente').length}
+              {filteredOps.filter(o => {
+                const risk = getPlanoRiskLevel(o);
+                return risk === 'red' || risk === 'yellow';
+              }).length}
             </span>
-            <p className="text-[8.5px] text-zinc-500 mt-0.5">Ativos em coleta/carga</p>
+            <p className="text-[8.5px] text-zinc-500 mt-0.5">Com base no Plano de Carga</p>
           </div>
         </div>
 
-        {/* KPI 4: Expedidos */}
+        {/* KPI 3: Expedidos */}
         <div className="bg-[#0e0e15]/90 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/10 transition">
-          <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-full blur-xl group-hover:bg-emerald-500/10 transition" />
+          <div className="absolute top-0 right-0 w-16 h-16 bg-purple-500/5 rounded-full blur-xl group-hover:bg-purple-500/10 transition" />
           <div className="flex items-center justify-between">
-            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Finalizadas</span>
-            <div className="p-1 rounded bg-emerald-500/10 text-emerald-400">
-              <CheckCircle size={12} />
+            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Expedidos</span>
+            <div className="p-1 rounded bg-purple-500/10 text-purple-400">
+              <Truck size={12} />
             </div>
           </div>
           <div className="mt-2.5">
-            <span className="text-2xl font-black text-emerald-400 font-mono">
+            <span className="text-2xl font-black text-purple-400 font-mono">
               {filteredOps.filter(o => o.statusExpedicao !== 'Pendente').length}
             </span>
-            <p className="text-[8.5px] text-zinc-500 mt-0.5">Sincronizadas e expedidas</p>
+            <p className="text-[8.5px] text-zinc-500 mt-0.5">Rotas já despachadas</p>
           </div>
         </div>
 
-        {/* KPI 5: Atrasados */}
-        <div className={`rounded-xl p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden transition ${
-          filteredOps.filter(o => o.statusExpedicao === 'Pendente' && BusinessRules.isDelayed(o.corte, getBrasiliaTimeString())).length > 0
-            ? "bg-red-950/20 border border-red-500/30 text-red-400 animate-pulse"
-            : "bg-[#0e0e15]/90 border border-white/5"
-        }`}>
+        {/* KPI 4: Atrasados (Expirados) */}
+        <div className="bg-[#0e0e15]/90 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/10 transition">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/5 rounded-full blur-xl group-hover:bg-red-500/10 transition" />
           <div className="flex items-center justify-between">
-            <span className="text-[9px] font-bold uppercase tracking-wider">Em Atraso</span>
-            {filteredOps.filter(o => o.statusExpedicao === 'Pendente' && BusinessRules.isDelayed(o.corte, getBrasiliaTimeString())).length > 0 ? (
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-              </span>
-            ) : (
-              <div className="p-1 rounded bg-zinc-800 text-zinc-500">
-                <AlertTriangle size={12} />
-              </div>
-            )}
+            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Cortes Expirados</span>
+            <div className="p-1 rounded bg-red-500/10 text-red-400 animate-pulse">
+              <Flame size={12} />
+            </div>
           </div>
           <div className="mt-2.5">
-            <span className={`text-2xl font-black font-mono ${
-              filteredOps.filter(o => o.statusExpedicao === 'Pendente' && BusinessRules.isDelayed(o.corte, getBrasiliaTimeString())).length > 0
-                ? "text-red-400"
-                : "text-zinc-500"
-            }`}>
+            <span className="text-2xl font-black text-red-400 font-mono">
               {filteredOps.filter(o => o.statusExpedicao === 'Pendente' && BusinessRules.isDelayed(o.corte, getBrasiliaTimeString())).length}
             </span>
-            <p className="text-[8.5px] text-zinc-500 mt-0.5">Cortes expirados</p>
+            <p className="text-[8.5px] text-zinc-500 mt-0.5">Passaram do horário limite</p>
           </div>
         </div>
       </div>
@@ -912,6 +957,42 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
           </button>
         </div>
 
+
+        {/* Plano de Carregamento Widget */}
+        <div className="bg-[#0e0e15] rounded-xl border border-white/5 p-4 space-y-3.5 shadow-md">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Plano de Carregamento</span>
+            <button
+              onClick={handleSyncPlano}
+              disabled={isSyncingPlano}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-bold font-mono text-[9px] uppercase transition-colors"
+            >
+              <RefreshCw size={10} className={isSyncingPlano ? "animate-spin" : ""} />
+              {isSyncingPlano ? "Sincronizando..." : "Sincronizar Plano"}
+            </button>
+          </div>
+          {planoCarregamento.length > 0 ? (
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+              {planoCarregamento.map(p => (
+                <div key={`${p.codLoja}_${p.horaCarregamento}`} className="flex justify-between items-center text-[10px] bg-black/40 p-2 rounded-lg border border-white/5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-300 font-bold font-mono w-10">{p.codLoja}</span>
+                    <span className="text-zinc-500 truncate max-w-[100px]">{p.nomeLoja}</span>
+                  </div>
+                  <span className="bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded font-mono font-bold">
+                    <Clock size={9} className="inline mr-1" />
+                    {p.horaCarregamento}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center p-4 bg-black/20 rounded-lg text-zinc-500 text-[10px] font-mono">
+              Nenhum plano para hoje. Sincronize para buscar dados.
+            </div>
+          )}
+        </div>
+
         {/* Filters */}
         <div className="bg-[#0e0e15] rounded-xl border border-white/5 p-4 space-y-4 shadow-md">
           <h4 className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Pesquisa e Segmentação</h4>
@@ -955,35 +1036,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
             </div>
           </div>
 
-          {/* View toggle */}
-          <div className="flex gap-1.5 p-1 bg-black/40 rounded-lg">
-            <button
-              onClick={() => setViewMode("grouped")}
-              className={`flex-1 text-center py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition ${
-                viewMode === "grouped" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Agrupado Loja
-            </button>
-            <button
-              onClick={() => setViewMode("individual")}
-              className={`flex-1 text-center py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition ${
-                viewMode === "individual" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Setores Indep.
-            </button>
-            <button
-              onClick={() => setViewMode("table")}
-              className={`flex-1 text-center py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition ${
-                viewMode === "table" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Tabela
-            </button>
           </div>
-        </div>
-
         {/* Action Button: Manual Input Trigger */}
         <button
           onClick={() => setShowAddForm(!showAddForm)}
@@ -1320,412 +1373,205 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
           </div>
         )}
 
-        {/* VIEW 1: GROUPED BY STORE CARDS (RECOMMENDED FLOW) */}
-        {viewMode === "grouped" && (
-          <div className="space-y-4">
-            {groupedStores.length === 0 ? (
-              <div className="bg-[#0e0e15] p-12 text-center rounded-xl border border-white/5 space-y-2">
-                <p className="text-sm font-bold text-zinc-400 font-mono">Sem programações ativas</p>
-                <p className="text-xs text-zinc-600">Importe um relatório OCR ou cadastre uma nova lista para exibir dados.</p>
-              </div>
-            ) : (
-              groupedStores.map((store) => {
-                return (
-                  <div 
-                    key={store.lojaId}
-                    className="bg-[#0e0e15] rounded-xl border border-white/5 p-4 space-y-4 shadow-md hover:border-white/10 transition"
-                  >
-                    {/* Store Card Header */}
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-white/5 pb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded font-mono font-black">
-                            LOJA {store.lojaId}
-                          </span>
-                          <span className="text-[10px] text-zinc-500 font-mono font-bold uppercase">
-                            {store.ops[0]?.transportadora}
+        
+        {/* RESPONSIVE VIEWS: CARDS ON MOBILE, TABLE ON DESKTOP */}
+        <div className="space-y-4">
+          {filteredOps.length === 0 ? (
+            <div className="bg-[#0e0e15] p-12 text-center rounded-xl border border-white/5 space-y-2">
+              <p className="text-sm font-bold text-zinc-400 font-mono">Sem programações ativas</p>
+              <p className="text-xs text-zinc-600">Importe um relatório OCR ou cadastre uma nova lista para exibir dados.</p>
+            </div>
+          ) : (
+            <>
+              {/* MOBILE CARDS */}
+              <div className="grid grid-cols-1 md:hidden gap-4">
+                {filteredOps.map((op) => {
+                  const risk = getPlanoRiskLevel(op);
+                  
+                  let cardBg = "bg-[#0e0e15]";
+                  let borderColor = "border-white/5";
+                  
+                  if (risk === 'red') {
+                    cardBg = "bg-red-500/10";
+                    borderColor = "border-red-500/30";
+                  } else if (risk === 'yellow') {
+                    cardBg = "bg-amber-500/10";
+                    borderColor = "border-amber-500/30";
+                  }
+
+                  return (
+                    <div
+                      key={op.id}
+                      className={`rounded-xl border ${borderColor} ${cardBg} p-3 space-y-2 shadow-md relative overflow-hidden`}
+                    >
+                      <div className="flex justify-between items-start border-b border-white/5 pb-2">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-zinc-300 font-bold font-mono text-sm">{op.lojaId}</span>
+                            <span className="bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded font-black text-[9px]">{op.setor}</span>
+                          </div>
+                          <span className="text-zinc-500 font-sans uppercase font-bold text-[10px] block mt-0.5">{op.nomeLoja}</span>
+                        </div>
+                        <div className="text-right flex flex-col items-end">
+                          <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                            op.statusExpedicao !== 'Pendente' ? "bg-purple-500/20 text-purple-400" :
+                            op.statusCarregamento === 'Carregada' ? "bg-cyan-500/20 text-cyan-400" :
+                            op.statusColeta === 'Coletada' ? "bg-blue-500/20 text-blue-400" :
+                            "bg-zinc-800 text-zinc-500"
+                          }`}>
+                            {op.statusExpedicao !== 'Pendente' ? 'EXPEDIDO' : 'EM FILA'}
                           </span>
                         </div>
-                        <h3 className="font-black text-white text-base mt-1 uppercase tracking-tight">
-                          {store.nomeLoja}
-                        </h3>
                       </div>
 
-                      {/* Store Batch Operations Shortcuts */}
-                      <div className="flex flex-wrap gap-1.5 bg-black/40 p-1 rounded-lg">
-                        <span className="text-[8px] text-zinc-600 font-black uppercase tracking-wider px-2 py-1 block self-center">LOTE:</span>
+                      <div className="grid grid-cols-3 gap-1 bg-black/25 p-2 rounded-lg text-[9px] font-mono text-zinc-500">
+                        <div>
+                          <span className="text-[7.5px] text-zinc-600 uppercase block">Corte / Carga</span>
+                          <span className="text-zinc-300 font-bold">{op.corte} / {op.carregamento}</span>
+                        </div>
+                        <div>
+                          <span className="text-[7.5px] text-zinc-600 uppercase block">Volumes</span>
+                          <span className="text-zinc-300 font-bold">{op.volumes}</span>
+                        </div>
+                        <div>
+                          <span className="text-[7.5px] text-zinc-600 uppercase block">Endereços</span>
+                          <span className="text-zinc-300 font-bold">{op.enderecos}</span>
+                        </div>
+                      </div>
+
+                      {/* Operational buttons */}
+                      <div className="grid grid-cols-4 gap-1 pt-1">
                         <button
-                          onClick={() => handleBatchStoreAction(store.lojaId, 'soltura')}
-                          className="bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/20 text-emerald-400 font-mono text-[8px] font-black uppercase px-2 py-1 rounded"
-                          title="Soltar todos os setores ativos desta loja"
+                          onClick={() => handleUpdateOperationalStep(op, 'soltura')}
+                          className={`py-1.5 rounded text-[8px] font-black uppercase transition ${
+                            op.statusSoltura === 'Solta' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-black/30 text-zinc-500 hover:text-zinc-300"
+                          }`}
                         >
-                          Soltar Todos
+                          Soltura
                         </button>
                         <button
-                          onClick={() => handleBatchStoreAction(store.lojaId, 'coleta')}
-                          className="bg-blue-950/40 hover:bg-blue-900/60 border border-blue-500/20 text-blue-400 font-mono text-[8px] font-black uppercase px-2 py-1 rounded"
-                          title="Coletar todos os setores ativos desta loja"
+                          onClick={() => handleUpdateOperationalStep(op, 'coleta')}
+                          disabled={op.statusSoltura !== 'Solta'}
+                          className={`py-1.5 rounded text-[8px] font-black uppercase transition ${
+                            op.statusColeta === 'Coletada' ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" : op.statusColeta === 'Em andamento' ? "bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse" : "bg-black/30 text-zinc-500 hover:text-zinc-300 disabled:opacity-30"
+                          }`}
                         >
-                          Coletar Todos
+                          Coleta
                         </button>
                         <button
-                          onClick={() => handleBatchStoreAction(store.lojaId, 'carga')}
-                          className="bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/20 text-cyan-400 font-mono text-[8px] font-black uppercase px-2 py-1 rounded"
-                          title="Carregar todos os setores ativos"
+                          onClick={() => handleUpdateOperationalStep(op, 'carga')}
+                          disabled={op.statusColeta !== 'Coletada'}
+                          className={`py-1.5 rounded text-[8px] font-black uppercase transition ${
+                            op.statusCarregamento === 'Carregada' ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" : op.statusCarregamento === 'Em andamento' ? "bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse" : "bg-black/30 text-zinc-500 hover:text-zinc-300 disabled:opacity-30"
+                          }`}
                         >
-                          Carregar Todos
+                          Carga
                         </button>
                         <button
-                          onClick={() => handleBatchStoreAction(store.lojaId, 'expedicao')}
-                          className="bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/20 text-purple-400 font-mono text-[8px] font-black uppercase px-2 py-1 rounded"
-                          title="Expedir todos os setores ativos"
+                          onClick={() => handleUpdateOperationalStep(op, 'expedicao')}
+                          disabled={op.statusCarregamento !== 'Carregada'}
+                          className={`py-1.5 rounded text-[8px] font-black uppercase transition ${
+                            op.statusExpedicao !== 'Pendente' ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" : "bg-black/30 text-zinc-500 hover:text-zinc-300 disabled:opacity-30"
+                          }`}
                         >
-                          Expedir Todos
+                          Expedir
                         </button>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
 
-                    {/* Sectors Grid/Timeline Rows inside this store */}
-                    <div className="space-y-4">
-                      {store.ops.map((op) => {
-                        const isLate = BusinessRules.isDelayed(op.corte, op.statusExpedicao !== 'Pendente' ? getBrasiliaTimeString() : null);
-                        const risk = BusinessRules.predictRisk(op);
+              {/* DESKTOP TABLE */}
+              <div className="hidden md:block bg-[#0e0e15] rounded-xl border border-white/5 overflow-hidden shadow-md">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-white/5 bg-black/40 text-[9px] text-zinc-500 uppercase tracking-wider font-mono">
+                        <th className="p-3">ID</th>
+                        <th className="p-3">Nome Loja</th>
+                        <th className="p-3">Setor</th>
+                        <th className="p-3">Corte</th>
+                        <th className="p-3">Carga</th>
+                        <th className="p-3">Soltura</th>
+                        <th className="p-3">Coleta</th>
+                        <th className="p-3">Carga Status</th>
+                        <th className="p-3">Expedido</th>
+                        <th className="p-3 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 font-mono text-zinc-400">
+                      {filteredOps.map((op) => {
+                        const risk = getPlanoRiskLevel(op);
+                        let rowClass = "hover:bg-black/20 transition";
+                        if (risk === 'red') rowClass += " bg-red-500/5";
+                        else if (risk === 'yellow') rowClass += " bg-amber-500/5";
 
                         return (
-                          <div 
-                            key={op.id}
-                            className="bg-black/25 p-3 rounded-lg border border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 transition hover:bg-black/35"
-                          >
-                            {/* Sector info metadata */}
-                            <div className="space-y-1 min-w-[150px]">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] bg-zinc-900 text-zinc-400 font-mono px-2 py-0.5 rounded font-black">
-                                  {op.setor}
-                                </span>
-                                <span className="text-[9px] text-zinc-500 font-mono">
-                                  {op.volumes}v | {op.enderecos}e
-                                </span>
-                              </div>
-                              <div className="text-[9px] font-mono text-zinc-500">
-                                Corte: <span className="text-zinc-400 font-bold">{op.corte}</span> | Carga: <span className="text-zinc-400">{op.carregamento}</span>
-                              </div>
-                              <div className="flex items-center gap-1 pt-1">
-                                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                                  risk.level === 'Crítico' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                                  risk.level === 'Alto' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                                  risk.level === 'Médio' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
-                                  'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                }`}>
-                                  Risco {risk.level}
-                                </span>
-                                <span className="text-[7.5px] text-zinc-400 leading-none">{risk.reason}</span>
-                              </div>
-                            </div>
-
-                            {/* Timeline Progression Indicators */}
-                            <div className="flex-1 grid grid-cols-4 gap-1.5 max-w-md w-full relative">
-                              <div className="absolute top-[13px] left-[10%] right-[10%] h-[2.5px] bg-zinc-900 z-0 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-500 transition-all duration-500 rounded-full"
-                                  style={{ 
-                                    width: op.statusExpedicao !== 'Pendente' ? '100%' : 
-                                           op.statusCarregamento === 'Carregada' ? '75%' : 
-                                           op.statusColeta === 'Coletada' ? '50%' : 
-                                           op.statusSoltura === 'Solta' ? '25%' : '0%' 
-                                  }}
-                                />
-                              </div>
-
-                              {/* Stage 1: Soltura */}
-                              <div className="flex flex-col items-center text-center relative z-10">
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateOperationalStep(op, 'soltura')}
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center border text-[10px] transition-all ${
-                                    op.statusSoltura === 'Solta'
-                                      ? "bg-emerald-500 text-white border-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.3)]"
-                                      : "bg-zinc-950 text-zinc-500 border-zinc-800 hover:border-emerald-500/50"
-                                  }`}
-                                  title={`Solto por: ${op.soltoPor || "Não Solta"}`}
-                                >
-                                  <Check size={10} />
-                                </button>
-                                <span className="text-[7.5px] font-black uppercase mt-1 text-zinc-500">Soltura</span>
-                                <span className="text-[7px] text-zinc-600 font-mono">
-                                  {op.statusSoltura === 'Solta' ? op.horarioSoltura : "Não"}
-                                </span>
-                              </div>
-
-                              {/* Stage 2: Coleta */}
-                              <div className="flex flex-col items-center text-center relative z-10">
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateOperationalStep(op, 'coleta')}
-                                  disabled={op.statusSoltura !== 'Solta'}
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center border text-[10px] transition-all ${
-                                    op.statusColeta === 'Coletada'
-                                      ? "bg-blue-500 text-white border-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
-                                      : op.statusColeta === 'Em andamento'
-                                      ? "bg-amber-500 text-black border-amber-400 animate-pulse"
-                                      : "bg-zinc-950 text-zinc-600 border-zinc-800 disabled:opacity-30"
-                                  }`}
-                                  title={`Coletado por: ${op.coletadoPor || "Não Iniciado"}`}
-                                >
-                                  <Layers size={9} />
-                                </button>
-                                <span className="text-[7.5px] font-black uppercase mt-1 text-zinc-500">Coleta</span>
-                                <span className="text-[7px] text-zinc-600 font-mono truncate max-w-[65px]">
-                                  {op.statusColeta}
-                                </span>
-                              </div>
-
-                              {/* Stage 3: Carga */}
-                              <div className="flex flex-col items-center text-center relative z-10">
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateOperationalStep(op, 'carga')}
-                                  disabled={op.statusColeta !== 'Coletada'}
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center border text-[10px] transition-all ${
-                                    op.statusCarregamento === 'Carregada'
-                                      ? "bg-cyan-500 text-white border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.3)]"
-                                      : op.statusCarregamento === 'Em andamento'
-                                      ? "bg-amber-500 text-black border-amber-400 animate-pulse"
-                                      : "bg-zinc-950 text-zinc-600 border-zinc-800 disabled:opacity-30"
-                                  }`}
-                                  title={`Carregado por: ${op.carregadoPor || "Não Carregado"}`}
-                                >
-                                  <Clock size={9} />
-                                </button>
-                                <span className="text-[7.5px] font-black uppercase mt-1 text-zinc-500">Carga</span>
-                                <span className="text-[7px] text-zinc-600 font-mono truncate max-w-[65px]">
-                                  {op.statusCarregamento}
-                                </span>
-                              </div>
-
-                              {/* Stage 4: Expedição */}
-                              <div className="flex flex-col items-center text-center relative z-10">
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateOperationalStep(op, 'expedicao')}
-                                  disabled={op.statusCarregamento !== 'Carregada'}
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center border text-[10px] transition-all ${
-                                    op.statusExpedicao !== 'Pendente'
-                                      ? "bg-purple-500 text-white border-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.3)]"
-                                      : "bg-zinc-950 text-zinc-600 border-zinc-800 disabled:opacity-30"
-                                  }`}
-                                  title="Expedir rota"
-                                >
-                                  <ExternalLink size={9} />
-                                </button>
-                                <span className="text-[7.5px] font-black uppercase mt-1 text-zinc-500">Expedido</span>
-                                <span className="text-[7px] text-zinc-600 font-mono">
-                                  {op.statusExpedicao}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Delete/Action option */}
-                            <div className="flex items-center gap-2">
-                              {isLate && op.statusExpedicao === 'Pendente' && (
-                                <span className="text-[9px] bg-red-500/15 text-red-400 border border-red-500/20 px-2 py-0.5 rounded font-mono font-bold animate-pulse">
-                                  ⚠️ ATRASADO
-                                </span>
-                              )}
+                          <tr key={op.id} className={rowClass}>
+                            <td className="p-3 text-zinc-300 font-bold">{op.lojaId}</td>
+                            <td className="p-3 text-zinc-300 font-sans uppercase font-bold truncate max-w-[120px]">{op.nomeLoja}</td>
+                            <td className="p-3">
+                              <span className="bg-zinc-900 text-zinc-400 px-1.5 py-0.5 rounded font-black">{op.setor}</span>
+                            </td>
+                            <td className="p-3 text-zinc-300">{op.corte}</td>
+                            <td className="p-3 text-zinc-400">{op.carregamento}</td>
+                            
+                            <td className="p-3">
+                              <button 
+                                onClick={() => handleUpdateOperationalStep(op, 'soltura')}
+                                className={op.statusSoltura === 'Solta' ? "text-emerald-400 font-bold hover:text-emerald-300" : "text-zinc-600 hover:text-zinc-400"}
+                              >
+                                {op.statusSoltura === 'Solta' ? `SIM (${op.horarioSoltura})` : 'NÃO'}
+                              </button>
+                            </td>
+                            <td className="p-3">
+                              <button 
+                                onClick={() => handleUpdateOperationalStep(op, 'coleta')}
+                                disabled={op.statusSoltura !== 'Solta'}
+                                className={op.statusColeta === 'Coletada' ? "text-blue-400 font-bold hover:text-blue-300" : op.statusColeta === 'Em andamento' ? "text-amber-400 font-bold hover:text-amber-300 animate-pulse" : "text-zinc-600 hover:text-zinc-400 disabled:opacity-50"}
+                              >
+                                {op.statusColeta}
+                              </button>
+                            </td>
+                            <td className="p-3">
+                              <button 
+                                onClick={() => handleUpdateOperationalStep(op, 'carga')}
+                                disabled={op.statusColeta !== 'Coletada'}
+                                className={op.statusCarregamento === 'Carregada' ? "text-cyan-400 font-bold hover:text-cyan-300" : op.statusCarregamento === 'Em andamento' ? "text-amber-400 font-bold hover:text-amber-300 animate-pulse" : "text-zinc-600 hover:text-zinc-400 disabled:opacity-50"}
+                              >
+                                {op.statusCarregamento}
+                              </button>
+                            </td>
+                            <td className="p-3">
+                              <button 
+                                onClick={() => handleUpdateOperationalStep(op, 'expedicao')}
+                                disabled={op.statusCarregamento !== 'Carregada'}
+                                className={op.statusExpedicao !== 'Pendente' ? "text-purple-400 font-bold hover:text-purple-300" : "text-zinc-600 hover:text-zinc-400 disabled:opacity-50"}
+                              >
+                                {op.statusExpedicao}
+                              </button>
+                            </td>
+                            
+                            <td className="p-3 text-right">
                               <button
                                 onClick={() => handleDeleteOperation(op.id)}
-                                className="text-zinc-600 hover:text-red-400 p-1.5 rounded transition"
-                                title="Remover operação"
+                                className="text-zinc-600 hover:text-red-400 transition"
                               >
                                 <Trash2 size={13} />
                               </button>
-                            </div>
-                          </div>
+                            </td>
+                          </tr>
                         );
                       })}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
-
-        {/* VIEW 2: FLAT SECTOR-SPECIFIC LISTS (INDIVIDUAL COLUMNS) */}
-        {viewMode === "individual" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredOps.map((op) => {
-              const isLate = BusinessRules.isDelayed(op.corte, op.statusExpedicao !== 'Pendente' ? getBrasiliaTimeString() : null);
-              const risk = BusinessRules.predictRisk(op);
-
-              return (
-                <div 
-                  key={op.id}
-                  className={`bg-[#0e0e15] rounded-xl border p-4 space-y-4 shadow-sm hover:border-white/10 transition ${
-                    risk.level === 'Crítico' ? "border-red-500/30 ring-1 ring-red-500/10" : 
-                    risk.level === 'Alto' ? "border-amber-500/30" : "border-white/5"
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded font-mono font-black">
-                          S{op.setor}
-                        </span>
-                        <span className="text-[9px] text-zinc-500 font-mono font-bold uppercase">
-                          {op.transportadora}
-                        </span>
-                      </div>
-                      <h4 className="font-black text-white text-sm mt-1 uppercase truncate max-w-[190px]">{op.nomeLoja}</h4>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                        risk.level === 'Crítico' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                        risk.level === 'Alto' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                        risk.level === 'Médio' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
-                        'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                      }`}>
-                        Risco {risk.level}
-                      </span>
-                      <span className={`text-[8.5px] border px-2 py-0.5 rounded-full font-bold uppercase tracking-wider font-mono ${
-                        op.statusExpedicao !== 'Pendente' ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-zinc-800 text-zinc-400 border-white/5"
-                      }`}>
-                        {op.statusExpedicao !== 'Pendente' ? 'EXPEDIDO' : 'EM FILA'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-1 bg-black/25 p-2 rounded-lg text-[9px] font-mono text-zinc-500">
-                    <div>
-                      <span className="text-[7.5px] text-zinc-600 uppercase block">Corte / Carga</span>
-                      <span className="text-zinc-300 font-bold">{op.corte} / {op.carregamento}</span>
-                    </div>
-                    <div>
-                      <span className="text-[7.5px] text-zinc-600 uppercase block">Volumes</span>
-                      <span className="text-zinc-300 font-bold">{op.volumes}</span>
-                    </div>
-                    <div>
-                      <span className="text-[7.5px] text-zinc-600 uppercase block">Endereços</span>
-                      <span className="text-zinc-300 font-bold">{op.enderecos}</span>
-                    </div>
-                  </div>
-
-                  {/* Operational buttons */}
-                  <div className="grid grid-cols-4 gap-1 pt-1">
-                    <button
-                      onClick={() => handleUpdateOperationalStep(op, 'soltura')}
-                      className={`py-1 rounded text-[8px] font-black uppercase transition ${
-                        op.statusSoltura === 'Solta' ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-black/30 text-zinc-500 hover:text-zinc-300"
-                      }`}
-                    >
-                      Soltura
-                    </button>
-                    <button
-                      onClick={() => handleUpdateOperationalStep(op, 'coleta')}
-                      disabled={op.statusSoltura !== 'Solta'}
-                      className={`py-1 rounded text-[8px] font-black uppercase transition ${
-                        op.statusColeta === 'Coletada' ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" : op.statusColeta === 'Em andamento' ? "bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse" : "bg-black/30 text-zinc-500 hover:text-zinc-300 disabled:opacity-30"
-                      }`}
-                    >
-                      Coleta
-                    </button>
-                    <button
-                      onClick={() => handleUpdateOperationalStep(op, 'carga')}
-                      disabled={op.statusColeta !== 'Coletada'}
-                      className={`py-1 rounded text-[8px] font-black uppercase transition ${
-                        op.statusCarregamento === 'Carregada' ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" : op.statusCarregamento === 'Em andamento' ? "bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse" : "bg-black/30 text-zinc-500 hover:text-zinc-300 disabled:opacity-30"
-                      }`}
-                    >
-                      Carga
-                    </button>
-                    <button
-                      onClick={() => handleUpdateOperationalStep(op, 'expedicao')}
-                      disabled={op.statusCarregamento !== 'Carregada'}
-                      className={`py-1 rounded text-[8px] font-black uppercase transition ${
-                        op.statusExpedicao !== 'Pendente' ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" : "bg-black/30 text-zinc-500 hover:text-zinc-300 disabled:opacity-30"
-                      }`}
-                    >
-                      Expedir
-                    </button>
-                  </div>
-
-                  <div className="flex justify-between items-center text-[7.5px] text-zinc-600 font-mono border-t border-white/5 pt-2.5">
-                    <span>Ref: {op.updated_by}</span>
-                    <span>Atualizado: {formatToBrasiliaTime(op.updated_at)}</span>
-                  </div>
+                    </tbody>
+                  </table>
                 </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* VIEW 3: TABULAR SPREADSHEET REPRESENTATION */}
-        {viewMode === "table" && (
-          <div className="bg-[#0e0e15] rounded-xl border border-white/5 overflow-hidden shadow-md">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-white/5 bg-black/40 text-[9px] text-zinc-500 uppercase tracking-wider font-mono">
-                    <th className="p-3">ID</th>
-                    <th className="p-3">Nome Loja</th>
-                    <th className="p-3">Setor</th>
-                    <th className="p-3">Corte</th>
-                    <th className="p-3">Carga</th>
-                    <th className="p-3">Soltura</th>
-                    <th className="p-3">Coleta</th>
-                    <th className="p-3">Carga Status</th>
-                    <th className="p-3">Expedido</th>
-                    <th className="p-3 text-right">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 font-mono text-zinc-400">
-                  {filteredOps.map((op) => {
-                    return (
-                      <tr key={op.id} className="hover:bg-black/20 transition">
-                        <td className="p-3 text-zinc-300 font-bold">{op.lojaId}</td>
-                        <td className="p-3 text-zinc-300 font-sans uppercase font-bold truncate max-w-[120px]">{op.nomeLoja}</td>
-                        <td className="p-3">
-                          <span className="bg-zinc-900 text-zinc-400 px-1.5 py-0.5 rounded font-black">{op.setor}</span>
-                        </td>
-                        <td className="p-3 text-zinc-300">{op.corte}</td>
-                        <td className="p-3 text-zinc-400">{op.carregamento}</td>
-                        <td className="p-3">
-                          <span className={op.statusSoltura === 'Solta' ? "text-emerald-400 font-bold" : "text-zinc-600"}>
-                            {op.statusSoltura === 'Solta' ? `SIM (${op.horarioSoltura})` : 'NÃO'}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span className={op.statusColeta === 'Coletada' ? "text-blue-400 font-bold" : op.statusColeta === 'Em andamento' ? "text-amber-400 font-bold" : "text-zinc-600"}>
-                            {op.statusColeta}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span className={op.statusCarregamento === 'Carregada' ? "text-cyan-400 font-bold" : op.statusCarregamento === 'Em andamento' ? "text-amber-400 font-bold" : "text-zinc-600"}>
-                            {op.statusCarregamento}
-                          </span>
-                        </td>
-                        <td className="p-3">
-                          <span className={op.statusExpedicao !== 'Pendente' ? "text-purple-400 font-bold" : "text-zinc-600"}>
-                            {op.statusExpedicao}
-                          </span>
-                        </td>
-                        <td className="p-3 text-right">
-                          <button
-                            onClick={() => handleDeleteOperation(op.id)}
-                            className="text-zinc-600 hover:text-red-400 transition"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
+              </div>
+            </>
+          )}
+        </div>
+        
         {/* Confirmation Modal */}
         <ModalConfirmacao
           isOpen={isConfirmModalOpen}

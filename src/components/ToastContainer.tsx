@@ -22,7 +22,7 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({
     <div className="fixed top-4 right-4 z-[999999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
       {toasts.map((toast) => (
         <div
-          key={toast.id}
+          key={`usertoast-${toast.id}`}
           id={`toast-${toast.id}`}
           className={`p-3.5 rounded-xl shadow-2xl border text-white font-medium text-xs flex items-center justify-between gap-3 transition-all duration-300 pointer-events-auto backdrop-blur-md animate-in slide-in-from-right-5 ${
             toast.type === 'success'
