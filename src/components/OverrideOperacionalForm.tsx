@@ -144,11 +144,14 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
       setIsUphSuggested(false);
     }
     if (field === 'promessa' && isPromessaSuggested && value !== suggestedPromessa) {
-      }
+      setIsPromessaSuggested(false);
+    }
     if (field === 'bsi' && isBsiSuggested && value !== suggestedBsi) {
-      }
+      setIsBsiSuggested(false);
+    }
     if (field === 'errosPicking' && isErrosSuggested && value !== suggestedErros) {
-      }
+      setIsErrosSuggested(false);
+    }
   };
 
   const hasChanges = Object.values(formData).some((v) => v !== '');

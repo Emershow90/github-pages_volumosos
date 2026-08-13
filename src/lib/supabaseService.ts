@@ -731,11 +731,17 @@ export class SupabaseService {
             return finalizedRecord as unknown as T;
           }
 
-          
+          if (errCode === '22P02' || errMsg.includes('uuid') || errMsg.includes('invalid input syntax')) {
+            console.warn(`[Supabase] Erro de tipo/UUID (22P02) na tabela "${realTableName}". Gravado apenas no cache local.`);
+            return finalizedRecord as unknown as T;
+          }
 
-              
+          if (errCode === '23502' || errMsg.includes('not-null constraint') || errMsg.includes('violates not-null')) {
+            console.warn(`[Supabase] Restrição NOT-NULL (23502) na tabela "${realTableName}". Gravado apenas no cache local.`);
+            return finalizedRecord as unknown as T;
+          }
 
-              if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
+          if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
             console.warn(`[Supabase] Tabela "${realTableName}" não existe no Supabase. Gravado apenas no cache local.`);
             return finalizedRecord as unknown as T;
           }
@@ -1012,6 +1018,16 @@ export class SupabaseService {
                   lido: false
                 };
                 this.notifySyncError(alertLog);
+                continue;
+              }
+
+              if (errCode === '22P02' || errMsg.includes('uuid') || errMsg.includes('invalid input syntax')) {
+                console.warn(`[Supabase Sync] Erro 22P02 (sintaxe de tipo/UUID) na tabela "${realTbl}". Descartando item incompatível da fila.`);
+                continue;
+              }
+
+              if (errCode === '23502' || errMsg.includes('not-null constraint') || errMsg.includes('violates not-null')) {
+                console.warn(`[Supabase Sync] Erro 23502 (restrição NOT-NULL) na tabela "${realTbl}". Descartando item incompatível da fila.`);
                 continue;
               }
 

@@ -91,6 +91,7 @@ export const usePlanoCarregamentoRisk = () => {
       return { op, plano, risk };
     });
 
+
     const summary = {
       total: risks.length,
       red: risks.filter(r => r.risk === 'red').length,

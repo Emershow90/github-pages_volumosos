@@ -20,6 +20,14 @@ export class StoreService {
       if (existing && existing.length > 0) {
         return existing;
       }
+
+      // Check role to prevent RLS errors on insert
+      const userStore = (await import('../stores/useUserStore')).useUserStore;
+      const role = userStore.getState().currentRole;
+      if (role !== 'admin' && role !== 'coordenador') {
+         console.warn('[StoreService] Usuário sem permissão para semear store_master (RLS).');
+         return [];
+      }
       
       // Seed master stores
       const seeds: StoreMaster[] = masterCadastroLojas.map((m) => ({
@@ -140,6 +148,10 @@ export class StoreService {
     user: string
   ): Promise<void> {
     const timestamp = new Date().toISOString();
+    
+    const userStore = (await import('../stores/useUserStore')).useUserStore;
+    const role = userStore.getState().currentRole;
+    const canWriteMaster = role === 'admin' || role === 'coordenador';
 
     for (const row of rows) {
       // 1. Ensure Store Master exists
@@ -151,7 +163,10 @@ export class StoreService {
         transportadoraPadrao: row.transportadora,
         observacoes: "Cadastrado automaticamente via assistente de importação"
       };
-      await SupabaseService.upsertRecord('store_master', masterStore, 'id');
+      
+      if (canWriteMaster) {
+        await SupabaseService.upsertRecord('store_master', masterStore, 'id');
+      }
 
       // 2. Write Store Operation (key: lojaId + date + sector)
       const opId = `${row.lojaId}_${row.dataProgramacao}_${row.setor}`;
@@ -234,7 +249,12 @@ export class StoreService {
           uf: "SP",
           transportadoraPadrao: item.transportadora || "JADLOG"
         };
-        await SupabaseService.upsertRecord('store_master', master, 'id');
+        
+        const userStore = (await import('../stores/useUserStore')).useUserStore;
+        const role = userStore.getState().currentRole;
+        if (role === 'admin' || role === 'coordenador') {
+          await SupabaseService.upsertRecord('store_master', master, 'id');
+        }
 
         // Look up corresponding status
         const matchingStatus = legacyStatuses.find((s: any) => s.lista === item.lista) || {
