@@ -18,9 +18,20 @@ export interface PlanoCarregamentoRow {
   nomeLoja: string;
 }
 
-const PUBLIC_SHEET_CSV_URLS = [
-  'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?output=csv',
-  'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv',
+// Planilha Específica de Atividade Total (Controladoria - Atividades por Setor)
+export const ATIVIDADE_TOTAL_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=0&single=true&output=csv';
+
+// Planilha Específica do Plano de Carregamento (Logística - Programação de Carga)
+export const PLANO_CARREGAMENTO_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv';
+
+const ATIVIDADE_SHEET_CSV_URLS = [
+  ATIVIDADE_TOTAL_SHEET_URL,
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?output=csv'
+];
+
+const PLANO_SHEET_CSV_URLS = [
+  PLANO_CARREGAMENTO_SHEET_URL,
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv'
 ];
 
 const CACHE_KEY = 'cache_public_sheet_metrics';
@@ -91,7 +102,7 @@ export async function fetchPublicSpreadsheetMetrics(): Promise<PublicSpreadsheet
   let csvText = '';
   let lastErr: Error | null = null;
 
-  for (const url of PUBLIC_SHEET_CSV_URLS) {
+  for (const url of ATIVIDADE_SHEET_CSV_URLS) {
     try {
       const response = await fetch(url, { redirect: 'follow' });
       if (!response.ok) continue;
@@ -109,7 +120,7 @@ export async function fetchPublicSpreadsheetMetrics(): Promise<PublicSpreadsheet
   }
 
   if (!csvText) {
-    console.warn('[googleSheetsPublicSource] Nenhuma URL retornou CSV válido. Retornando Map vazio.', lastErr);
+    console.warn('[googleSheetsPublicSource] Nenhuma URL de Atividades retornou CSV válido. Retornando Map vazio.', lastErr);
     if (cached && cached.data && Object.keys(cached.data).length > 0) {
       return cached.data;
     }
@@ -119,8 +130,6 @@ export async function fetchPublicSpreadsheetMetrics(): Promise<PublicSpreadsheet
   try {
     const lines = csvText.split('\n');
     const metricsMap: PublicSpreadsheetMetricsMap = {};
-    let isPlanoCsv = false;
-    let planoRowCount = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i].trim();
@@ -128,17 +137,6 @@ export async function fetchPublicSpreadsheetMetrics(): Promise<PublicSpreadsheet
 
       const cols = parseCsvLine(rawLine);
       if (cols.length < 2) continue;
-
-      // Detect if this CSV is Plano de Carregamento
-      if (cols[0]?.toUpperCase().includes('DATA') && cols[3]?.toUpperCase().includes('COD')) {
-        isPlanoCsv = true;
-        continue;
-      }
-
-      if (isPlanoCsv) {
-        planoRowCount++;
-        continue;
-      }
 
       // Check if sector is in col 0 or col 1
       const col0 = cols[0]?.trim();
@@ -163,13 +161,13 @@ export async function fetchPublicSpreadsheetMetrics(): Promise<PublicSpreadsheet
       }
     }
 
-    // Default baseline metrics per sector if missing or if CSV was Plano
+    // Default baseline metrics per sector if missing
     const defaultSectors: Record<string, { ativ: number; uph: number }> = {
-      '87': { ativ: Math.max(12800, planoRowCount * 150), uph: 540 },
-      '88': { ativ: Math.max(8500, planoRowCount * 100), uph: 480 },
-      '89': { ativ: Math.max(6200, planoRowCount * 80), uph: 610 },
-      '90': { ativ: Math.max(9400, planoRowCount * 120), uph: 520 },
-      'ELOG': { ativ: Math.max(4800, planoRowCount * 60), uph: 450 },
+      '87': { ativ: 12800, uph: 540 },
+      '88': { ativ: 8500, uph: 480 },
+      '89': { ativ: 6200, uph: 610 },
+      '90': { ativ: 9400, uph: 520 },
+      'ELOG': { ativ: 4800, uph: 450 },
     };
 
     Object.entries(defaultSectors).forEach(([sec, def]) => {
@@ -212,10 +210,7 @@ const CACHE_PLANO_KEY = 'cache_plano_carregamento';
  * URL: .../pub?gid=1141245157&single=true&output=csv
  */
 export async function fetchPlanoCarregamento(): Promise<PlanoCarregamentoRow[]> {
-  const urls = [
-    'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?output=csv',
-    'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv',
-  ];
+  const urls = PLANO_SHEET_CSV_URLS;
   
   // Try loading from IndexedDB cache first if offline/quick fallback needed
   let cachedRows: PlanoCarregamentoRow[] = [];

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Setor, UserRole } from "../types";
 import { useCopilMetrics } from "../hooks/useCopilMetrics";
 import { ConexoesService } from "../services/conexoesService";
@@ -44,7 +44,38 @@ export const CopilTab: React.FC<CopilTabProps> = ({
   const { metrics: matrizData, loading: isLoading, summaryStats, refetch } = useCopilMetrics();
 
   const [selectedSector, setSelectedSector] = useState<string>(activeSectorId || "todos");
-  const [selectedSemana, setSelectedSemana] = useState<number>(0); // 0 = Todas as Semanas
+  
+  // ISO Week Calculator
+  const currentWeekNum = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+    const yearStart = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  }, []);
+
+  // Extrai semanas disponíveis dos dados
+  const availableWeeks = useMemo(() => {
+    const weeksFromData = Array.from(new Set(matrizData.map((d) => Number(d.semana)))).filter(Boolean).sort((a: number, b: number) => b - a);
+    if (weeksFromData.length > 0) return weeksFromData;
+    // Fallback: semanas ao redor da atual
+    const fallback = [currentWeekNum, currentWeekNum - 1, currentWeekNum - 2, currentWeekNum - 3].filter(w => w > 0);
+    return fallback;
+  }, [matrizData, currentWeekNum]);
+
+  // Estado da semana (0 = Todas, ou padrão na semana atual/mais recente)
+  const [selectedSemana, setSelectedSemana] = useState<number>(() => {
+    return availableWeeks.includes(currentWeekNum) ? currentWeekNum : (availableWeeks[0] || currentWeekNum);
+  });
+
+  // Atualiza a semana padrão caso os dados carreguem depois
+  useEffect(() => {
+    if (availableWeeks.length > 0 && (selectedSemana === 0 || !availableWeeks.includes(selectedSemana))) {
+      const defaultW = availableWeeks.includes(currentWeekNum) ? currentWeekNum : availableWeeks[0];
+      if (defaultW) setSelectedSemana(defaultW);
+    }
+  }, [availableWeeks, currentWeekNum]);
+
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
@@ -70,10 +101,21 @@ export const CopilTab: React.FC<CopilTabProps> = ({
 
   // Filtragem dos dados conforme setor e semana
   const filteredData = useMemo(() => {
-    return matrizData.filter((item) => {
-      const matchSetor = selectedSector === "todos" || String(item.setor) === String(selectedSector);
+    const filtered = matrizData.filter((item) => {
+      const matchSetor = selectedSector === "todos" || 
+        String(item.setor) === String(selectedSector) ||
+        String(item.setor) === `S${selectedSector}` ||
+        `S${item.setor}` === String(selectedSector);
       const matchSemana = selectedSemana === 0 || Number(item.semana) === Number(selectedSemana);
       return matchSetor && matchSemana;
+    });
+
+    // Ordenação estrita por semana (decrescente) e setor para manter agrupamento por semana
+    return filtered.sort((a, b) => {
+      if (Number(a.semana) !== Number(b.semana)) {
+        return Number(b.semana) - Number(a.semana);
+      }
+      return String(a.setor).localeCompare(String(b.setor));
     });
   }, [matrizData, selectedSector, selectedSemana]);
 
@@ -241,10 +283,10 @@ export const CopilTab: React.FC<CopilTabProps> = ({
               onChange={(e) => setSelectedSemana(Number(e.target.value))}
               className="inp text-xs py-1.5 font-bold text-sky-300 flex-1"
             >
-              <option value={0}>Todas as Semanas</option>
-              {Array.from({ length: 27 }, (_, i) => 27 + i).map((sem) => (
+              <option value={0}>Todas as Semanas (Visão Consolidada)</option>
+              {availableWeeks.map((sem) => (
                 <option key={sem} value={sem}>
-                  Semana {sem} / 2026
+                  Semana {sem} / 2026 {sem === currentWeekNum ? ' (Semana Atual)' : ''}
                 </option>
               ))}
             </select>

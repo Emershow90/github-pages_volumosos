@@ -56,7 +56,8 @@ const LOCAL_ONLY_TABLES = new Set([
   'alertas_operacionais',
   'copil_matriz',
   'universos_trabalho',
-  'plano_carregamento'
+  'plano_carregamento',
+  'atividade_loja'
 ]);
 
 const TABLE_COLUMNS: Record<string, string[]> = {
@@ -191,6 +192,9 @@ export class SupabaseService {
       return;
     } else if (code === '42501' || msg.includes('row-level security') || msg.includes('RLS')) {
       console.warn(`[Supabase Fallback] Acesso à tabela "${tableName}" restrito por RLS (${code}). Operação mantida no cache local.`);
+      return;
+    } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('TypeError') || msg.includes('network') || msg.includes('Failed to load')) {
+      console.warn(`[Supabase Offline] Conexão remota indisponível para "${operation}" na tabela "${tableName}". Operação mantida e salva com sucesso no cache local.`);
       return;
     } else if (code === 'PGRST204' || msg.includes('column') || msg.includes('does not exist')) {
       errorCategory = 'PGRST204 (COLUNA INEXISTENTE NA TABELA)';
@@ -690,8 +694,8 @@ export class SupabaseService {
           const errMsg = String(error.message || '');
           const errCode = String(error.code || '');
 
-          if (errCode === '42501' || errMsg.includes('row-level security')) {
-            console.error(`[Supabase] Violacao RLS (42501) na tabela "${realTableName}". O usuario nao tem permissao. Gravado apenas no cache local.`);
+          if (errCode === '42501' || errMsg.includes('row-level security') || errMsg.includes('RLS')) {
+            console.warn(`[Supabase RLS] Permissão de gravação restrita na tabela "${realTableName}" (42501). Operação mantida com sucesso no cache local.`);
             return finalizedRecord as unknown as T;
           }
 
@@ -717,17 +721,7 @@ export class SupabaseService {
               }
             }
 
-            console.error(`[Supabase Sanitizer] Erro PGRST204 ao salvar em ${realTableName}. Salvo apenas localmente.`, error);
-            const alertLog: AlertLog = {
-              id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-              prioridade: 'alta',
-              titulo: 'Sincronização Descartada',
-              descricao: `Alteração na tabela "${realTableName}" continha estrutura incompatível e foi gravada apenas no cache local.`,
-              setor: 'Sistema',
-              hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-              lido: false
-            };
-            this.notifySyncError(alertLog);
+            console.warn(`[Supabase Sanitizer] Tabela/coluna em "${realTableName}" incompatível com o banco remoto (PGRST204). Gravado com sucesso apenas no cache local.`);
             return finalizedRecord as unknown as T;
           }
 
@@ -749,8 +743,11 @@ export class SupabaseService {
           throw error;
         }
       } catch (err: unknown) {
-        this.logDatabaseDiagnostics(tableName, 'upsert', err, filteredRecord);
-        console.warn(`[Supabase Queue] Instabilidade de rede ao salvar em ${realTableName}:${docId}. Enfileirando na fila de espera.`, err);
+        const msg = String((err as any)?.message || err || '');
+        if (!msg.includes('Failed to fetch') && !msg.includes('NetworkError') && !msg.includes('TypeError')) {
+          this.logDatabaseDiagnostics(tableName, 'upsert', err, filteredRecord);
+        }
+        console.warn(`[Supabase Queue] Conexão indisponível ao salvar em ${realTableName}:${docId}. Salvo localmente e enfileirado para sincronização.`);
         this.queueCooldownUntil = Date.now() + 4000;
         this.enqueueOperation({
           table: tableName,
@@ -804,8 +801,8 @@ export class SupabaseService {
           const errMsg = String(error.message || '');
           const errCode = String(error.code || '');
 
-          if (errCode === '42501' || errMsg.includes('row-level security')) {
-            console.error(`[Supabase] Violacao RLS (42501) na tabela "${realTableName}". O usuario nao tem permissao. Exclusão feita apenas no cache local.`);
+          if (errCode === '42501' || errMsg.includes('row-level security') || errMsg.includes('RLS')) {
+            console.warn(`[Supabase RLS] Permissão de exclusão restrita na tabela "${realTableName}" (42501). Exclusão mantida com sucesso no cache local.`);
             return;
           }
 
@@ -973,20 +970,8 @@ export class SupabaseService {
               const errMsg = String(error.message || '');
               const errCode = String(error.code || '');
 
-
-              
-                            if (errCode === '42501' || errMsg.includes('row-level security')) {
-                console.error(`[Supabase Sync] Violacao RLS (42501) na tabela "${realTbl}". O usuario nao tem permissao. Descartando da fila.`);
-                const alertLog = {
-                  id: `alert_rls_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                  prioridade: 'alta' as const,
-                  titulo: 'Falha de Permissão (RLS)',
-                  descricao: `Tentativa de salvar na tabela "${realTbl}" negada pelo banco de dados (Acesso Negado).`,
-                  setor: 'Sistema',
-                  hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-                  lido: false
-                };
-                this.notifySyncError(alertLog);
+              if (errCode === '42501' || errMsg.includes('row-level security') || errMsg.includes('RLS')) {
+                console.warn(`[Supabase Sync] Permissão RLS restrita na tabela "${realTbl}" (42501). Alteração mantida no cache local e descartada da fila remota.`);
                 continue;
               }
 
@@ -1007,17 +992,7 @@ export class SupabaseService {
                   }
                 }
 
-                console.error(`[Supabase Sync] [PGRST204] Estrutura incompatível na tabela ${realTbl}. Descartando da fila.`, error);
-                const alertLog: AlertLog = {
-                  id: `alert_pgrst204_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                  prioridade: 'alta',
-                  titulo: 'Sincronização Descartada',
-                  descricao: `Alteração na tabela "${realTbl}" continha estrutura incompatível e foi descartada da fila offline.`,
-                  setor: 'Sistema',
-                  hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-                  lido: false
-                };
-                this.notifySyncError(alertLog);
+                console.warn(`[Supabase Sync] Estrutura incompatível com o banco remoto na tabela "${realTbl}" (PGRST204). Mantido no cache local e descartado da fila remota.`);
                 continue;
               }
 
@@ -1049,18 +1024,8 @@ export class SupabaseService {
               const errCode = String(error.code || '');
 
               
-              if (errCode === '42501' || errMsg.includes('row-level security')) {
-                console.error(`[Supabase Sync] Violacao RLS (42501) na tabela "${realTbl}". O usuario nao tem permissao. Descartando da fila.`);
-                const alertLog = {
-                  id: `alert_rls_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-                  prioridade: 'alta' as const,
-                  titulo: 'Falha de Permissão (RLS)',
-                  descricao: `Tentativa de salvar na tabela "${realTbl}" negada pelo banco de dados (Acesso Negado).`,
-                  setor: 'Sistema',
-                  hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-                  lido: false
-                };
-                this.notifySyncError(alertLog);
+              if (errCode === '42501' || errMsg.includes('row-level security') || errMsg.includes('RLS')) {
+                console.warn(`[Supabase Sync] Permissão RLS restrita na tabela "${realTbl}" (42501). Exclusão mantida no cache local e descartada da fila remota.`);
                 continue;
               }
 

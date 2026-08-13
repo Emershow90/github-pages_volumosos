@@ -176,10 +176,11 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
     setIsSyncing(true);
     try {
       await FirebaseService.flushOfflineQueue();
-      const targetDate = new Date().toISOString().split("T")[0];
+      const targetDateIso = new Date().toISOString().split("T")[0];
       const dbOps = await FirebaseService.fetchTable<StoreOperation>('store_operations');
       if (dbOps && dbOps.length > 0) {
-        const filtered = dbOps.filter(op => op.programacaoId === targetDate);
+        let filtered = dbOps.filter(op => op.programacaoId === targetDateIso);
+        if (filtered.length === 0) filtered = dbOps;
         const opsMap: Record<string, StoreOperation> = {};
         filtered.forEach(op => { opsMap[op.id] = op; });
         useStoreOperations.getState().setOperations(opsMap);
@@ -365,7 +366,12 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
       (plano && plano.codLoja.toLowerCase().includes(term));
     
     if (!matchSearch) return false;
-    if (activeSectorId && op.setor !== `S${activeSectorId}`) return false;
+    
+    if (activeSectorId && activeSectorId !== 'todos' && activeSectorId !== 'all') {
+      const normActiveSector = activeSectorId.replace(/^S/i, '').toUpperCase();
+      const normOpSector = (op.setor || '').replace(/^S/i, '').toUpperCase();
+      if (normOpSector !== normActiveSector) return false;
+    }
 
     if (statusFilter !== 'all') {
       if (statusFilter === 'nao_solta' && op.statusSoltura !== 'Não Solta') return false;

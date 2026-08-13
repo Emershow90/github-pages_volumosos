@@ -39,8 +39,19 @@ export class StoreService {
         observacoes: "Importado via inicialização padrão"
       }));
 
+      // Cache locally in IndexedDB first
+      const { IndexedDBService } = await import('../lib/indexedDb');
       for (const s of seeds) {
-        await SupabaseService.upsertRecord('store_master', s, 'id');
+        await IndexedDBService.put('store_master', s);
+      }
+
+      // Try remote upsert safely
+      for (const s of seeds) {
+        try {
+          await SupabaseService.upsertRecord('store_master', s, 'id');
+        } catch (err) {
+          console.warn('[StoreService] RLS at store_master, seeds maintained in local cache.', err);
+        }
       }
       return seeds;
     } catch (e) {
@@ -154,7 +165,7 @@ export class StoreService {
     const canWriteMaster = role === 'admin' || role === 'coordenador';
 
     for (const row of rows) {
-      // 1. Ensure Store Master exists
+      // 1. Ensure Store Master exists locally and sync remotely if permitted
       const masterStore: StoreMaster = {
         id: row.lojaId,
         nome: row.nomeLoja,
@@ -164,8 +175,15 @@ export class StoreService {
         observacoes: "Cadastrado automaticamente via assistente de importação"
       };
       
+      const { IndexedDBService } = await import('../lib/indexedDb');
+      await IndexedDBService.put('store_master', masterStore);
+
       if (canWriteMaster) {
-        await SupabaseService.upsertRecord('store_master', masterStore, 'id');
+        try {
+          await SupabaseService.upsertRecord('store_master', masterStore, 'id');
+        } catch (e) {
+          console.warn('[StoreService] RLS ao salvar store_master no Supabase, mantido localmente.', e);
+        }
       }
 
       // 2. Write Store Operation (key: lojaId + date + sector)

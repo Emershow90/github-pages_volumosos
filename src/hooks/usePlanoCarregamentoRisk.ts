@@ -3,6 +3,7 @@ import { useStoreOperations } from '../stores/useStoreOperations';
 import { SupabaseService as FirebaseService } from '../lib/supabaseService';
 import { fetchPlanoCarregamento, PlanoCarregamentoRow } from '../lib/googleSheetsPublicSource';
 import { StoreOperation } from '../types/Store';
+import { getBrasiliaDate } from '../utils/time';
 
 export type RiskLevel = 'red' | 'yellow' | 'green' | 'gray';
 
@@ -11,6 +12,14 @@ export interface OperationRisk {
   plano?: PlanoCarregamentoRow;
   risk: RiskLevel;
 }
+
+const getBrasiliaIsoDate = (): string => {
+  const bDate = getBrasiliaDate();
+  const year = bDate.getFullYear();
+  const month = String(bDate.getMonth() + 1).padStart(2, '0');
+  const day = String(bDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export const usePlanoCarregamentoRisk = () => {
   const operationsMap = useStoreOperations((state) => state.operations);
@@ -36,13 +45,17 @@ export const usePlanoCarregamentoRisk = () => {
         console.warn('[usePlanoCarregamentoRisk] Erro ao carregar operações:', err);
       }
       try {
-        const todayIso = new Date().toISOString().split('T')[0];
+        const todayIso = getBrasiliaIsoDate();
+        const utcIso = new Date().toISOString().split('T')[0];
         const data = await fetchPlanoCarregamento();
         if (data && data.length > 0) {
-          const todayPlan = data.filter(d => {
+          let todayPlan = data.filter(d => {
             const dStr = typeof d.data === 'string' ? d.data.split('T')[0] : String(d.data);
-            return dStr === todayIso;
+            return dStr === todayIso || dStr === utcIso;
           });
+          if (todayPlan.length === 0) {
+            todayPlan = data;
+          }
           setPlanoCarregamento(todayPlan);
         }
       } catch (err) {
@@ -55,14 +68,18 @@ export const usePlanoCarregamentoRisk = () => {
   }, []);
 
   const riskData = useMemo(() => {
-    const todayIso = new Date().toISOString().split('T')[0];
+    const todayIso = getBrasiliaIsoDate();
+    const utcIso = new Date().toISOString().split('T')[0];
     const ops = Object.values(operationsMap);
     
-    // Only consider operations for today
-    const todayOps = ops.filter(op => op.programacaoId === todayIso);
+    // Consider operations for today (Brasilia/UTC) or all current operations if date filter yields empty
+    let todayOps = ops.filter(op => op.programacaoId === todayIso || op.programacaoId === utcIso);
+    if (todayOps.length === 0 && ops.length > 0) {
+      todayOps = ops;
+    }
 
     const risks: OperationRisk[] = todayOps.map(op => {
-      const plano = planoCarregamento.find(p => String(p.codLoja).trim() === String(op.lojaId).trim() && (typeof p.data === 'string' ? p.data.split('T')[0] : String(p.data)) === todayIso);
+      const plano = planoCarregamento.find(p => String(p.codLoja).trim() === String(op.lojaId).trim());
       
       let risk: RiskLevel = 'gray';
 

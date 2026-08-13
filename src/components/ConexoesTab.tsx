@@ -44,18 +44,28 @@ export const ConexoesTab: React.FC = () => {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookName, setWebhookName] = useState('');
 
-  const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?output=csv';
+  const ATIVIDADE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=0&single=true&output=csv';
+  const PLANO_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv';
 
   const connections: ConnectionDetail[] = [
     {
-      id: 'google_sheets_controladoria',
-      name: 'Planilha Controladoria (CSV Google Sheets)',
+      id: 'google_sheets_atividade',
+      name: 'Planilha Atividade Total (Controladoria - Atividades por Setor)',
       type: 'google_sheets',
       status: sheetStatus ? (sheetStatus.healthy ? 'connected' : 'error') : 'connected',
       lastSync: sheetStatus ? `${sheetStatus.latencyMs}ms de latência` : 'Automático (Cache 5 min)',
-      description: 'Feed de métricas operacionais da Controladoria com UPH e volume de atividade.',
-      endpointUrl: SHEET_URL,
+      description: 'Aba/Planilha exclusiva de Atividade Total e UPH da Controladoria por setor.',
+      endpointUrl: ATIVIDADE_SHEET_URL,
       recordCount: lastSyncResult?.importedCount,
+    },
+    {
+      id: 'google_sheets_plano',
+      name: 'Planilha Plano de Carregamento (Programação Logística)',
+      type: 'google_sheets',
+      status: sheetStatus ? (sheetStatus.healthy ? 'connected' : 'error') : 'connected',
+      lastSync: sheetStatus ? `${sheetStatus.latencyMs}ms de latência` : 'Automático (On demand)',
+      description: 'Aba/Planilha exclusiva do Plano de Carregamento de Lojas e Horários de Corte.',
+      endpointUrl: PLANO_SHEET_URL,
     },
     {
       id: 'supabase_database',
@@ -82,7 +92,7 @@ export const ConexoesTab: React.FC = () => {
       const dbRes = await ConexoesService.checkDatabaseHealth();
       setDbStatus(dbRes);
       
-      const sheetRes = await ConexoesService.checkSpreadsheetHealth(SHEET_URL);
+      const sheetRes = await ConexoesService.checkSpreadsheetHealth(ATIVIDADE_SHEET_URL);
       setSheetStatus(sheetRes);
       
       if (dbRes.healthy && sheetRes.healthy) {
