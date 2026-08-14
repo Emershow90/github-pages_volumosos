@@ -18,8 +18,10 @@ import {
   UserRole,
   ColaboradorStatus,
   RadarLoja,
+  StoreMaster,
 } from "../types";
 import { masterCadastroLojas } from "../initialData";
+import { useStoreMaster } from "../stores/useStoreMaster";
 import {
   Shield,
   Trash2,
@@ -41,6 +43,11 @@ import {
   AlertTriangle,
   Info,
   Settings,
+  Store,
+  Building2,
+  MapPin,
+  Edit2,
+  ChevronDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -696,10 +703,75 @@ interface AuditoriaTabProps {
 }
 
 export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
-  const [subTab, setSubTab] = useState<"logs" | "aprovacoes">("logs");
+  const [subTab, setSubTab] = useState<"logs" | "aprovacoes" | "sync_logs">("logs");
   const [filterUser, setFilterUser] = useState("");
   const [filterField, setFilterField] = useState("");
   const [filterAction, setFilterAction] = useState("");
+
+  // Sync logs states
+  const [syncLogs, setSyncLogs] = useState<any[]>([]);
+  const [loadingSyncLogs, setLoadingSyncLogs] = useState(false);
+  const [syncFilter, setSyncFilter] = useState<"all" | "error" | "success">("all");
+  const [retryingLogId, setRetryingLogId] = useState<string | null>(null);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  const loadSyncLogs = async () => {
+    setLoadingSyncLogs(true);
+    try {
+      const logs = (await FirebaseService.fetchTable("sync_logs")) as any[];
+      logs.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      setSyncLogs(logs);
+    } catch (err) {
+      console.warn("Could not load sync logs", err);
+    } finally {
+      setLoadingSyncLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (subTab === "sync_logs") {
+      loadSyncLogs();
+    }
+  }, [subTab]);
+
+  const handleRetrySyncLog = async (logId: string) => {
+    setRetryingLogId(logId);
+    setSyncFeedback(null);
+    try {
+      const { ConexoesService } = await import("../services/conexoesService");
+      const res = await ConexoesService.syncControladoriaSheet();
+      if (res.success) {
+        setSyncFeedback(`✅ Registro reprocessado com sucesso (${res.importedCount} registros sincronizados).`);
+        await loadSyncLogs();
+      } else {
+        setSyncFeedback(`❌ Falha ao reenviar: ${res.error || "Erro desconhecido"}`);
+      }
+    } catch (err: any) {
+      setSyncFeedback(`❌ Erro no reenvio: ${err.message || String(err)}`);
+    } finally {
+      setRetryingLogId(null);
+    }
+  };
+
+  const handleRetryAllFailed = async () => {
+    setRetryingLogId("all");
+    setSyncFeedback(null);
+    try {
+      const { ConexoesService } = await import("../services/conexoesService");
+      const res = await ConexoesService.syncControladoriaSheet();
+      await FirebaseService.syncOfflineQueue();
+      if (res.success) {
+        setSyncFeedback(`✅ Todas as falhas foram reenviadas e processadas com sucesso.`);
+        await loadSyncLogs();
+      } else {
+        setSyncFeedback(`❌ Falha no reprocessamento geral: ${res.error || "Erro desconhecido"}`);
+      }
+    } catch (err: any) {
+      setSyncFeedback(`❌ Erro: ${err.message || String(err)}`);
+    } finally {
+      setRetryingLogId(null);
+    }
+  };
 
   const filtered = audit.filter((a) => {
     if (filterUser && !a.usuario.toLowerCase().includes(filterUser.toLowerCase())) return false;
@@ -707,6 +779,14 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
     if (filterAction && !a.acao.toLowerCase().includes(filterAction.toLowerCase())) return false;
     return true;
   });
+
+  const filteredSyncLogs = syncLogs.filter((l) => {
+    if (syncFilter === "error") return l.status === "error";
+    if (syncFilter === "success") return l.status === "success";
+    return true;
+  });
+
+  const failedSyncCount = syncLogs.filter((l) => l.status === "error").length;
 
   const handleExportCSV = () => {
     const headers = ["Data/Hora", "Usuario", "Acao", "Campo", "Valor Anterior", "Novo Valor", "Dispositivo"];
@@ -737,7 +817,7 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
   return (
     <div className="space-y-6">
       {/* Subtabs Selector inside Auditoria */}
-      <div className="flex border-b border-white/5 pb-2 gap-4">
+      <div className="flex border-b border-white/5 pb-2 gap-4 flex-wrap">
         <button
           onClick={() => setSubTab("logs")}
           className={`pb-2 px-2 text-xs font-black uppercase tracking-widest transition flex items-center gap-2 cursor-pointer ${
@@ -747,6 +827,21 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
           }`}
         >
           <span>📋 Trilha de Auditoria</span>
+        </button>
+        <button
+          onClick={() => setSubTab("sync_logs")}
+          className={`pb-2 px-2 text-xs font-black uppercase tracking-widest transition flex items-center gap-2 cursor-pointer ${
+            subTab === "sync_logs"
+              ? "text-purple-400 border-b-2 border-purple-500"
+              : "text-zinc-500 hover:text-zinc-300"
+          }`}
+        >
+          <span>🔄 Logs de Sincronização & Falhas</span>
+          {failedSyncCount > 0 && (
+            <span className="bg-rose-500/20 text-rose-400 text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold">
+              {failedSyncCount} falhas
+            </span>
+          )}
         </button>
         <button
           onClick={() => setSubTab("aprovacoes")}
@@ -760,7 +855,7 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
         </button>
       </div>
 
-      {subTab === "logs" ? (
+      {subTab === "logs" && (
         <div className="space-y-6">
           <div className="flex flex-wrap justify-between items-center gap-4 border-b border-white/5 pb-3">
             <div>
@@ -838,9 +933,132 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
             </div>
           </div>
         </div>
-      ) : (
-        <AdminApprovalTab />
       )}
+
+      {subTab === "sync_logs" && (
+        <div className="space-y-6">
+          <div className="flex flex-wrap justify-between items-center gap-4 border-b border-white/5 pb-3">
+            <div>
+              <h2 className="text-xl font-black text-white uppercase tracking-widest">
+                Log de Sincronização & Reenvio de Falhas
+              </h2>
+              <p className="text-xs text-zinc-500 mt-1">
+                Monitoramento de transações com o Supabase e reprocessamento de operações com falha
+              </p>
+            </div>
+            
+            <div className="flex gap-2 flex-wrap items-center">
+              <div className="flex bg-black/40 p-0.5 rounded-lg border border-white/10 text-xs">
+                <button
+                  onClick={() => setSyncFilter("all")}
+                  className={`px-3 py-1 rounded transition-colors ${syncFilter === "all" ? "bg-white/10 text-white font-bold" : "text-zinc-400 hover:text-zinc-200"}`}
+                >
+                  Todos ({syncLogs.length})
+                </button>
+                <button
+                  onClick={() => setSyncFilter("error")}
+                  className={`px-3 py-1 rounded transition-colors ${syncFilter === "error" ? "bg-rose-500/20 text-rose-300 font-bold" : "text-zinc-400 hover:text-zinc-200"}`}
+                >
+                  Falhas ({failedSyncCount})
+                </button>
+                <button
+                  onClick={() => setSyncFilter("success")}
+                  className={`px-3 py-1 rounded transition-colors ${syncFilter === "success" ? "bg-emerald-500/20 text-emerald-300 font-bold" : "text-zinc-400 hover:text-zinc-200"}`}
+                >
+                  Sucessos ({syncLogs.length - failedSyncCount})
+                </button>
+              </div>
+
+              {failedSyncCount > 0 && (
+                <button
+                  onClick={handleRetryAllFailed}
+                  disabled={retryingLogId === "all"}
+                  className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 px-3 py-1.5 rounded text-xs font-bold uppercase transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${retryingLogId === "all" ? "animate-spin" : ""}`} />
+                  Reenviar Todas as Falhas
+                </button>
+              )}
+
+              <button
+                onClick={loadSyncLogs}
+                disabled={loadingSyncLogs}
+                className="bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 px-3 py-1.5 rounded text-xs font-bold uppercase transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingSyncLogs ? "animate-spin" : ""}`} />
+                Atualizar
+              </button>
+            </div>
+          </div>
+
+          {syncFeedback && (
+            <div className="p-3 bg-zinc-900 border border-white/10 rounded-xl text-xs text-zinc-200 font-mono">
+              {syncFeedback}
+            </div>
+          )}
+
+          <div className="glass-card overflow-hidden">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="text-[0.55rem] uppercase tracking-widest text-zinc-500 border-b border-white/10 bg-black/20">
+                    <th className="p-3 font-bold">Data/Hora</th>
+                    <th className="p-3 font-bold">Conexão / Origem</th>
+                    <th className="p-3 font-bold">Status</th>
+                    <th className="p-3 font-bold">Registros</th>
+                    <th className="p-3 font-bold">Detalhes / Mensagem</th>
+                    <th className="p-3 font-bold text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 font-mono text-zinc-300">
+                  {filteredSyncLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-white/[0.01]">
+                      <td className="p-3 text-zinc-400">
+                        {log.created_at ? new Date(log.created_at).toLocaleString("pt-BR") : "—"}
+                      </td>
+                      <td className="p-3 font-bold text-purple-400 font-sans">{log.conexao_id}</td>
+                      <td className="p-3">
+                        {log.status === "success" ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded text-[11px] font-bold border border-emerald-500/20">
+                            ✓ Sucesso
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded text-[11px] font-bold border border-rose-500/20">
+                            ✕ Falha
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 font-bold text-sky-400">{log.registros_afetados || 0}</td>
+                      <td className="p-3 text-zinc-400 max-w-sm break-words font-sans">
+                        {log.mensagem_erro || "Operação executada com sucesso."}
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => handleRetrySyncLog(log.id)}
+                          disabled={retryingLogId === log.id}
+                          className="bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 px-2.5 py-1 rounded text-[11px] font-bold transition flex items-center gap-1.5 ml-auto cursor-pointer"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${retryingLogId === log.id ? "animate-spin text-purple-400" : ""}`} />
+                          Reenviar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredSyncLogs.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="text-center py-16 text-zinc-500 italic">
+                        {loadingSyncLogs ? "Carregando logs..." : "Nenhum log de sincronização encontrado."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subTab === "aprovacoes" && <AdminApprovalTab />}
     </div>
   );
 };
@@ -967,6 +1185,91 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [totalImportedCount, setTotalImportedCount] = useState(0);
 
+  // Store Master Zustand hook
+  const {
+    stores: masterStores,
+    addStore: addMasterStore,
+    updateStore: updateMasterStore,
+    deleteStore: deleteMasterStore,
+    loadStores: loadMasterStores,
+  } = useStoreMaster();
+
+  // Store Master Local UI State
+  const [storeSearch, setStoreSearch] = useState("");
+  const [storeUfFilter, setStoreUfFilter] = useState("all");
+  const [storeTransFilter, setStoreTransFilter] = useState("all");
+  const [showStoreModal, setShowStoreModal] = useState(false);
+  const [editingStoreId, setEditingStoreId] = useState<string | null>(null);
+  const [storeFormId, setStoreFormId] = useState("");
+  const [storeFormNome, setStoreFormNome] = useState("");
+  const [storeFormCidade, setStoreFormCidade] = useState("");
+  const [storeFormUf, setStoreFormUf] = useState("SP");
+  const [storeFormTrans, setStoreFormTrans] = useState("JADLOG");
+  const [storeFormObs, setStoreFormObs] = useState("");
+  const [isDeleteStoreConfirmOpen, setIsDeleteStoreConfirmOpen] = useState(false);
+  const [storeToDelete, setStoreToDelete] = useState<StoreMaster | null>(null);
+
+  useEffect(() => {
+    loadMasterStores();
+  }, []);
+
+  const handleOpenNewStore = () => {
+    setEditingStoreId(null);
+    setStoreFormId("");
+    setStoreFormNome("");
+    setStoreFormCidade("São Paulo");
+    setStoreFormUf("SP");
+    setStoreFormTrans("JADLOG");
+    setStoreFormObs("");
+    setShowStoreModal(true);
+  };
+
+  const handleOpenEditStore = (st: StoreMaster) => {
+    setEditingStoreId(st.id);
+    setStoreFormId(st.id);
+    setStoreFormNome(st.nome);
+    setStoreFormCidade(st.cidade || "");
+    setStoreFormUf(st.uf || "SP");
+    setStoreFormTrans(st.transportadoraPadrao || "JADLOG");
+    setStoreFormObs(st.observacoes || "");
+    setShowStoreModal(true);
+  };
+
+  const handleSaveStoreForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!storeFormId || !storeFormNome) {
+      showFeedback("Código e Nome da Loja são obrigatórios.", "error");
+      return;
+    }
+
+    const payload: StoreMaster = {
+      id: storeFormId.trim().toUpperCase(),
+      nome: storeFormNome.trim().toUpperCase(),
+      cidade: storeFormCidade.trim() || "São Paulo",
+      uf: storeFormUf.trim().toUpperCase() || "SP",
+      transportadoraPadrao: storeFormTrans.trim().toUpperCase() || "JADLOG",
+      observacoes: storeFormObs.trim() || "Cadastrado via Painel Master"
+    };
+
+    if (editingStoreId) {
+      await updateMasterStore(editingStoreId, payload);
+      showFeedback(`Loja ${payload.id} - ${payload.nome} atualizada com sucesso!`);
+    } else {
+      await addMasterStore(payload);
+      showFeedback(`Loja ${payload.id} - ${payload.nome} cadastrada no Master com sucesso!`);
+    }
+
+    setShowStoreModal(false);
+  };
+
+  const handleDeleteStoreConfirm = async () => {
+    if (!storeToDelete) return;
+    await deleteMasterStore(storeToDelete.id);
+    showFeedback(`Loja ${storeToDelete.id} removida do cadastro.`);
+    setIsDeleteStoreConfirmOpen(false);
+    setStoreToDelete(null);
+  };
+
   useEffect(() => {
     const fetchCount = async () => {
       try {
@@ -1039,7 +1342,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
       if (loja) {
         const storeCode = loja.split("-")[0].trim();
-        const registeredStore = masterCadastroLojas.find(s => s.id === storeCode);
+        const registeredStore = masterStores.find(s => s.id === storeCode) || masterCadastroLojas.find(s => s.id === storeCode);
 
         let statusOCR: "registrada" | "pendente" | "divergente" | "nao_cadastrada" = "registrada";
         let erroDesc = "";
@@ -1050,9 +1353,9 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
         } else if (prog === 0) {
           statusOCR = "pendente";
           erroDesc = "Aguardando início da expedição";
-        } else if (vol !== registeredStore.volEsperado) {
+        } else if ('volEsperado' in registeredStore && vol !== (registeredStore as any).volEsperado) {
           statusOCR = "divergente";
-          erroDesc = `Divergência detectada! Volume real: ${vol} | Cadastrado esperado: ${registeredStore.volEsperado}`;
+          erroDesc = `Divergência detectada! Volume real: ${vol} | Cadastrado esperado: ${(registeredStore as any).volEsperado}`;
         }
 
         list.push({
@@ -1777,6 +2080,19 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
         >
           📋 Liderança &amp; Escala
         </button>
+
+        <button
+          onClick={() => setSubCat("lojas")}
+          className={`cfg-nav flex items-center justify-between ${subCat === "lojas" ? "active" : ""}`}
+        >
+          <span className="flex items-center gap-1.5">
+            <Store size={13} className="text-indigo-400" />
+            Cadastro de Lojas
+          </span>
+          <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.2 rounded-full font-mono font-bold">
+            {masterStores.length}
+          </span>
+        </button>
         
         <button
           onClick={() => setSubCat("importacao")}
@@ -1958,6 +2274,169 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
         )}
 
         
+
+        {/* CATEGORY: CADASTRO MASTER DE LOJAS */}
+        {subCat === "lojas" && (
+          <div className="space-y-6">
+            <div className="glass-card p-6 border-l-2 border-indigo-500/50 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-white/5 pb-4 gap-3">
+                <div>
+                  <h3 className="text-base font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg">🏪</span>
+                    Cadastro Master de Lojas ({masterStores.length} Lojas)
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    Catálogo central de lojas, códigos operacionais, cidades, estados e transportadoras padrão para expedição e rotas.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleOpenNewStore}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 px-4 rounded-lg uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md"
+                  >
+                    <Plus size={14} />
+                    Cadastrar Nova Loja
+                  </button>
+                  <button
+                    onClick={() => loadMasterStores()}
+                    className="bg-white/5 hover:bg-white/10 text-zinc-300 p-2 rounded-lg border border-white/10 transition cursor-pointer"
+                    title="Recarregar do banco"
+                  >
+                    <RefreshCw size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Filters Bar */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-black/40 p-3 rounded-xl border border-white/5">
+                <div className="relative sm:col-span-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                  <input
+                    type="text"
+                    value={storeSearch}
+                    onChange={(e) => setStoreSearch(e.target.value)}
+                    placeholder="Buscar código, nome ou cidade..."
+                    className="w-full bg-zinc-900 border border-white/10 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50"
+                  />
+                </div>
+                <div>
+                  <select
+                    value={storeUfFilter}
+                    onChange={(e) => setStoreUfFilter(e.target.value)}
+                    className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                  >
+                    <option value="all">Todos os Estados (UF)</option>
+                    {Array.from(new Set(masterStores.map(s => s.uf).filter(Boolean))).sort().map(uf => (
+                      <option key={uf} value={uf}>{uf}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <select
+                    value={storeTransFilter}
+                    onChange={(e) => setStoreTransFilter(e.target.value)}
+                    className="w-full bg-zinc-900 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                  >
+                    <option value="all">Todas as Transportadoras</option>
+                    {Array.from(new Set(masterStores.map(s => s.transportadoraPadrao).filter(Boolean))).sort().map(trans => (
+                      <option key={trans} value={trans}>{trans}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Stores Grid / Table */}
+              {(() => {
+                const filtered = masterStores.filter(s => {
+                  const q = storeSearch.toLowerCase();
+                  const matchQuery = !q || s.id.toLowerCase().includes(q) || s.nome.toLowerCase().includes(q) || (s.cidade && s.cidade.toLowerCase().includes(q));
+                  const matchUf = storeUfFilter === "all" || s.uf === storeUfFilter;
+                  const matchTrans = storeTransFilter === "all" || s.transportadoraPadrao === storeTransFilter;
+                  return matchQuery && matchUf && matchTrans;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="bg-zinc-900/40 p-8 rounded-xl text-center border border-zinc-800 text-zinc-500 uppercase font-black text-xs space-y-2">
+                      <Store size={28} className="mx-auto text-zinc-600 mb-2" />
+                      <p>Nenhuma loja encontrada com os filtros selecionados.</p>
+                      {storeSearch && (
+                        <button
+                          onClick={() => { setStoreSearch(""); setStoreUfFilter("all"); setStoreTransFilter("all"); }}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 uppercase font-bold"
+                        >
+                          Limpar Filtros de Busca
+                        </button>
+                      )}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
+                    {filtered.map((st) => (
+                      <div
+                        key={st.id}
+                        className="bg-black/40 hover:bg-black/60 border border-white/5 hover:border-indigo-500/30 p-3.5 rounded-xl transition-all duration-200 flex flex-col justify-between space-y-2.5 shadow-sm group"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono font-black text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                              {st.id}
+                            </span>
+                            <span className="text-[10px] font-bold text-zinc-400 font-mono bg-white/5 px-1.5 py-0.5 rounded">
+                              {st.uf || "SP"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition">
+                            <button
+                              onClick={() => handleOpenEditStore(st)}
+                              className="text-zinc-400 hover:text-white p-1 rounded hover:bg-white/10 transition cursor-pointer"
+                              title="Editar Loja"
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setStoreToDelete(st);
+                                setIsDeleteStoreConfirmOpen(true);
+                              }}
+                              className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10 transition cursor-pointer"
+                              title="Excluir Loja"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wide truncate" title={st.nome}>
+                            {st.nome}
+                          </h4>
+                          <p className="text-[10px] text-zinc-400 flex items-center gap-1 mt-0.5">
+                            <MapPin size={10} className="text-zinc-500 shrink-0" />
+                            <span className="truncate">{st.cidade || "Não informada"} - {st.uf || "SP"}</span>
+                          </p>
+                        </div>
+
+                        <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[9px] font-mono text-zinc-500">
+                          <span className="truncate font-bold text-zinc-400">
+                            🚚 {st.transportadoraPadrao || "JADLOG"}
+                          </span>
+                          {st.observacoes && (
+                            <span className="truncate max-w-[120px] text-zinc-500" title={st.observacoes}>
+                              {st.observacoes}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
 
         {/* CATEGORY: IMPORTAÇÃO DE DADOS */}
         {subCat === "importacao" && (
@@ -2351,14 +2830,18 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                   <div className="lg:col-span-7 space-y-4">
                     <div className="bg-zinc-950/80 p-4 rounded-xl border border-zinc-800/80 space-y-3">
                       <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                        <span className="text-[0.65rem] font-bold text-zinc-400 uppercase tracking-wider">Cadastro Master de Lojas ({masterCadastroLojas.length} lojas)</span>
+                        <span className="text-[0.65rem] font-bold text-zinc-400 uppercase tracking-wider">
+                          Cadastro Master de Lojas ({masterStores.length} lojas registradas)
+                        </span>
                         <span className="text-[8px] bg-indigo-500/15 text-indigo-400 px-1.5 py-0.5 rounded font-bold font-mono">LOJAS ATIVAS</span>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px]">
-                        {masterCadastroLojas.map((st) => (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] max-h-48 overflow-y-auto custom-scrollbar">
+                        {masterStores.map((st) => (
                           <div key={st.id} className="bg-white/[0.02] p-2 rounded border border-white/5 flex flex-col justify-between">
                             <span className="font-bold text-white truncate">{st.id} - {st.nome}</span>
-                            <span className="text-[8px] text-zinc-500 font-mono mt-1 uppercase">Corte: {st.cortePadrao} | Vol: {st.volEsperado}</span>
+                            <span className="text-[8px] text-zinc-500 font-mono mt-1 uppercase">
+                              {st.cidade} ({st.uf}) | 🚚 {st.transportadoraPadrao || "JADLOG"}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -2657,6 +3140,162 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
           </div>
         )}
       </div>
+
+      {/* MODAL: CADASTRO / EDIÇÃO DE LOJA MASTER */}
+      <AnimatePresence>
+        {showStoreModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-[#121218] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/[0.02]">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg">
+                    <Store size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                      {editingStoreId ? "Editar Loja Cadastrada" : "Cadastrar Nova Loja Master"}
+                    </h3>
+                    <p className="text-[10px] text-zinc-500">
+                      {editingStoreId ? `Atualizando informações da loja ${editingStoreId}` : "Adicione uma nova loja ao catálogo permanente"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowStoreModal(false)}
+                  className="text-zinc-500 hover:text-white p-1 rounded transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveStoreForm} className="p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">
+                      Cód. Loja (ID)*
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      disabled={!!editingStoreId}
+                      value={storeFormId}
+                      onChange={(e) => setStoreFormId(e.target.value)}
+                      placeholder="Ex: 2722"
+                      className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white font-mono uppercase focus:outline-none focus:border-indigo-500/50 disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">
+                      Nome da Loja*
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={storeFormNome}
+                      onChange={(e) => setStoreFormNome(e.target.value)}
+                      placeholder="Ex: FLORIPA CONTINENTE"
+                      className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white uppercase focus:outline-none focus:border-indigo-500/50"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">
+                      Cidade
+                    </label>
+                    <input
+                      type="text"
+                      value={storeFormCidade}
+                      onChange={(e) => setStoreFormCidade(e.target.value)}
+                      placeholder="Ex: São José"
+                      className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">
+                      UF (Estado)
+                    </label>
+                    <select
+                      value={storeFormUf}
+                      onChange={(e) => setStoreFormUf(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                    >
+                      {["SP", "RJ", "MG", "ES", "PR", "SC", "RS", "BA", "PE", "CE", "GO", "DF", "MT", "MS", "PA", "AM", "RN", "PB", "AL", "SE", "PI", "MA", "TO", "RO", "AC", "AP", "RR"].map((uf) => (
+                        <option key={uf} value={uf}>{uf}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">
+                      Transportadora Padrão
+                    </label>
+                    <input
+                      type="text"
+                      value={storeFormTrans}
+                      onChange={(e) => setStoreFormTrans(e.target.value)}
+                      placeholder="Ex: JADLOG, MOBI, TOTAL"
+                      className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white font-mono uppercase focus:outline-none focus:border-indigo-500/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">
+                      Observações / Detalhes
+                    </label>
+                    <input
+                      type="text"
+                      value={storeFormObs}
+                      onChange={(e) => setStoreFormObs(e.target.value)}
+                      placeholder="Ex: Doca 04, Carga especial"
+                      className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4 border-t border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => setShowStoreModal(false)}
+                    className="px-4 py-2 bg-white/5 hover:bg-white/10 text-zinc-300 font-bold text-xs uppercase rounded-lg transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition shadow-md"
+                  >
+                    {editingStoreId ? "Salvar Alterações" : "Cadastrar Loja"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* CONFIRMAÇÃO DE EXCLUSÃO DE LOJA MASTER */}
+      {isDeleteStoreConfirmOpen && storeToDelete && (
+        <ModalConfirmacao
+          isOpen={isDeleteStoreConfirmOpen}
+          onClose={() => {
+            setIsDeleteStoreConfirmOpen(false);
+            setStoreToDelete(null);
+          }}
+          onConfirm={handleDeleteStoreConfirm}
+          title="EXCLUIR LOJA DO CADASTRO MASTER?"
+          description={`Deseja realmente excluir a loja ${storeToDelete.id} - ${storeToDelete.nome} (${storeToDelete.cidade}/${storeToDelete.uf}) do cadastro permanente?`}
+          confirmLabel="Sim, Excluir Loja"
+          cancelLabel="Cancelar"
+        />
+      )}
 
       <ModalConfirmacao
         isOpen={isConfirmModalOpen}

@@ -1,12 +1,17 @@
 import { fetchPublicSpreadsheetMetrics, fetchPlanoCarregamento, clearPlanilhaCache, PublicSpreadsheetMetricsMap } from '../lib/googleSheetsPublicSource';
 import { SupabaseService } from '../lib/supabaseService';
-import { MatrizPerformanceItem } from '../types';
+import { MatrizPerformanceItem, StoreMaster, StoreOperation } from '../types';
+import { IndexedDBService } from '../lib/indexedDb';
 
 export interface SyncResult {
   success: boolean;
   importedCount: number;
+  storesCount?: number;
+  planoCount?: number;
+  metricsCount?: number;
   error?: string;
   timestamp: string;
+  details?: string;
 }
 
 export interface ConnectionDetail {
@@ -48,17 +53,20 @@ function getCurrentWeekNumber(): number {
 
 export class ConexoesService {
   /**
-   * Sincroniza a planilha pública da Controladoria e o Plano de Carregamento no Supabase/IndexedDB.
+   * Sincroniza a planilha pública da Controladoria, o Plano de Carregamento e as Lojas no Supabase/IndexedDB.
    */
   public static async syncControladoriaSheet(): Promise<SyncResult> {
+    const now = new Date();
     try {
       let importedCount = 0;
+      let metricsCount = 0;
+      let planoCount = 0;
+      let storesCount = 0;
 
       // 1. Sincroniza Matriz de Performance
       const metricsMap: PublicSpreadsheetMetricsMap = await fetchPublicSpreadsheetMetrics();
       const sectorIds = Object.keys(metricsMap);
       const recordsToUpsert: Partial<MatrizPerformanceItem>[] = [];
-      const now = new Date();
       const currentYear = now.getFullYear();
       const currentWeek = getCurrentWeekNumber();
 
@@ -86,6 +94,7 @@ export class ConexoesService {
           aderencia: metric.bsi || 100,
           updated_at: now.toISOString(),
         });
+        metricsCount++;
         importedCount++;
       }
 
@@ -93,10 +102,14 @@ export class ConexoesService {
         await SupabaseService.upsert("matriz_performance", recordsToUpsert, "id");
       }
 
-      // 2. Sincroniza Plano de Carregamento
+      // 2. Sincroniza Plano de Carregamento e Lojas Master/Operações
       try {
         const planoRows = await fetchPlanoCarregamento();
         if (planoRows.length > 0) {
+          planoCount = planoRows.length;
+          importedCount += planoRows.length;
+
+          // A. Registros de plano_carregamento
           const planoRecords = planoRows.map((row) => ({
             id: `${row.data}_${row.codLoja}_${row.horaCarregamento}`,
             data: row.data,
@@ -106,17 +119,112 @@ export class ConexoesService {
             nome_loja: row.nomeLoja,
           }));
           await SupabaseService.upsert("plano_carregamento", planoRecords, "id");
-          importedCount += planoRows.length;
+
+          // B. Extrair e sincronizar Lojas Master (store_master)
+          const distinctStoresMap = new Map<string, { codLoja: string; nomeLoja: string; horaCarregamento: string }>();
+          planoRows.forEach((r) => {
+            if (r.codLoja && !distinctStoresMap.has(r.codLoja)) {
+              distinctStoresMap.set(r.codLoja, {
+                codLoja: r.codLoja,
+                nomeLoja: r.nomeLoja || `Loja ${r.codLoja}`,
+                horaCarregamento: r.horaCarregamento || '14:00'
+              });
+            }
+          });
+
+          const masterRecords: StoreMaster[] = Array.from(distinctStoresMap.values()).map((s) => ({
+            id: s.codLoja,
+            nome: s.nomeLoja,
+            cidade: s.nomeLoja.includes('-') ? s.nomeLoja.split('-')[1]?.trim() : 'São Paulo',
+            uf: 'SP',
+            transportadoraPadrao: 'JADLOG',
+            horarioCarregamentoPadrao: s.horaCarregamento,
+            observacoes: 'Sincronizado automaticamente via Plano de Carregamento'
+          }));
+
+          if (masterRecords.length > 0) {
+            storesCount = masterRecords.length;
+            await SupabaseService.upsert("store_master", masterRecords, "id");
+            for (const sm of masterRecords) {
+              await IndexedDBService.put("store_master", sm);
+            }
+          }
+
+          // C. Sincronizar Operações de Lojas (store_operations) para alimentar o Radar Live
+          const opsToUpsert: StoreOperation[] = [];
+          for (const row of planoRows) {
+            const opId = `${row.codLoja}_${row.data}_S87`;
+            const op: StoreOperation = {
+              id: opId,
+              programacaoId: row.data,
+              lojaId: row.codLoja,
+              nomeLoja: row.nomeLoja || `Loja ${row.codLoja}`,
+              setor: 'S87',
+              transportadora: 'JADLOG',
+              corte: row.horaCarregamento || '12:00',
+              carregamento: row.horaCarregamento || '15:00',
+              volumes: 150,
+              enderecos: 8,
+              statusSoltura: 'Não Solta',
+              horarioSoltura: null,
+              soltoPor: null,
+              statusColeta: 'Não iniciada',
+              horarioColeta: null,
+              coletadoPor: null,
+              statusCarregamento: 'Não carregada',
+              horarioCarregamento: row.horaCarregamento || null,
+              carregadoPor: null,
+              statusExpedicao: 'Pendente',
+              perdeuCorte: false,
+              updated_at: now.toISOString(),
+              updated_by: 'ConexoesSync',
+            };
+            opsToUpsert.push(op);
+          }
+
+          if (opsToUpsert.length > 0) {
+            await SupabaseService.upsert("store_operations", opsToUpsert, "id");
+            for (const op of opsToUpsert) {
+              await IndexedDBService.put("store_operations", op);
+            }
+
+            // Atualiza store reativa de operações se estiver no browser
+            try {
+              const { useStoreOperations } = await import('../stores/useStoreOperations');
+              const currentOps = useStoreOperations.getState().operations;
+              const nextOps = { ...currentOps };
+              opsToUpsert.forEach((op) => {
+                nextOps[op.id] = { ...(nextOps[op.id] || {}), ...op };
+              });
+              useStoreOperations.getState().setOperations(nextOps);
+            } catch (e) {
+              console.warn('[ConexoesService] Aviso ao atualizar useStoreOperations:', e);
+            }
+
+            // Atualiza store reativa de lojas master
+            try {
+              const { useStoreMaster } = await import('../stores/useStoreMaster');
+              await useStoreMaster.getState().loadStores();
+            } catch (e) {
+              console.warn('[ConexoesService] Aviso ao atualizar useStoreMaster:', e);
+            }
+          }
         }
       } catch (e) {
-        console.warn("[ConexoesService] Aviso ao sincronizar plano de carregamento:", e);
+        console.warn("[ConexoesService] Aviso ao sincronizar plano e lojas:", e);
       }
 
       const dataFim = new Date().toISOString();
-      const resultObj = {
+      const details = `${metricsCount} setores atualizados, ${storesCount} lojas cadastradas e ${planoCount} horários de carga sincronizados.`;
+      
+      const resultObj: SyncResult = {
         success: true,
         importedCount,
+        storesCount,
+        planoCount,
+        metricsCount,
         timestamp: new Date().toLocaleTimeString('pt-BR'),
+        details
       };
       
       try {
@@ -127,6 +235,7 @@ export class ConexoesService {
           data_fim: dataFim,
           status: 'success',
           registros_afetados: importedCount,
+          mensagem_erro: details,
           created_at: dataFim
         }], 'id');
       } catch (logErr) {
@@ -143,7 +252,7 @@ export class ConexoesService {
         await SupabaseService.upsert("sync_logs", [{
           id: stringToUuid(`log_err_${dataFim}`),
           conexao_id: 'google_sheets_controladoria',
-          data_inicio: dataFim,
+          data_inicio: now.toISOString(),
           data_fim: dataFim,
           status: 'error',
           registros_afetados: 0,
@@ -196,3 +305,4 @@ export class ConexoesService {
     }
   }
 }
+

@@ -19,7 +19,12 @@ import {
   Grid,
   Filter,
   Sliders,
-  Sparkles
+  Sparkles,
+  Store,
+  Building2,
+  Check,
+  ChevronDown,
+  BookOpen
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { formatToBrasiliaTime, getBrasiliaTimeString } from "../utils/time";
@@ -27,6 +32,7 @@ import { useStoreOperations } from "../stores/useStoreOperations";
 import { useAtividadeLoja } from "../stores/useAtividadeLoja";
 import { useUserStore } from "../stores/useUserStore";
 import { useNotificationStore } from "../stores/useNotificationStore";
+import { useStoreMaster } from "../stores/useStoreMaster";
 import { StoreService } from "../services/storeService";
 import { fetchPlanoCarregamento, PlanoCarregamentoRow } from "../lib/googleSheetsPublicSource";
 import { BusinessRules } from "../services/businessRules";
@@ -77,6 +83,12 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
   const [newCorte, setNewCorte] = useState("08:00");
   const [newCarregamento, setNewCarregamento] = useState("08:30");
   const [newTransportadora, setNewTransportadora] = useState("MOBI");
+
+  // Master Store Catalog State
+  const { stores: masterStores, addStore: addMasterStore, loadStores: loadMasterStores } = useStoreMaster();
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [showStoreSuggestions, setShowStoreSuggestions] = useState(false);
 
   // Notificações
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -302,6 +314,19 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
     };
 
     await StoreService.commitImportedRows([row], currentUser);
+
+    // Auto-register in Master Store database if not present
+    if (!masterStores.some((s) => s.id === row.lojaId)) {
+      addMasterStore({
+        id: row.lojaId,
+        nome: row.nomeLoja,
+        cidade: row.cidade,
+        uf: row.uf,
+        transportadoraPadrao: row.transportadora,
+        observacoes: "Adicionada via Radar Live"
+      }).catch(err => console.warn("Failed to auto-register store in Master DB", err));
+    }
+
     const opId = `${row.lojaId}_${row.dataProgramacao}_${row.setor}`;
     upsertOperation({
       id: opId,
@@ -430,9 +455,24 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
             {onlineState ? <Wifi size={11} /> : <WifiOff size={11} />}
             <span>{onlineState ? "NUVEM LIVE" : "MODO LOCAL"}</span>
             {offlineQueueLength > 0 && (
-              <span className="ml-1 bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded text-[9px]">
-                {offlineQueueLength} pendentes
-              </span>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  triggerFeedback("Sincronizando fila offline com o servidor...");
+                  await FirebaseService.flushOfflineQueue();
+                  const remaining = FirebaseService.getQueueLength();
+                  setOfflineQueueLength(remaining);
+                  if (remaining === 0) {
+                    triggerFeedback("Fila offline sincronizada com sucesso!");
+                  } else {
+                    triggerFeedback(`${remaining} item(ns) restante(s) na fila.`);
+                  }
+                }}
+                className="ml-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-2 py-0.5 rounded text-[9px] font-bold cursor-pointer transition-colors border border-amber-500/30"
+                title="Clique para forçar envio imediato"
+              >
+                {offlineQueueLength} pendentes ↻
+              </button>
             )}
           </div>
         </div>
@@ -811,16 +851,67 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
 
             {showAddForm && (
               <form onSubmit={handleManualAddSubmit} className="space-y-3 pt-2">
-                <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] text-indigo-400 font-bold uppercase tracking-wider">
+                    Origem de Dados Master
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      loadMasterStores();
+                      setIsCatalogModalOpen(true);
+                    }}
+                    className="text-[9px] text-indigo-300 hover:text-white bg-indigo-500/20 hover:bg-indigo-500/30 px-2 py-0.5 rounded flex items-center gap-1 font-mono transition"
+                  >
+                    <BookOpen size={10} />
+                    Catálogo ({masterStores.length})
+                  </button>
+                </div>
+
+                <div className="relative">
                   <label className="text-[9px] text-zinc-400 font-bold uppercase block mb-1">Cód. Loja*</label>
                   <input
                     type="text"
                     required
                     value={newLojaId}
-                    onChange={(e) => setNewLojaId(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewLojaId(val);
+                      setShowStoreSuggestions(true);
+                      const match = masterStores.find(s => s.id.toLowerCase() === val.trim().toLowerCase());
+                      if (match) {
+                        setNewLojaNome(match.nome);
+                        if (match.transportadoraPadrao) setNewTransportadora(match.transportadoraPadrao);
+                      }
+                    }}
+                    onFocus={() => setShowStoreSuggestions(true)}
                     placeholder="Ex: 2722"
-                    className="w-full bg-black/40 border border-white/5 rounded p-2 text-xs text-white font-mono"
+                    className="w-full bg-black/40 border border-white/5 rounded p-2 text-xs text-white font-mono uppercase"
                   />
+
+                  {/* Autocomplete suggestions */}
+                  {showStoreSuggestions && newLojaId.length > 0 && (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#161622] border border-white/10 rounded-lg shadow-xl max-h-36 overflow-y-auto custom-scrollbar">
+                      {masterStores
+                        .filter(s => s.id.toLowerCase().includes(newLojaId.toLowerCase()) || s.nome.toLowerCase().includes(newLojaId.toLowerCase()))
+                        .slice(0, 6)
+                        .map(st => (
+                          <div
+                            key={st.id}
+                            onMouseDown={() => {
+                              setNewLojaId(st.id);
+                              setNewLojaNome(st.nome);
+                              if (st.transportadoraPadrao) setNewTransportadora(st.transportadoraPadrao);
+                              setShowStoreSuggestions(false);
+                            }}
+                            className="p-2 hover:bg-indigo-600/20 cursor-pointer text-xs flex items-center justify-between border-b border-white/5 last:border-0"
+                          >
+                            <span className="font-mono font-bold text-indigo-400">{st.id}</span>
+                            <span className="text-zinc-300 truncate max-w-[140px]">{st.nome}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-[9px] text-zinc-400 font-bold uppercase block mb-1">Nome da Loja*</label>
@@ -830,7 +921,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
                     value={newLojaNome}
                     onChange={(e) => setNewLojaNome(e.target.value)}
                     placeholder="Ex: FLORIPA CONTINENTE"
-                    className="w-full bg-black/40 border border-white/5 rounded p-2 text-xs text-white"
+                    className="w-full bg-black/40 border border-white/5 rounded p-2 text-xs text-white uppercase"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -846,6 +937,26 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
                       <option value="S89">S89</option>
                       <option value="S90">S90</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-zinc-400 font-bold uppercase block mb-1">Transportadora</label>
+                    <input
+                      type="text"
+                      value={newTransportadora}
+                      onChange={(e) => setNewTransportadora(e.target.value)}
+                      className="w-full bg-black/40 border border-white/5 rounded p-2 text-xs text-white font-mono uppercase"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[9px] text-zinc-400 font-bold uppercase block mb-1">Corte</label>
+                    <input
+                      type="text"
+                      value={newCorte}
+                      onChange={(e) => setNewCorte(e.target.value)}
+                      className="w-full bg-black/40 border border-white/5 rounded p-2 text-xs text-white font-mono"
+                    />
                   </div>
                   <div>
                     <label className="text-[9px] text-zinc-400 font-bold uppercase block mb-1">Carga</label>
@@ -870,6 +981,108 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
         </div>
 
       </div>
+
+      {/* MODAL: CATÁLOGO MASTER DE LOJAS */}
+      <AnimatePresence>
+        {isCatalogModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#121218] border border-white/10 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/[0.02]">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg">
+                    <Store size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                      Catálogo Master de Lojas ({masterStores.length} registradas)
+                    </h3>
+                    <p className="text-[10px] text-zinc-500">
+                      Selecione uma loja para preencher a rota automaticamente
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsCatalogModalOpen(false)}
+                  className="text-zinc-500 hover:text-white p-1 rounded transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Search Bar */}
+              <div className="p-4 border-b border-white/5 bg-black/30">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                  <input
+                    type="text"
+                    value={catalogSearch}
+                    onChange={(e) => setCatalogSearch(e.target.value)}
+                    placeholder="Filtrar por código, nome ou cidade..."
+                    className="w-full bg-zinc-900 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50"
+                  />
+                </div>
+              </div>
+
+              {/* Stores List */}
+              <div className="p-4 overflow-y-auto space-y-2 flex-1 custom-scrollbar">
+                {(() => {
+                  const filtered = masterStores.filter(s => {
+                    const q = catalogSearch.toLowerCase();
+                    return !q || s.id.toLowerCase().includes(q) || s.nome.toLowerCase().includes(q) || (s.cidade && s.cidade.toLowerCase().includes(q));
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="p-8 text-center text-zinc-500 text-xs uppercase font-bold">
+                        Nenhuma loja encontrada para "{catalogSearch}".
+                      </div>
+                    );
+                  }
+
+                  return filtered.map((st) => (
+                    <div
+                      key={st.id}
+                      onClick={() => {
+                        setNewLojaId(st.id);
+                        setNewLojaNome(st.nome);
+                        if (st.transportadoraPadrao) setNewTransportadora(st.transportadoraPadrao);
+                        setIsCatalogModalOpen(false);
+                        setShowAddForm(true);
+                      }}
+                      className="p-3 bg-white/[0.02] hover:bg-indigo-600/10 border border-white/5 hover:border-indigo-500/30 rounded-xl cursor-pointer transition flex items-center justify-between group"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-indigo-400 text-xs bg-indigo-500/10 px-1.5 py-0.5 rounded">
+                            {st.id}
+                          </span>
+                          <span className="font-bold text-white text-xs uppercase group-hover:text-indigo-300 transition">
+                            {st.nome}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-zinc-500">
+                          {st.cidade || "São Paulo"} - {st.uf || "SP"} | 🚚 {st.transportadoraPadrao || "JADLOG"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="bg-indigo-600/20 group-hover:bg-indigo-600 text-indigo-400 group-hover:text-white px-3 py-1 rounded text-[10px] font-bold uppercase transition"
+                      >
+                        Selecionar
+                      </button>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* MODAL DE CONFIRMAÇÃO DE RESET */}
       {isConfirmModalOpen && (

@@ -915,6 +915,16 @@ export class SupabaseService {
     return { unsubscribe: unsub };
   }
 
+  public static clearOfflineQueue(): void {
+    try {
+      localStorage.removeItem("radar_offline_queue");
+      this.queueCooldownUntil = 0;
+      console.log("[Supabase Sync] Fila offline limpa com sucesso.");
+    } catch (e) {
+      console.warn("[Supabase Sync] Erro ao limpar fila offline:", e);
+    }
+  }
+
   public static async flushOfflineQueue(): Promise<void> {
     if (this.isProcessingQueue) return;
     if (!isOnline()) return;
@@ -933,12 +943,13 @@ export class SupabaseService {
 
       const queue = JSON.parse(queueStr);
       if (!Array.isArray(queue) || queue.length === 0) {
+        localStorage.removeItem("radar_offline_queue");
         this.isProcessingQueue = false;
         return;
       }
 
       console.log(`[Supabase Sync] Processando ${queue.length} alterações na fila de salvamento...`);
-      const remainingQueue = [];
+      const remainingQueue: any[] = [];
 
       for (let i = 0; i < queue.length; i++) {
         const item = queue[i];
@@ -955,6 +966,7 @@ export class SupabaseService {
         const realTbl = item.realTable || this.getRealTableName(tbl);
         const pKey = item.primaryKey || item.keyField || 'id';
         const act = String(item.action || 'upsert').toLowerCase();
+        const currentAttempts = Number(item.attempts || 0);
 
         try {
           const client = this.getClient() as any;
@@ -1011,7 +1023,14 @@ export class SupabaseService {
                 continue;
               }
 
-              throw error;
+              if (currentAttempts >= 2) {
+                console.warn(`[Supabase Sync] Item descartado da fila após múltiplas tentativas com erro: ${errMsg} (tabela: ${realTbl})`);
+                continue;
+              }
+
+              item.attempts = currentAttempts + 1;
+              remainingQueue.push(item);
+              continue;
             }
           } else if (act === 'delete' && item.keyVal) {
             const { error } = await client
@@ -1023,22 +1042,34 @@ export class SupabaseService {
               const errMsg = String(error.message || '');
               const errCode = String(error.code || '');
 
-              
               if (errCode === '42501' || errMsg.includes('row-level security') || errMsg.includes('RLS')) {
                 console.warn(`[Supabase Sync] Permissão RLS restrita na tabela "${realTbl}" (42501). Exclusão mantida no cache local e descartada da fila remota.`);
                 continue;
               }
 
-if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
+              if (errCode === 'PGRST205' || errCode === '42P01' || errMsg.includes('Could not find')) {
                 continue;
               }
-              throw error;
+
+              if (currentAttempts >= 2) {
+                console.warn(`[Supabase Sync] Exclusão descartada da fila após 3 tentativas com erro: ${errMsg}`);
+                continue;
+              }
+
+              item.attempts = currentAttempts + 1;
+              remainingQueue.push(item);
+              continue;
             }
           }
         } catch (err: unknown) {
-          console.warn(`[Supabase Sync] Instabilidade de rede ao sincronizar item para "${tbl}". Ativando cooldown de 4s.`, err);
-          this.queueCooldownUntil = Date.now() + 4000;
-          remainingQueue.push(...queue.slice(i));
+          console.warn(`[Supabase Sync] Instabilidade de rede ao sincronizar item para "${tbl}". Ativando cooldown de 3s.`, err);
+          this.queueCooldownUntil = Date.now() + 3000;
+          if (currentAttempts < 2) {
+            item.attempts = currentAttempts + 1;
+            remainingQueue.push(item, ...queue.slice(i + 1));
+          } else {
+            remainingQueue.push(...queue.slice(i + 1));
+          }
           break;
         }
       }

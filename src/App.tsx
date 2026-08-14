@@ -52,6 +52,7 @@ import { useCollaboratorStore } from "./stores/useCollaboratorStore";
 import { useUIStore } from "./stores/useUIStore";
 import { realtimeSync } from "./services/realtimeSyncService";
 import { SupabaseService as FirebaseService } from "./lib/supabaseService";
+import { StoreService } from "./services/storeService";
 
 // Layout & Modular UI Components
 import { OverrideTab } from "./components/OverrideTab";
@@ -284,8 +285,9 @@ function App() {
   // Zustand Operations Store for Radar live sync
   const operations = useStoreOperations((state) => state.operations);
 
-  // Registrar handler de erros de sincronização offline
+  // Registrar handler de erros de sincronização offline e inicializar lojas master
   useEffect(() => {
+    StoreService.initMasterStores();
     const unsub = FirebaseService.onSyncError((alertLog) => {
       useHistoryStore.getState().setAlerts([alertLog, ...useHistoryStore.getState().alerts]);
     });

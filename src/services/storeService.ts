@@ -10,27 +10,11 @@ export class StoreService {
    */
   public static async initMasterStores(): Promise<StoreMaster[]> {
     try {
-      await SupabaseService.garantirAuthPronto();
-      if (!auth.currentUser) {
-        console.warn('[StoreService] Usuário não está autenticado. Ignorando seeding/inicialização do store_master.');
-        return [];
-      }
-
-      const existing = await SupabaseService.fetchTable<StoreMaster>('store_master', []);
-      if (existing && existing.length > 0) {
-        return existing;
-      }
-
-      // Check role to prevent RLS errors on insert
-      const userStore = (await import('../stores/useUserStore')).useUserStore;
-      const role = userStore.getState().currentRole;
-      if (role !== 'admin' && role !== 'coordenador') {
-         console.warn('[StoreService] Usuário sem permissão para semear store_master (RLS).');
-         return [];
-      }
-      
-      // Seed master stores
-      const seeds: StoreMaster[] = masterCadastroLojas.map((m) => ({
+      const { useStoreMaster } = await import('../stores/useStoreMaster');
+      return await useStoreMaster.getState().loadStores();
+    } catch (e) {
+      console.error('Error seeding/loading store master', e);
+      return masterCadastroLojas.map((m) => ({
         id: m.id,
         nome: m.nome,
         cidade: m.id === "2722" ? "Florianópolis" : m.id === "2360" ? "Osasco" : m.id === "1250" ? "São José dos Campos" : m.id === "1540" ? "Curitiba" : m.id === "1990" ? "Porto Alegre" : "Campinas",
@@ -38,24 +22,22 @@ export class StoreService {
         transportadoraPadrao: "JADLOG",
         observacoes: "Importado via inicialização padrão"
       }));
+    }
+  }
 
-      // Cache locally in IndexedDB first
-      const { IndexedDBService } = await import('../lib/indexedDb');
-      for (const s of seeds) {
-        await IndexedDBService.put('store_master', s);
+  /**
+   * Retrieves all master stores currently available
+   */
+  public static async getAllMasterStores(): Promise<StoreMaster[]> {
+    try {
+      const { useStoreMaster } = await import('../stores/useStoreMaster');
+      const stores = useStoreMaster.getState().stores;
+      if (stores && stores.length > 0) {
+        return stores;
       }
-
-      // Try remote upsert safely
-      for (const s of seeds) {
-        try {
-          await SupabaseService.upsertRecord('store_master', s, 'id');
-        } catch (err) {
-          console.warn('[StoreService] RLS at store_master, seeds maintained in local cache.', err);
-        }
-      }
-      return seeds;
+      return await useStoreMaster.getState().loadStores();
     } catch (e) {
-      console.error('Error seeding store master', e);
+      console.warn('Error fetching all master stores, using fallback', e);
       return [];
     }
   }

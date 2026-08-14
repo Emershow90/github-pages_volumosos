@@ -10,23 +10,30 @@ import {
   ExternalLink, 
   Layers, 
   Trash2, 
-  Zap,
-  Activity,
-  Table,
-  ListOrdered,
-  Webhook,
-  Terminal,
-  Save,
-  Plus
+  Zap, 
+  Activity, 
+  Table, 
+  ListOrdered, 
+  Webhook, 
+  Terminal, 
+  Save, 
+  Plus, 
+  Store, 
+  Search, 
+  AlertTriangle,
+  RotateCcw,
+  Check
 } from 'lucide-react';
 import { ConexoesService, SyncResult, ConnectionDetail } from '../services/conexoesService';
 import { useToast } from '../hooks/useToast';
 import { SupabaseService } from '../lib/supabaseService';
 import { formatToBrasiliaTime } from '../utils/time';
+import { useStoreMaster } from '../stores/useStoreMaster';
+import { useStoreOperations } from '../stores/useStoreOperations';
 
 export const ConexoesTab: React.FC = () => {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<'overview' | 'webhooks' | 'logs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'lojas' | 'logs' | 'webhooks'>('overview');
   
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [isTestingDb, setIsTestingDb] = useState(false);
@@ -36,16 +43,32 @@ export const ConexoesTab: React.FC = () => {
   const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null);
   const [tableCounts, setTableCounts] = useState<Record<string, number>>({});
   const [loadingTables, setLoadingTables] = useState(false);
+  const [offlineQueueCount, setOfflineQueueCount] = useState<number>(SupabaseService.getQueueLength());
+  const [isFlushingQueue, setIsFlushingQueue] = useState(false);
 
   const [syncLogs, setSyncLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logFilter, setLogFilter] = useState<'all' | 'error' | 'success'>('all');
+  const [retryingLogId, setRetryingLogId] = useState<string | null>(null);
 
   const [webhooks, setWebhooks] = useState<any[]>([]);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookName, setWebhookName] = useState('');
 
+  // Lojas Tab state
+  const { stores, loadStores } = useStoreMaster();
+  const operations = useStoreOperations((s) => s.operations);
+  const [searchStore, setSearchStore] = useState('');
+
   const ATIVIDADE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=0&single=true&output=csv';
   const PLANO_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv';
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setOfflineQueueCount(SupabaseService.getQueueLength());
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   const connections: ConnectionDetail[] = [
     {
@@ -60,12 +83,13 @@ export const ConexoesTab: React.FC = () => {
     },
     {
       id: 'google_sheets_plano',
-      name: 'Planilha Plano de Carregamento (Programação Logística)',
+      name: 'Planilha Plano de Carregamento & Lojas (Logística)',
       type: 'google_sheets',
       status: sheetStatus ? (sheetStatus.healthy ? 'connected' : 'error') : 'connected',
       lastSync: sheetStatus ? `${sheetStatus.latencyMs}ms de latência` : 'Automático (On demand)',
-      description: 'Aba/Planilha exclusiva do Plano de Carregamento de Lojas e Horários de Corte.',
+      description: 'Aba/Planilha exclusiva do Plano de Carregamento de Lojas, Cortes e Transportadoras.',
       endpointUrl: PLANO_SHEET_URL,
+      recordCount: stores.length,
     },
     {
       id: 'supabase_database',
@@ -73,7 +97,7 @@ export const ConexoesTab: React.FC = () => {
       type: 'database',
       status: dbStatus ? (dbStatus.healthy ? 'connected' : 'disconnected') : 'connected',
       lastSync: dbStatus ? `${dbStatus.latencyMs}ms de latência` : 'Realtime Ativo (onSnapshot)',
-      description: 'Persistência em nuvem centralizada para setores, colaboradores, históricos e escalas.',
+      description: 'Persistência em nuvem centralizada para setores, colaboradores, históricos, lojas e escalas.',
       recordCount: (Object.values(tableCounts) as number[]).reduce((a: number, b: number) => a + b, 0),
     },
     {
@@ -81,8 +105,9 @@ export const ConexoesTab: React.FC = () => {
       name: 'IndexedDB Local Cache & Offline Queue',
       type: 'indexeddb',
       status: 'connected',
-      lastSync: 'Sincronizado localmente',
+      lastSync: offlineQueueCount === 0 ? 'Fila 100% sincronizada (0 pendentes)' : `${offlineQueueCount} alteração(ões) pendente(s)`,
       description: 'Armazenamento offline de alta performance com resiliência de queda de conexão.',
+      recordCount: offlineQueueCount,
     },
   ];
 
@@ -112,7 +137,7 @@ export const ConexoesTab: React.FC = () => {
     try {
       const logs = await SupabaseService.fetchTable('sync_logs') as any[];
       logs.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-      setSyncLogs(logs.slice(0, 50));
+      setSyncLogs(logs.slice(0, 100));
     } catch (err) {
       console.warn("Could not load sync logs", err);
     } finally {
@@ -126,15 +151,49 @@ export const ConexoesTab: React.FC = () => {
       const result = await ConexoesService.syncControladoriaSheet();
       setLastSyncResult(result);
       if (result.success) {
-        toast.success(`Sincronização concluída! ${result.importedCount} registros atualizados.`);
-        loadTableCounts();
-        loadSyncLogs();
+        toast.success(`Sincronização concluída! ${result.importedCount} registros (${result.storesCount || 0} lojas cadastradas).`);
+        await loadTableCounts();
+        await loadStores();
+        await loadSyncLogs();
       } else {
         toast.error(`Falha na sincronização: ${result.error || 'Erro desconhecido'}`);
-        loadSyncLogs();
+        await loadSyncLogs();
       }
     } catch (err) {
       toast.error(`Erro: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsSyncingSheets(false);
+    }
+  };
+
+  const handleRetryLog = async (logId: string) => {
+    setRetryingLogId(logId);
+    try {
+      const result = await ConexoesService.syncControladoriaSheet();
+      if (result.success) {
+        toast.success(`Registro reprocessado com sucesso! ${result.importedCount} registros atualizados.`);
+        await loadTableCounts();
+        await loadStores();
+        await loadSyncLogs();
+      } else {
+        toast.error(`Falha ao reprocessar: ${result.error || 'Erro desconhecido'}`);
+        await loadSyncLogs();
+      }
+    } catch (e) {
+      toast.error('Erro ao reenviar sincronização.');
+    } finally {
+      setRetryingLogId(null);
+    }
+  };
+
+  const handleRetryAllFailed = async () => {
+    setIsSyncingSheets(true);
+    try {
+      await handleSyncSheets();
+      await SupabaseService.syncOfflineQueue();
+      toast.success('Todas as sincronizações pendentes foram reexecutadas.');
+    } catch {
+      toast.error('Erro ao reprocessar todas as falhas.');
     } finally {
       setIsSyncingSheets(false);
     }
@@ -149,10 +208,39 @@ export const ConexoesTab: React.FC = () => {
     }
   };
 
+  const handleFlushOfflineQueue = async () => {
+    setIsFlushingQueue(true);
+    try {
+      await SupabaseService.flushOfflineQueue();
+      const remaining = SupabaseService.getQueueLength();
+      setOfflineQueueCount(remaining);
+      if (remaining === 0) {
+        toast.success('Fila offline 100% sincronizada com a nuvem!');
+      } else {
+        toast.info(`Sincronização em andamento. ${remaining} itens restantes.`);
+      }
+      loadTableCounts();
+    } catch {
+      toast.error('Erro ao processar fila offline.');
+    } finally {
+      setIsFlushingQueue(false);
+    }
+  };
+
+  const handleClearOfflineQueue = () => {
+    try {
+      SupabaseService.clearOfflineQueue();
+      setOfflineQueueCount(0);
+      toast.success('Fila de pendentes limpa com sucesso!');
+    } catch {
+      toast.error('Erro ao limpar fila de pendentes.');
+    }
+  };
+
   const loadTableCounts = async () => {
     setLoadingTables(true);
     try {
-      const [setores, colabs, matriz, historico, escalas, plano, ops] = await Promise.all([
+      const [setores, colabs, matriz, historico, escalas, plano, ops, storesMaster] = await Promise.all([
         SupabaseService.fetchTable('setores').catch(() => []),
         SupabaseService.fetchTable('colaboradores').catch(() => []),
         SupabaseService.fetchTable('matriz_performance').catch(() => []),
@@ -160,6 +248,7 @@ export const ConexoesTab: React.FC = () => {
         SupabaseService.fetchTable('escalas_referentes').catch(() => []),
         SupabaseService.fetchTable('plano_carregamento').catch(() => []),
         SupabaseService.fetchTable('store_operations').catch(() => []),
+        SupabaseService.fetchTable('store_master').catch(() => []),
       ]);
       setTableCounts({
         setores: setores.length,
@@ -169,6 +258,7 @@ export const ConexoesTab: React.FC = () => {
         escalas_referentes: escalas.length,
         plano_carregamento: plano.length,
         store_operations: ops.length,
+        store_master: storesMaster.length,
       });
     } catch (err) {
       console.error('[ConexoesTab] Erro ao carregar registros das tabelas:', err);
@@ -185,7 +275,7 @@ export const ConexoesTab: React.FC = () => {
     } catch (err) {
       console.warn("Could not load webhooks", err);
     }
-  }
+  };
 
   const handleSaveWebhook = async () => {
     if (!webhookName || !webhookUrl) {
@@ -208,7 +298,7 @@ export const ConexoesTab: React.FC = () => {
     } catch (err) {
       toast.error('Erro ao salvar webhook.');
     }
-  }
+  };
 
   const handleDeleteWebhook = async (id: string) => {
     try {
@@ -218,14 +308,29 @@ export const ConexoesTab: React.FC = () => {
     } catch (err) {
       toast.error('Erro ao remover webhook.');
     }
-  }
+  };
 
   useEffect(() => {
     loadTableCounts();
     handleTestDatabase();
     loadSyncLogs();
     loadWebhooks();
+    loadStores();
   }, []);
+
+  const filteredStores = stores.filter((s) => 
+    s.id.toLowerCase().includes(searchStore.toLowerCase()) ||
+    s.nome.toLowerCase().includes(searchStore.toLowerCase()) ||
+    (s.cidade && s.cidade.toLowerCase().includes(searchStore.toLowerCase()))
+  );
+
+  const filteredLogs = syncLogs.filter((l) => {
+    if (logFilter === 'error') return l.status === 'error';
+    if (logFilter === 'success') return l.status === 'success';
+    return true;
+  });
+
+  const failedLogsCount = syncLogs.filter((l) => l.status === 'error').length;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -239,7 +344,7 @@ export const ConexoesTab: React.FC = () => {
             <div>
               <h2 className="text-xl font-bold text-white tracking-tight">Conexões & Integrações Operacionais</h2>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Gerencie fontes de dados externas, status de webhooks e histórico de sincronização.
+                Sincronização de planilhas, plano de carregamento, cadastro de lojas e logs de banco de dados.
               </p>
             </div>
           </div>
@@ -251,7 +356,7 @@ export const ConexoesTab: React.FC = () => {
             className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-lg shadow-purple-600/20 cursor-pointer"
           >
             <RefreshCw className={`w-4 h-4 ${isSyncingSheets ? 'animate-spin' : ''}`} />
-            {isSyncingSheets ? 'Sincronizando...' : 'Sincronizar Planilhas'}
+            {isSyncingSheets ? 'Sincronizando Lojas & Planilhas...' : 'Sincronizar Lojas & Planilhas'}
           </button>
         </div>
       </div>
@@ -270,15 +375,18 @@ export const ConexoesTab: React.FC = () => {
           Visão Geral & Status
         </button>
         <button
-          onClick={() => setActiveTab('webhooks')}
+          onClick={() => setActiveTab('lojas')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-            activeTab === 'webhooks'
+            activeTab === 'lojas'
               ? 'bg-zinc-800 text-white shadow-sm'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
           }`}
         >
-          <Webhook className="w-4 h-4" />
-          Integrações (Webhooks)
+          <Store className="w-4 h-4 text-emerald-400" />
+          <span>Lojas & Plano de Carga</span>
+          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-mono px-1.5 py-0.5 rounded-full">
+            {stores.length}
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('logs')}
@@ -288,8 +396,24 @@ export const ConexoesTab: React.FC = () => {
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
           }`}
         >
-          <Terminal className="w-4 h-4" />
-          Logs de Sincronização
+          <Terminal className="w-4 h-4 text-purple-400" />
+          <span>Logs & Reenvio de Falhas</span>
+          {failedLogsCount > 0 && (
+            <span className="bg-rose-500/20 text-rose-400 text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold">
+              {failedLogsCount} falhas
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('webhooks')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+            activeTab === 'webhooks'
+              ? 'bg-zinc-800 text-white shadow-sm'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+          }`}
+        >
+          <Webhook className="w-4 h-4 text-cyan-400" />
+          Integrações (Webhooks)
         </button>
       </div>
 
@@ -370,7 +494,7 @@ export const ConexoesTab: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Database className="w-5 h-5 text-purple-400" />
-                  <h3 className="text-sm font-bold text-white">Mapeamento de Tabelas</h3>
+                  <h3 className="text-sm font-bold text-white">Mapeamento de Tabelas do Banco de Dados</h3>
                 </div>
                 <button
                   onClick={loadTableCounts}
@@ -381,15 +505,16 @@ export const ConexoesTab: React.FC = () => {
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingTables ? 'animate-spin' : ''}`} />
                 </button>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
+                  { label: 'Lojas Master', key: 'store_master', color: 'text-emerald-400' },
+                  { label: 'Operações de Loja', key: 'store_operations', color: 'text-indigo-400' },
+                  { label: 'Plano Carregamento', key: 'plano_carregamento', color: 'text-rose-400' },
                   { label: 'Setores', key: 'setores', color: 'text-blue-400' },
-                  { label: 'Colaboradores', key: 'colaboradores', color: 'text-emerald-400' },
+                  { label: 'Colaboradores', key: 'colaboradores', color: 'text-cyan-400' },
                   { label: 'Matriz Performance', key: 'matriz_performance', color: 'text-purple-400' },
                   { label: 'Histórico Consolidado', key: 'historico_consolidado', color: 'text-amber-400' },
-                  { label: 'Escalas Referentes', key: 'escalas_referentes', color: 'text-cyan-400' },
-                  { label: 'Plano Carregamento', key: 'plano_carregamento', color: 'text-rose-400' },
-                  { label: 'Operações de Loja', key: 'store_operations', color: 'text-indigo-400' },
+                  { label: 'Escalas Referentes', key: 'escalas_referentes', color: 'text-teal-400' },
                 ].map((tbl) => (
                   <div
                     key={tbl.key}
@@ -415,10 +540,25 @@ export const ConexoesTab: React.FC = () => {
                   <h3 className="text-sm font-bold text-white">Ações de Manutenção</h3>
                 </div>
                 <p className="text-xs text-zinc-400 leading-relaxed mb-4">
-                  Executar testes de latência e redefinição de caches locais.
+                  Sincronização imediata de lojas, testes de conectividade e gestão de filas offline.
                 </p>
               </div>
               <div className="space-y-2.5">
+                <button
+                  onClick={handleFlushOfflineQueue}
+                  disabled={isFlushingQueue}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 rounded-xl text-xs font-semibold transition-colors border border-blue-500/30 cursor-pointer"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isFlushingQueue ? 'animate-spin' : ''}`} />
+                  {isFlushingQueue ? 'Sincronizando Fila...' : `Sincronizar Fila (${offlineQueueCount} pendentes)`}
+                </button>
+                <button
+                  onClick={handleClearOfflineQueue}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 rounded-xl text-xs font-medium transition-colors border border-amber-500/20 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Limpar Fila de Pendentes
+                </button>
                 <button
                   onClick={handleTestDatabase}
                   disabled={isTestingDb}
@@ -440,6 +580,206 @@ export const ConexoesTab: React.FC = () => {
         </div>
       )}
 
+      {/* Lojas Sincronizadas Tab */}
+      {activeTab === 'lojas' && (
+        <div className="bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800/80 space-y-6 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Store className="w-5 h-5 text-emerald-400" />
+                Lojas Cadastradas & Sincronizadas ({filteredStores.length} lojas)
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                Lojas sincronizadas a partir da planilha de Plano de Carregamento e cadastradas no Master.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchStore}
+                  onChange={(e) => setSearchStore(e.target.value)}
+                  placeholder="Buscar por código, nome ou cidade..."
+                  className="w-full pl-9 pr-3 py-2 bg-black/40 border border-zinc-800 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500/50"
+                />
+              </div>
+              <button
+                onClick={handleSyncSheets}
+                disabled={isSyncingSheets}
+                className="px-3 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                title="Re-sincronizar Lojas da Planilha"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheets ? 'animate-spin' : ''}`} />
+                Atualizar
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredStores.map((store) => {
+              const matchedOp = Object.values(operations).find(op => op.lojaId === store.id);
+              return (
+                <div
+                  key={store.id}
+                  className="bg-black/30 p-4 rounded-xl border border-zinc-800/80 hover:border-zinc-700 transition-all flex flex-col justify-between space-y-3"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                          #{store.id}
+                        </span>
+                        <span className="text-xs font-bold text-zinc-200">{store.nome}</span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-1">
+                        {store.cidade} - {store.uf} | Transp: {store.transportadoraPadrao || 'JADLOG'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[11px] text-zinc-400">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-zinc-500" />
+                      Carga: {matchedOp?.carregamento || '14:00'}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded text-[10px]">
+                      <Check className="w-3 h-3" /> Master Ativo
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {filteredStores.length === 0 && (
+            <div className="text-center py-12 bg-black/20 rounded-xl border border-dashed border-zinc-800 text-zinc-500 text-xs">
+              Nenhuma loja encontrada para a busca "{searchStore}". Clique em "Sincronizar Lojas & Planilhas" para importar.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Logs & Reenvio de Falhas Tab */}
+      {activeTab === 'logs' && (
+        <div className="bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800/80 animate-in fade-in duration-200 space-y-5">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Terminal className="w-5 h-5 text-purple-400" />
+                Logs Detalhados de Sincronização & Reenvio de Falhas
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Histórico de operações sincronizadas com o banco de dados. Permite ao Administrador reenviar registros que falharam.
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <div className="flex bg-black/40 p-0.5 rounded-lg border border-zinc-800 text-xs">
+                <button
+                  onClick={() => setLogFilter('all')}
+                  className={`px-3 py-1 rounded-md transition-colors ${logFilter === 'all' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                >
+                  Todos ({syncLogs.length})
+                </button>
+                <button
+                  onClick={() => setLogFilter('error')}
+                  className={`px-3 py-1 rounded-md transition-colors ${logFilter === 'error' ? 'bg-rose-500/20 text-rose-300 font-bold' : 'text-zinc-400 hover:text-zinc-200'}`}
+                >
+                  Falhas ({failedLogsCount})
+                </button>
+                <button
+                  onClick={() => setLogFilter('success')}
+                  className={`px-3 py-1 rounded-md transition-colors ${logFilter === 'success' ? 'bg-emerald-500/20 text-emerald-300' : 'text-zinc-400 hover:text-zinc-200'}`}
+                >
+                  Sucessos ({syncLogs.length - failedLogsCount})
+                </button>
+              </div>
+
+              {failedLogsCount > 0 && (
+                <button
+                  onClick={handleRetryAllFailed}
+                  disabled={isSyncingSheets}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${isSyncingSheets ? 'animate-spin' : ''}`} />
+                  Reenviar Todas as Falhas
+                </button>
+              )}
+
+              <button
+                onClick={loadSyncLogs}
+                disabled={loadingLogs}
+                className="p-1.5 text-zinc-400 hover:text-white bg-zinc-800/60 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                title="Atualizar Logs"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingLogs ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {filteredLogs.length === 0 ? (
+            <div className="text-center py-12 text-zinc-500 text-sm bg-black/20 rounded-xl border border-dashed border-zinc-800">
+              {loadingLogs ? 'Carregando logs...' : 'Nenhum log de sincronização encontrado para o filtro selecionado.'}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-zinc-400">
+                <thead className="text-xs uppercase bg-zinc-800/50 text-zinc-500">
+                  <tr>
+                    <th className="px-4 py-3 rounded-tl-lg">Data/Hora</th>
+                    <th className="px-4 py-3">Conexão</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Linhas</th>
+                    <th className="px-4 py-3">Detalhes / Mensagem</th>
+                    <th className="px-4 py-3 text-right rounded-tr-lg">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {filteredLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-zinc-800/30 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap text-zinc-300 text-xs">
+                        {log.created_at ? formatToBrasiliaTime(log.created_at) : '-'}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-zinc-300">{log.conexao_id}</td>
+                      <td className="px-4 py-3">
+                        {log.status === 'success' ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded text-[11px] font-medium border border-emerald-400/20">
+                            <CheckCircle2 className="w-3 h-3" /> Sucesso
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-red-400 bg-red-400/10 px-2 py-0.5 rounded text-[11px] font-medium border border-red-400/20">
+                            <XCircle className="w-3 h-3" /> Falha
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-zinc-300">
+                        {log.registros_afetados || 0}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-zinc-400 max-w-sm break-words" title={log.mensagem_erro || 'Operação realizada com sucesso.'}>
+                        {log.mensagem_erro || 'Operação realizada com sucesso.'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => handleRetryLog(log.id)}
+                          disabled={retryingLogId === log.id}
+                          className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white rounded-lg text-xs font-medium border border-zinc-700 transition-colors flex items-center gap-1.5 ml-auto cursor-pointer"
+                          title="Reenviar esta operação para o banco de dados"
+                        >
+                          <RotateCcw className={`w-3 h-3 ${retryingLogId === log.id ? 'animate-spin text-purple-400' : ''}`} />
+                          Reenviar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Webhooks Tab */}
       {activeTab === 'webhooks' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in duration-200">
           <div className="bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800/80 space-y-6">
@@ -528,74 +868,7 @@ export const ConexoesTab: React.FC = () => {
           </div>
         </div>
       )}
-
-      {activeTab === 'logs' && (
-        <div className="bg-zinc-900/60 p-6 rounded-2xl border border-zinc-800/80 animate-in fade-in duration-200">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Terminal className="w-5 h-5 text-purple-400" />
-                Logs de Sincronização
-              </h3>
-              <p className="text-xs text-zinc-400 mt-1">Últimas 50 execuções registradas de sync.</p>
-            </div>
-            <button
-              onClick={loadSyncLogs}
-              disabled={loadingLogs}
-              className="p-2 text-zinc-400 hover:text-white bg-zinc-800/60 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
-            >
-              <RefreshCw className={`w-4 h-4 ${loadingLogs ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-
-          {syncLogs.length === 0 ? (
-            <div className="text-center py-10 text-zinc-500 text-sm bg-black/20 rounded-xl border border-dashed border-zinc-800">
-              {loadingLogs ? 'Carregando logs...' : 'Nenhum log de sincronização encontrado.'}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-zinc-400">
-                <thead className="text-xs uppercase bg-zinc-800/50 text-zinc-500">
-                  <tr>
-                    <th className="px-4 py-3 rounded-tl-lg">Data/Hora</th>
-                    <th className="px-4 py-3">Conexão</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Linhas</th>
-                    <th className="px-4 py-3 rounded-tr-lg w-1/3">Detalhes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800">
-                  {syncLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-zinc-800/30 transition-colors">
-                      <td className="px-4 py-3 whitespace-nowrap text-zinc-300">
-                        {log.created_at ? formatToBrasiliaTime(log.created_at) : '-'}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-[11px]">{log.conexao_id}</td>
-                      <td className="px-4 py-3">
-                        {log.status === 'success' ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded text-[11px] font-medium border border-emerald-400/20">
-                            <CheckCircle2 className="w-3 h-3" /> Sucesso
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-red-400 bg-red-400/10 px-2 py-0.5 rounded text-[11px] font-medium border border-red-400/20">
-                            <XCircle className="w-3 h-3" /> Falha
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-zinc-300">
-                        {log.registros_afetados || 0}
-                      </td>
-                      <td className="px-4 py-3 text-[11px] text-zinc-500 max-w-xs truncate" title={log.mensagem_erro || 'OK'}>
-                        {log.mensagem_erro || 'OK'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };
+
