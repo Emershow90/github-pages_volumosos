@@ -39,6 +39,13 @@ interface SectorStoreState {
     category: 'alimento' | 'montanha' | 'l7Mochila' | 'colis',
     quantity: number
   ) => Promise<void>;
+  updateActivityCategoryValue: (
+    sectorId: string,
+    activityDate: string,
+    userId: string,
+    category: 'alimento' | 'montanha' | 'l7Mochila' | 'colis',
+    value: number
+  ) => Promise<void>;
   updateActivityTextField: (
     sectorId: string,
     activityDate: string,
@@ -151,6 +158,58 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
         colis: 0,
         adhocCategories: {},
         [category]: quantity,
+        createdAt: now,
+        updatedAt: now
+      };
+      const result = await SupabaseService.upsertRecord(
+        'activity_entries',
+        newEntry as ActivityEntry,
+        undefined,
+        'sector_id,activity_date,user_id'
+      );
+      get().setActivityEntries((prev) => [...prev, result]);
+    }
+  },
+
+  updateActivityCategoryValue: async (sectorId, activityDate, userId, category, value) => {
+    const existing = get().activityEntries.find(
+      e => e.sectorId === sectorId && e.activityDate === activityDate
+    );
+    const now = new Date().toISOString();
+
+    if (existing) {
+      const updated: ActivityEntry = {
+        ...existing,
+        [category]: value,
+        updatedAt: now
+      };
+      const result = await SupabaseService.upsertRecord(
+        'activity_entries',
+        updated,
+        'id' as keyof ActivityEntry
+      );
+      get().setActivityEntries((prev) => {
+        const idx = prev.findIndex(e => e.id === result.id);
+        if (idx >= 0) {
+          const updatedList = [...prev];
+          updatedList[idx] = result;
+          return updatedList;
+        }
+        return [...prev, result];
+      });
+    } else {
+      const newEntry: Omit<ActivityEntry, 'id'> = {
+        sectorId,
+        activityDate,
+        userId: userId || 'system',
+        alimento: 0,
+        montanha: 0,
+        l7Mochila: 0,
+        elog: '',
+        reapro: '',
+        colis: 0,
+        adhocCategories: {},
+        [category]: value,
         createdAt: now,
         updatedAt: now
       };

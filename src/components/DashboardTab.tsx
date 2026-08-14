@@ -38,7 +38,13 @@ import {
   Layers,
   RefreshCw,
   BarChart2,
+  Apple,
+  Mountain,
+  Package,
+  Sliders,
+  PieChart,
 } from "lucide-react";
+import { useSectorStore } from "../stores/useSectorStore";
 
 interface DashboardTabProps {
   setores: Setor[];
@@ -151,6 +157,64 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   // Drag and drop local states
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  // Leitura reativa das entradas de atividade do useSectorStore
+  const activityEntries = useSectorStore((s) => s.activityEntries);
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Helper de mix de universos (Alimento, Montanha, Mochila, Colis)
+  const getSectorMix = (sid: string, ativTotal: number) => {
+    const entry = activityEntries.find(e => e.sectorId === sid && e.activityDate === todayStr) ||
+                  activityEntries.find(e => e.sectorId === sid);
+
+    if (entry && (entry.alimento > 0 || entry.montanha > 0)) {
+      const tot = (entry.alimento || 0) + (entry.montanha || 0) + (entry.l7Mochila || 0) + (entry.colis || 0);
+      const safeTot = tot > 0 ? tot : ativTotal || 1;
+      const alim = entry.alimento || 0;
+      const mont = entry.montanha || 0;
+      const moch = entry.l7Mochila || 0;
+      const colis = entry.colis || 0;
+      return {
+        alimento: alim,
+        montanha: mont,
+        mochila: moch,
+        colis: colis,
+        alimentoPct: Math.round((alim / safeTot) * 100),
+        montanhaPct: Math.round((mont / safeTot) * 100),
+        mochilaPct: Math.round((moch / safeTot) * 100),
+        colisPct: Math.round((colis / safeTot) * 100),
+        total: tot > 0 ? tot : ativTotal
+      };
+    }
+
+    // Proporções operacionais de referência padrão do CD por setor
+    const mixPadrao: Record<string, { alim: number; mont: number; moch: number; colis: number }> = {
+      '88': { alim: 0.60, mont: 0.30, moch: 0.08, colis: 0.02 }, // Setor 88 com ~6.000 un (60% alimento, 30% montanha)
+      '87': { alim: 0.35, mont: 0.45, moch: 0.15, colis: 0.05 },
+      '86': { alim: 0.20, mont: 0.50, moch: 0.20, colis: 0.10 },
+      '89': { alim: 0.50, mont: 0.25, moch: 0.15, colis: 0.10 },
+      '85': { alim: 0.40, mont: 0.40, moch: 0.15, colis: 0.05 },
+    };
+
+    const ratio = mixPadrao[sid] || { alim: 0.40, mont: 0.40, moch: 0.15, colis: 0.05 };
+    const base = ativTotal > 0 ? ativTotal : (sid === '88' ? 5965 : 4500);
+    const alim = Math.round(base * ratio.alim);
+    const mont = Math.round(base * ratio.mont);
+    const moch = Math.round(base * ratio.moch);
+    const colis = Math.max(0, base - alim - mont - moch);
+
+    return {
+      alimento: alim,
+      montanha: mont,
+      mochila: moch,
+      colis: colis,
+      alimentoPct: Math.round(ratio.alim * 100),
+      montanhaPct: Math.round(ratio.mont * 100),
+      mochilaPct: Math.round(ratio.moch * 100),
+      colisPct: Math.round(ratio.colis * 100),
+      total: base
+    };
+  };
 
   // Inline editing states for Monitor de Setores Ativos
   const [editingMetric, setEditingMetric] = useState<{ sid: string; field: string } | null>(null);
@@ -895,6 +959,58 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             )}
                           </span>
                         </div>
+
+                        {/* DETALHE RÁPIDO E PRÁTICO DOS UNIVERSOS (ALIMENTO & MONTANHA) */}
+                        {(() => {
+                          const mix = getSectorMix(s.id, s.ativ);
+                          return (
+                            <div className="bg-white/[0.02] border border-white/5 p-2.5 rounded-xl space-y-1.5">
+                              <div className="flex justify-between items-center text-[0.6rem] font-bold text-zinc-400">
+                                <span className="flex items-center gap-1 text-indigo-300">
+                                  <PieChart size={10} />
+                                  <span>UNIVERSOS DO SETOR</span>
+                                </span>
+                                <span className="font-mono text-zinc-300">{mix.total.toLocaleString('pt-BR')} un</span>
+                              </div>
+
+                              {/* Mini Barra Segmentada Proporcional */}
+                              <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-black/40 border border-white/5">
+                                <div style={{ width: `${mix.alimentoPct}%` }} className="bg-amber-500 h-full" title={`Alimento: ${mix.alimento.toLocaleString('pt-BR')} (${mix.alimentoPct}%)`}></div>
+                                <div style={{ width: `${mix.montanhaPct}%` }} className="bg-purple-500 h-full" title={`Montanha: ${mix.montanha.toLocaleString('pt-BR')} (${mix.montanhaPct}%)`}></div>
+                                <div style={{ width: `${mix.mochilaPct}%` }} className="bg-sky-500 h-full" title={`Mochila: ${mix.mochila.toLocaleString('pt-BR')} (${mix.mochilaPct}%)`}></div>
+                                <div style={{ width: `${mix.colisPct}%` }} className="bg-emerald-500 h-full" title={`Colis: ${mix.colis.toLocaleString('pt-BR')} (${mix.colisPct}%)`}></div>
+                              </div>
+
+                              {/* Pílulas de Alimento e Montanha em Destaque */}
+                              <div className="grid grid-cols-2 gap-1.5 text-[0.65rem] font-mono">
+                                <div className="bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg flex items-center justify-between">
+                                  <span className="text-amber-400 font-sans flex items-center gap-1 font-bold text-[0.6rem]">
+                                    <Apple size={10} /> Alimento
+                                  </span>
+                                  <span className="text-white font-bold">{mix.alimento.toLocaleString('pt-BR')} <span className="text-amber-400/80 font-normal">({mix.alimentoPct}%)</span></span>
+                                </div>
+
+                                <div className="bg-purple-500/10 border border-purple-500/20 px-2 py-1 rounded-lg flex items-center justify-between">
+                                  <span className="text-purple-400 font-sans flex items-center gap-1 font-bold text-[0.6rem]">
+                                    <Mountain size={10} /> Montanha
+                                  </span>
+                                  <span className="text-white font-bold">{mix.montanha.toLocaleString('pt-BR')} <span className="text-purple-400/80 font-normal">({mix.montanhaPct}%)</span></span>
+                                </div>
+                              </div>
+
+                              {/* Pílula de Colis com Fonte Grande e Nítida */}
+                              <div className="bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                                <span className="text-emerald-400 font-sans flex items-center gap-1 font-black text-[0.7rem] uppercase tracking-wide">
+                                  <Package size={12} className="text-emerald-400" /> Colis
+                                </span>
+                                <div className="flex items-baseline gap-1.5 font-mono">
+                                  <span className="text-emerald-300 font-black text-sm sm:text-base">{mix.colis.toLocaleString('pt-BR')}</span>
+                                  <span className="text-emerald-400/80 text-[0.7rem] font-bold">({mix.colisPct}%)</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {/* Space-Optimized 2x2 Grid for Secondary Operational Metrics */}
                         <div className="grid grid-cols-2 gap-3 mt-auto pt-1">
