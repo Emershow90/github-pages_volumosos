@@ -53,6 +53,20 @@ interface SectorStoreState {
     field: 'elog' | 'reapro',
     value: string
   ) => Promise<void>;
+  updateActivityUniversosBatch: (
+    sectorId: string,
+    activityDate: string,
+    userId: string,
+    data: {
+      alimento?: number;
+      montanha?: number;
+      l7Mochila?: number;
+      colis?: number;
+      elog?: string;
+      reapro?: string;
+      adhocCategories?: Record<string, string | number>;
+    }
+  ) => Promise<void>;
   updateAdhocCategory: (
     sectorId: string,
     activityDate: string,
@@ -226,7 +240,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
   updateActivityTextField: async (sectorId, activityDate, userId, field, value) => {
     
     const existing = get().activityEntries.find(
-      e => e.sectorId === sectorId && e.activityDate === activityDate && e.userId === userId
+      e => e.sectorId === sectorId && e.activityDate === activityDate
     );
     const now = new Date().toISOString();
     
@@ -250,7 +264,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
       const newEntry: Omit<ActivityEntry, 'id'> = {
         sectorId,
         activityDate,
-        userId,
+        userId: userId || 'system',
         alimento: 0,
         montanha: 0,
         l7Mochila: 0,
@@ -259,6 +273,59 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
         colis: 0,
         adhocCategories: {},
         [field]: value,
+        createdAt: now,
+        updatedAt: now
+      };
+      const result = await SupabaseService.upsertRecord(
+        'activity_entries',
+        newEntry as ActivityEntry,
+        undefined,
+        'sector_id,activity_date,user_id'
+      );
+      get().setActivityEntries((prev) => [...prev, result]);
+    }
+  },
+
+  updateActivityUniversosBatch: async (sectorId, activityDate, userId, data) => {
+    const existing = get().activityEntries.find(
+      e => e.sectorId === sectorId && e.activityDate === activityDate
+    );
+    const now = new Date().toISOString();
+
+    if (existing) {
+      const updated: ActivityEntry = {
+        ...existing,
+        ...(data.alimento !== undefined && { alimento: data.alimento }),
+        ...(data.montanha !== undefined && { montanha: data.montanha }),
+        ...(data.l7Mochila !== undefined && { l7Mochila: data.l7Mochila }),
+        ...(data.colis !== undefined && { colis: data.colis }),
+        ...(data.elog !== undefined && { elog: data.elog }),
+        ...(data.reapro !== undefined && { reapro: data.reapro }),
+        ...(data.adhocCategories !== undefined && { adhocCategories: data.adhocCategories }),
+        updatedAt: now
+      };
+      const result = await SupabaseService.upsertRecord('activity_entries', updated, 'id' as keyof ActivityEntry);
+      get().setActivityEntries((prev) => {
+        const idx = prev.findIndex(e => e.id === result.id);
+        if (idx >= 0) {
+          const updatedList = [...prev];
+          updatedList[idx] = result;
+          return updatedList;
+        }
+        return [...prev, result];
+      });
+    } else {
+      const newEntry: Omit<ActivityEntry, 'id'> = {
+        sectorId,
+        activityDate,
+        userId: userId || 'system',
+        alimento: data.alimento ?? 0,
+        montanha: data.montanha ?? 0,
+        l7Mochila: data.l7Mochila ?? 0,
+        colis: data.colis ?? 0,
+        elog: data.elog ?? '',
+        reapro: data.reapro ?? '',
+        adhocCategories: data.adhocCategories ?? {},
         createdAt: now,
         updatedAt: now
       };

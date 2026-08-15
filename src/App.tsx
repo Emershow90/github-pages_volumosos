@@ -1178,6 +1178,7 @@ function App() {
                 historico={historico}
                 capacidade={capacidade}
                 onUpdateSetor={handleUpdateSetorField}
+                onNavigateTab={setActiveTab}
               />
             </ProtectedRoute>
           )}
@@ -1268,6 +1269,7 @@ function App() {
                 setores={setores}
                 activeSectorId={activeSectorId}
                 onChangeSector={setActiveSectorId}
+                onNavigateTab={setActiveTab}
               />
             </ProtectedRoute>
           )}

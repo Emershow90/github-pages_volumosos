@@ -23,7 +23,10 @@ import {
   Sliders,
   Check,
   X,
-  PieChart
+  PieChart,
+  Plus,
+  Trash2,
+  Tag
 } from 'lucide-react';
 import { usePainelProducaoStore } from '../stores/usePainelProducaoStore';
 import { useSectorStore } from '../stores/useSectorStore';
@@ -32,27 +35,38 @@ import { useCopilMetrics } from '../hooks/useCopilMetrics';
 import { Setor, ActivityEntry } from '../types';
 import { initialCapacidade } from '../initialData';
 
+const PALETTE_CUSTOM = [
+  { text: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', bar: 'bg-cyan-500', hex: '#06b6d4' },
+  { text: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/30', bar: 'bg-rose-500', hex: '#f43f5e' },
+  { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', bar: 'bg-emerald-500', hex: '#10b981' },
+  { text: 'text-teal-400', bg: 'bg-teal-500/10', border: 'border-teal-500/30', bar: 'bg-teal-500', hex: '#14b8a6' },
+  { text: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30', bar: 'bg-orange-500', hex: '#f97316' },
+  { text: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/30', bar: 'bg-violet-500', hex: '#8b5cf6' },
+];
+
 interface ConsoleOperacionalProps {
   setores?: Setor[];
   activeSectorId?: string;
   onChangeSector?: (id: string) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
-const CONFIG_SETORES: Record<string, { nome: string; linha: number; cor: string; mixPadrao: { alimentoPct: number; montanhaPct: number; mochilaPct: number; colisPct: number } }> = {
-  '87': { nome: 'Picking 87', linha: 23, cor: '#8b5cf6', mixPadrao: { alimentoPct: 30, montanhaPct: 55, mochilaPct: 10, colisPct: 5 } },
-  '88': { nome: 'Picking 88', linha: 25, cor: '#3b82f6', mixPadrao: { alimentoPct: 60, montanhaPct: 30, mochilaPct: 6.4, colisPct: 3.6 } },
-  '89': { nome: 'Picking 89', linha: 27, cor: '#f59e0b', mixPadrao: { alimentoPct: 55, montanhaPct: 35, mochilaPct: 10, colisPct: 0 } },
-  '90': { nome: 'Picking 90', linha: 29, cor: '#10b981', mixPadrao: { alimentoPct: 62, montanhaPct: 28, mochilaPct: 10, colisPct: 0 } }
+const CONFIG_SETORES: Record<string, { nome: string; linha: number; cor: string; mixPadrao: { alimentoPct: number; montanhaPct: number; colisPct: number } }> = {
+  '87': { nome: 'Picking 87', linha: 23, cor: '#8b5cf6', mixPadrao: { alimentoPct: 35, montanhaPct: 65, colisPct: 5 } },
+  '88': { nome: 'Picking 88', linha: 25, cor: '#3b82f6', mixPadrao: { alimentoPct: 65, montanhaPct: 35, colisPct: 4 } },
+  '89': { nome: 'Picking 89', linha: 27, cor: '#f59e0b', mixPadrao: { alimentoPct: 60, montanhaPct: 40, colisPct: 0 } },
+  '90': { nome: 'Picking 90', linha: 29, cor: '#10b981', mixPadrao: { alimentoPct: 65, montanhaPct: 35, colisPct: 0 } }
 };
 
 export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   setores = [],
   activeSectorId = '88',
-  onChangeSector
+  onChangeSector,
+  onNavigateTab
 }) => {
   const { currentUser, currentUserUid } = useUserStore();
   const { registros, upsertRegistro, fetchRegistrosHoje } = usePainelProducaoStore();
-  const { activityEntries, capacidade, updateActivityCategoryValue } = useSectorStore();
+  const { activityEntries, capacidade, updateActivityUniversosBatch } = useSectorStore();
   const { metrics: copilData, summaryStats: copilSummary } = useCopilMetrics();
 
   const [visaoAtual, setVisaoAtual] = useState<string>('TODOS');
@@ -65,8 +79,10 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   const [editingSectorUniversos, setEditingSectorUniversos] = useState<string | null>(null);
   const [editAlimento, setEditAlimento] = useState<number>(0);
   const [editMontanha, setEditMontanha] = useState<number>(0);
-  const [editMochila, setEditMochila] = useState<number>(0);
+  const [editCustomUniversos, setEditCustomUniversos] = useState<Array<{ id: string; name: string; value: number }>>([]);
   const [editColis, setEditColis] = useState<number>(0);
+  const [editElog, setEditElog] = useState<string>('');
+  const [editReapro, setEditReapro] = useState<string>('');
 
   // Modal de Carregamento
   const [isLoadingModalOpen, setIsLoadingModalOpen] = useState(false);
@@ -216,7 +232,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     return { cap: capValue, isConfigured: false };
   };
 
-  // Helper to obtain sector universe breakdown (Alimento, Montanha, Mochila, Colis, Elog, Reapro)
+  // Helper to obtain sector universe breakdown (Alimento, Montanha, Custom Universos) and Colis
   const getSectorUniversos = (sectorId: string) => {
     const cfg = CONFIG_SETORES[sectorId] || CONFIG_SETORES['88'];
     const sectorObj = setores.find(s => String(s.id) === String(sectorId) || String(s.numero) === String(sectorId));
@@ -225,44 +241,70 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     const entry = activityEntries.find(e => String(e.sectorId) === String(sectorId) && e.activityDate === todayStr) ||
                   activityEntries.find(e => String(e.sectorId) === String(sectorId));
 
-    if (entry && (entry.alimento > 0 || entry.montanha > 0 || entry.l7Mochila > 0 || entry.colis > 0)) {
-      const sum = (entry.alimento || 0) + (entry.montanha || 0) + (entry.l7Mochila || 0) + (entry.colis || 0);
-      const total = sum > 0 ? sum : totalAtiv;
+    // Extrair universos customizados do adhocCategories (e converter mochila legada se houver)
+    const customListRaw: Array<{ name: string; value: number }> = [];
+    if (entry && entry.adhocCategories) {
+      Object.entries(entry.adhocCategories).forEach(([k, v]) => {
+        const valNum = typeof v === 'number' ? v : parseFloat(String(v)) || 0;
+        if (k && k.trim()) {
+          customListRaw.push({ name: k.trim(), value: valNum });
+        }
+      });
+    }
+
+    // Se houver l7Mochila legado no registro e não estiver no adhoc, incluir como customizado
+    if (entry && entry.l7Mochila && entry.l7Mochila > 0 && !customListRaw.some(c => c.name.toLowerCase().includes('mochila'))) {
+      customListRaw.push({ name: 'Mochila', value: entry.l7Mochila });
+    }
+
+    if (entry && (entry.alimento > 0 || entry.montanha > 0 || entry.colis > 0 || customListRaw.length > 0)) {
+      const alim = entry.alimento || 0;
+      const mont = entry.montanha || 0;
+      const colisVal = entry.colis || 0;
+      const customSum = customListRaw.reduce((acc, c) => acc + c.value, 0);
+      const sumUni = alim + mont + customSum;
+      const totalUni = sumUni > 0 ? sumUni : totalAtiv;
+
+      const customUniversos = customListRaw.map((c, idx) => {
+        const pal = PALETTE_CUSTOM[idx % PALETTE_CUSTOM.length];
+        return {
+          name: c.name,
+          value: c.value,
+          pct: totalUni > 0 ? Math.round((c.value / totalUni) * 100) : 0,
+          color: pal
+        };
+      });
+
       return {
-        total,
-        alimento: entry.alimento || 0,
-        montanha: entry.montanha || 0,
-        mochila: entry.l7Mochila || 0,
-        colis: entry.colis || 0,
+        total: totalUni,
+        alimento: alim,
+        montanha: mont,
+        colis: colisVal > 0 ? colisVal : Math.round(totalUni * 0.05),
         elog: entry.elog || '2J RA FALC (174)',
         reapro: entry.reapro || `${sectorObj?.reproTotal || 127} CX`,
-        alimentoPct: total > 0 ? Math.round(((entry.alimento || 0) / total) * 100) : 0,
-        montanhaPct: total > 0 ? Math.round(((entry.montanha || 0) / total) * 100) : 0,
-        mochilaPct: total > 0 ? Math.round(((entry.l7Mochila || 0) / total) * 100) : 0,
-        colisPct: total > 0 ? Math.round(((entry.colis || 0) / total) * 100) : 0,
+        alimentoPct: totalUni > 0 ? Math.round((alim / totalUni) * 100) : 0,
+        montanhaPct: totalUni > 0 ? Math.round((mont / totalUni) * 100) : 0,
+        customUniversos,
         isCustom: true
       };
     }
 
     // Fallback derivado baseado nos parâmetros padrão do setor
     const mix = cfg.mixPadrao;
-    const alimento = Math.round((totalAtiv * mix.alimentoPct) / 100);
-    const montanha = Math.round((totalAtiv * mix.montanhaPct) / 100);
-    const mochila = Math.round((totalAtiv * mix.mochilaPct) / 100);
-    const colis = Math.max(0, totalAtiv - alimento - montanha - mochila);
+    const alim = Math.round((totalAtiv * (mix.alimentoPct || 65)) / 100);
+    const mont = Math.max(0, totalAtiv - alim);
+    const colisVal = Math.round(totalAtiv * 0.05) || 120;
 
     return {
       total: totalAtiv,
-      alimento,
-      montanha,
-      mochila,
-      colis,
+      alimento: alim,
+      montanha: mont,
+      colis: colisVal,
       elog: '2J RA FALC (174)',
       reapro: `${sectorObj?.reproTotal || 127} CX`,
-      alimentoPct: mix.alimentoPct,
-      montanhaPct: mix.montanhaPct,
-      mochilaPct: mix.mochilaPct,
-      colisPct: mix.colisPct,
+      alimentoPct: mix.alimentoPct || 65,
+      montanhaPct: mix.montanhaPct || 35,
+      customUniversos: [] as Array<{ name: string; value: number; pct: number; color: typeof PALETTE_CUSTOM[0] }>,
       isCustom: false
     };
   };
@@ -306,8 +348,16 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     setEditingSectorUniversos(secId);
     setEditAlimento(u.alimento);
     setEditMontanha(u.montanha);
-    setEditMochila(u.mochila);
     setEditColis(u.colis);
+    setEditElog(u.elog || '');
+    setEditReapro(u.reapro || '');
+    setEditCustomUniversos(
+      (u.customUniversos || []).map((c, i) => ({
+        id: `custom-${i}-${c.name}`,
+        name: c.name,
+        value: c.value
+      }))
+    );
   };
 
   // Salvar edição dos universos
@@ -315,10 +365,22 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     if (!editingSectorUniversos) return;
     try {
       const uId = currentUserUid || currentUser || 'system';
-      await updateActivityCategoryValue(editingSectorUniversos, todayStr, uId, 'alimento', editAlimento);
-      await updateActivityCategoryValue(editingSectorUniversos, todayStr, uId, 'montanha', editMontanha);
-      await updateActivityCategoryValue(editingSectorUniversos, todayStr, uId, 'l7Mochila', editMochila);
-      await updateActivityCategoryValue(editingSectorUniversos, todayStr, uId, 'colis', editColis);
+      const adhocRecord: Record<string, string | number> = {};
+      editCustomUniversos.forEach(item => {
+        if (item.name.trim()) {
+          adhocRecord[item.name.trim()] = item.value;
+        }
+      });
+
+      await updateActivityUniversosBatch(editingSectorUniversos, todayStr, uId, {
+        alimento: editAlimento,
+        montanha: editMontanha,
+        l7Mochila: 0,
+        colis: editColis,
+        elog: editElog,
+        reapro: editReapro,
+        adhocCategories: adhocRecord
+      });
       setEditingSectorUniversos(null);
     } catch (err) {
       console.error('[ConsoleOperacional] Erro ao salvar universos:', err);
@@ -351,7 +413,6 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   let totalCapacidade = 0;
   let totalAlimento = 0;
   let totalMontanha = 0;
-  let totalMochila = 0;
   let totalColis = 0;
   let setoresAtivosCount = 0;
 
@@ -365,7 +426,6 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     totalCapacidade += d.cap;
     totalAlimento += u.alimento;
     totalMontanha += u.montanha;
-    totalMochila += u.mochila;
     totalColis += u.colis;
     if (d.feitoHoje > 0 || d.feitoOntem > 0 || d.maquina > 0 || d.rafale > 0) {
       setoresAtivosCount++;
@@ -379,13 +439,13 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
 
   // Export CSV
   const handleExportCSV = () => {
-    let csv = 'Setor,Nome,Feito Hoje,Feito Ontem,Falta Liberar (Máquina),Liberado (Rafale),Capacidade,Eficiência,Alimento,Montanha,Mochila,Colis\n';
+    let csv = 'Setor,Nome,Feito Hoje,Feito Ontem,Falta Liberar (Máquina),Liberado (Rafale),Capacidade,Eficiência,Alimento,Montanha,Colis\n';
     Object.keys(CONFIG_SETORES).forEach(id => {
       const cfg = CONFIG_SETORES[id];
       const d = getSectorData(id);
       const u = getSectorUniversos(id);
       const ef = d.cap > 0 ? Math.round((d.feitoHoje / d.cap) * 100) : 0;
-      csv += `${id},${cfg.nome},${d.feitoHoje},${d.feitoOntem},${d.maquina},${d.rafale},${d.cap},${ef}%,${u.alimento},${u.montanha},${u.mochila},${u.colis}\n`;
+      csv += `${id},${cfg.nome},${d.feitoHoje},${d.feitoOntem},${d.maquina},${d.rafale},${d.cap},${ef}%,${u.alimento},${u.montanha},${u.colis}\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -755,7 +815,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                         </div>
                       </div>
 
-                      {/* DETALHE DOS UNIVERSOS: ALIMENTO & MONTANHA */}
+                      {/* DETALHE DOS UNIVERSOS: ALIMENTO, MONTANHA & CUSTOMIZADOS */}
                       <div className="bg-[#0b0b12] border border-[#1e1e2c] p-3 rounded-lg my-1 space-y-2">
                         <div className="flex justify-between items-center text-[11px]">
                           <span className="font-bold text-slate-300 flex items-center gap-1.5">
@@ -767,29 +827,58 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                           </span>
                         </div>
 
-                        {/* Barra segmentada de proporção */}
+                        {/* Barra segmentada de proporção dos Universos */}
                         <div className="w-full h-2 rounded-full overflow-hidden flex bg-zinc-900 border border-[#1e1e2a]">
                           <div style={{ width: `${u.alimentoPct}%` }} className="bg-amber-500 h-full" title={`Alimento: ${u.alimento} un (${u.alimentoPct}%)`}></div>
                           <div style={{ width: `${u.montanhaPct}%` }} className="bg-purple-500 h-full" title={`Montanha: ${u.montanha} un (${u.montanhaPct}%)`}></div>
-                          <div style={{ width: `${u.mochilaPct}%` }} className="bg-sky-500 h-full" title={`Mochila: ${u.mochila} un (${u.mochilaPct}%)`}></div>
-                          <div style={{ width: `${u.colisPct}%` }} className="bg-emerald-500 h-full" title={`Colis: ${u.colis} un (${u.colisPct}%)`}></div>
+                          {u.customUniversos.map((cu, idx) => (
+                            <div
+                              key={`bar-custom-${idx}`}
+                              style={{ width: `${cu.pct}%` }}
+                              className={`${cu.color.bar} h-full`}
+                              title={`${cu.name}: ${cu.value} un (${cu.pct}%)`}
+                            ></div>
+                          ))}
                         </div>
 
-                        {/* Pílulas de Alimento e Montanha */}
+                        {/* Pílulas de Universos & Colis de Coleta */}
                         <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
                           <div className="bg-[#14141e] px-2 py-1 rounded border border-amber-500/20 flex items-center justify-between">
                             <span className="text-amber-400 font-sans flex items-center gap-1">
-                              <Apple size={11} /> Alimento
+                              <Apple size={11} /> 🍎 Alimento
                             </span>
                             <span className="text-white font-bold">{u.alimento.toLocaleString('pt-BR')} <span className="text-amber-400/80 font-normal">({u.alimentoPct}%)</span></span>
                           </div>
 
                           <div className="bg-[#14141e] px-2 py-1 rounded border border-purple-500/20 flex items-center justify-between">
                             <span className="text-purple-400 font-sans flex items-center gap-1">
-                              <Mountain size={11} /> Montanha
+                              <Mountain size={11} /> ⛰️ Montanha
                             </span>
                             <span className="text-white font-bold">{u.montanha.toLocaleString('pt-BR')} <span className="text-purple-400/80 font-normal">({u.montanhaPct}%)</span></span>
                           </div>
+                        </div>
+
+                        {/* Pílulas extras de Universos Customizados se houver */}
+                        {u.customUniversos.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {u.customUniversos.map((cu, idx) => (
+                              <div
+                                key={`pill-custom-${idx}`}
+                                className={`px-2 py-0.5 rounded border text-[10px] font-mono flex items-center gap-1.5 ${cu.color.bg} ${cu.color.border}`}
+                              >
+                                <span className={`${cu.color.text} font-sans font-medium`}>{cu.name}:</span>
+                                <span className="text-white font-bold">{cu.value.toLocaleString('pt-BR')} un ({cu.pct}%)</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Indicador Rápido de Colis para Coleta */}
+                        <div className="bg-emerald-950/40 border border-emerald-500/40 px-2.5 py-1.5 rounded-lg flex items-center justify-between text-[11px]">
+                          <span className="text-emerald-400 font-sans font-bold flex items-center gap-1.5">
+                            <Package size={13} className="text-emerald-400" /> Colis Coleta
+                          </span>
+                          <span className="text-emerald-300 font-mono font-black">{u.colis.toLocaleString('pt-BR')} Colis</span>
                         </div>
                       </div>
 
@@ -901,122 +990,225 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                   </div>
                 </div>
 
-                {/* BLOCO EM DESTAQUE: UNIVERSO DE ATIVIDADE DO SETOR (ALIMENTO & MONTANHA) */}
-                <div className="bg-[#111118] border border-[#222234] rounded-xl p-5 shadow-sm space-y-4">
-                  <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[#1e1e2a] pb-3">
-                    <div className="flex items-center gap-2">
-                      <PieChart size={18} className="text-indigo-400" />
-                      <div>
-                        <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                          Parâmetros de Atividade por Universo • Setor {id}
-                        </h3>
-                        <p className="text-xs text-slate-400">
-                          {id === '88' ? 'Setor 88 com ~6.000 un (Alimento e Montanha em foco operacional)' : `Composição detalhada dos universos do Setor ${id}`}
-                        </p>
+                {/* BLOCO EM DESTAQUE: UNIVERSOS DE PRODUTOS & COLETA LOGÍSTICA (DECATHLON) */}
+                <div className="space-y-4">
+                  {/* 1. UNIVERSOS DE PRODUTOS */}
+                  <div className="bg-[#111118] border border-[#222234] rounded-xl p-5 shadow-sm space-y-4">
+                    <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[#1e1e2a] pb-3">
+                      <div className="flex items-center gap-2">
+                        <PieChart size={18} className="text-indigo-400" />
+                        <div>
+                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                            Universos de Produtos • Setor {id}
+                          </h3>
+                          <p className="text-xs text-slate-400">
+                            {id === '88' ? 'Mix de Artigos do Setor 88 (Alimento, Montanha e Universos customizados)' : `Distribuição por universos do Setor ${id}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="bg-[#050507] px-3 py-1.5 rounded-lg border border-[#1e1e2a] flex items-center gap-1.5 font-mono text-xs">
+                          <span className="text-slate-400 font-sans">Artigos Totais:</span>
+                          <strong className="text-white text-sm">{u.total.toLocaleString('pt-BR')} un</strong>
+                        </div>
+                        <button
+                          onClick={(e) => handleOpenEditUniversos(id, e)}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95"
+                          title="Editar ou calibrar parâmetros deste setor"
+                        >
+                          <Sliders size={13} />
+                          <span>Editar / Override</span>
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 font-mono text-xs">
-                      <div className="bg-[#050507] px-3 py-1.5 rounded-lg border border-[#1e1e2a]">
-                        <span className="text-slate-400 mr-1.5 font-sans">Atividade Total:</span>
-                        <strong className="text-white text-sm">{u.total.toLocaleString('pt-BR')} un</strong>
+                    {/* Grid Dinâmico de Universos: Alimento, Montanha, Mochila e Customizados */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+                      {/* Alimento */}
+                      <div 
+                        onClick={(e) => handleOpenEditUniversos(id, e)}
+                        className="bg-[#0b0b14] border border-amber-500/30 hover:border-amber-500/60 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all hover:shadow-[0_0_15px_rgba(245,158,11,0.15)] group"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                              <Apple size={13} /> 🍎 Universo Alimento
+                            </span>
+                            <p className="text-3xl font-black font-mono text-white mt-1.5">{u.alimento.toLocaleString('pt-BR')}</p>
+                          </div>
+                          <span className="text-xs font-bold font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                            {u.alimentoPct}%
+                          </span>
+                        </div>
+                        <div className="mt-3 text-[11px] text-slate-400 flex justify-between items-center">
+                          <span>Status: <strong className="text-emerald-400">Normal</strong></span>
+                          <span className="text-[10px] text-amber-400/80 group-hover:text-amber-300 font-semibold flex items-center gap-0.5">
+                            Editar ✎
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Montanha */}
+                      <div 
+                        onClick={(e) => handleOpenEditUniversos(id, e)}
+                        className="bg-[#0b0b14] border border-purple-500/30 hover:border-purple-500/60 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all hover:shadow-[0_0_15px_rgba(168,85,247,0.15)] group"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                              <Mountain size={13} /> ⛰️ Universo Montanha
+                            </span>
+                            <p className="text-3xl font-black font-mono text-white mt-1.5">{u.montanha.toLocaleString('pt-BR')}</p>
+                          </div>
+                          <span className="text-xs font-bold font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                            {u.montanhaPct}%
+                          </span>
+                        </div>
+                        <div className="mt-3 text-[11px] text-slate-400 flex justify-between items-center">
+                          <span>Status: <strong className="text-emerald-400">Regular</strong></span>
+                          <span className="text-[10px] text-purple-400/80 group-hover:text-purple-300 font-semibold flex items-center gap-0.5">
+                            Editar ✎
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Universos Customizados Adicionados */}
+                      {u.customUniversos.map((cu, idx) => (
+                        <div 
+                          key={`active-custom-${idx}`}
+                          onClick={(e) => handleOpenEditUniversos(id, e)}
+                          className={`bg-[#0b0b14] border ${cu.color.border} hover:border-opacity-80 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all hover:shadow-[0_0_15px_rgba(6,182,212,0.15)] group`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className={`text-[10px] font-bold uppercase tracking-wider ${cu.color.text} flex items-center gap-1.5`}>
+                                <Tag size={13} /> {cu.name}
+                              </span>
+                              <p className="text-3xl font-black font-mono text-white mt-1.5">{cu.value.toLocaleString('pt-BR')}</p>
+                            </div>
+                            <span className={`text-xs font-bold font-mono ${cu.color.text} ${cu.color.bg} px-2 py-0.5 rounded border ${cu.color.border}`}>
+                              {cu.pct}%
+                            </span>
+                          </div>
+                          <div className="mt-3 text-[11px] text-slate-400 flex justify-between items-center">
+                            <span>Status: <strong className="text-cyan-400">Personalizado</strong></span>
+                            <span className={`text-[10px] ${cu.color.text} group-hover:opacity-100 font-semibold flex items-center gap-0.5`}>
+                              Editar ✎
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Botão rápido para adicionar universo customizado */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleOpenEditUniversos(id, e)}
+                        className="border border-dashed border-slate-800 hover:border-indigo-500/50 bg-[#08080f] hover:bg-indigo-950/20 p-4 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:text-indigo-300 transition-all group min-h-[110px]"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-indigo-500/10 group-hover:bg-indigo-500/20 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                          <Plus size={16} />
+                        </div>
+                        <span className="text-xs font-bold font-sans">+ Novo Universo</span>
+                        <span className="text-[10px] text-slate-600 group-hover:text-slate-400">Personalizar categorias</span>
+                      </button>
+                    </div>
+
+                    {/* Barra visual de proporção dos Universos */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex justify-between text-xs text-slate-400">
+                        <span>Mix de Universos de Produtos</span>
+                        <span className="font-mono font-bold text-white">100% dos Artigos</span>
+                      </div>
+                      <div className="w-full h-3 rounded-full overflow-hidden flex bg-zinc-900 border border-[#1e1e2a]">
+                        <div style={{ width: `${u.alimentoPct}%` }} className="bg-amber-500 h-full flex items-center justify-center text-[9px] font-bold text-black" title={`Alimento: ${u.alimentoPct}%`}>
+                          {u.alimentoPct > 15 ? `${u.alimentoPct}% Alimento` : ''}
+                        </div>
+                        <div style={{ width: `${u.montanhaPct}%` }} className="bg-purple-500 h-full flex items-center justify-center text-[9px] font-bold text-white" title={`Montanha: ${u.montanhaPct}%`}>
+                          {u.montanhaPct > 15 ? `${u.montanhaPct}% Montanha` : ''}
+                        </div>
+                        {u.customUniversos.map((cu, idx) => (
+                          <div
+                            key={`bar-segment-custom-${idx}`}
+                            style={{ width: `${cu.pct}%` }}
+                            className={`${cu.color.bar} h-full flex items-center justify-center text-[9px] font-bold text-white`}
+                            title={`${cu.name}: ${cu.pct}%`}
+                          >
+                            {cu.pct > 12 ? `${cu.pct}% ${cu.name}` : ''}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
 
-                  {/* 4 Cards de Universos */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                    {/* Alimento */}
-                    <div className="bg-[#0b0b14] border border-amber-500/30 p-4 rounded-xl relative overflow-hidden">
-                      <div className="flex justify-between items-start">
+                  {/* 2. CARD DEDICADO DE COLIS PARA COLETA & SUPORTE */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
+                    {/* CARD PRINCIPAL: COLIS PARA COLETA */}
+                    <div 
+                      onClick={(e) => handleOpenEditUniversos(id, e)}
+                      className="lg:col-span-2 bg-[#06140f] border-2 border-emerald-500/60 hover:border-emerald-400 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all shadow-[0_0_20px_rgba(16,185,129,0.15)] group flex flex-col justify-between"
+                    >
+                      <div className="flex flex-wrap justify-between items-start gap-2">
                         <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                            <Apple size={13} /> Universo Alimento
-                          </span>
-                          <p className="text-3xl font-black font-mono text-white mt-1.5">{u.alimento.toLocaleString('pt-BR')}</p>
+                          <h4 className="text-base font-black text-white flex items-center gap-2">
+                            <Package size={18} className="text-emerald-400" />
+                            COLIS PARA COLETA
+                          </h4>
+                          <p className="text-xs text-slate-300 mt-0.5">
+                            Total de volumes e artigos agrupados para coleta no setor
+                          </p>
                         </div>
-                        <span className="text-xs font-bold font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                          {u.alimentoPct}%
+                        <span className="text-xs text-emerald-400 group-hover:text-emerald-300 font-semibold bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/30 flex items-center gap-1">
+                          Calibrar Colis ✎
                         </span>
                       </div>
-                      <div className="mt-3 text-[11px] text-slate-400 flex justify-between">
-                        <span>Status: <strong className="text-emerald-400">Normal</strong></span>
-                        <span>Colis/Pkts</span>
-                      </div>
-                    </div>
 
-                    {/* Montanha */}
-                    <div className="bg-[#0b0b14] border border-purple-500/30 p-4 rounded-xl relative overflow-hidden">
-                      <div className="flex justify-between items-start">
+                      <div className="mt-3 flex items-baseline justify-between bg-black/40 p-3 rounded-lg border border-emerald-500/20">
                         <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-                            <Mountain size={13} /> Universo Montanha
-                          </span>
-                          <p className="text-3xl font-black font-mono text-white mt-1.5">{u.montanha.toLocaleString('pt-BR')}</p>
+                          <span className="text-[10px] uppercase text-slate-400 font-bold block">Volumes / Artigos a Coletar</span>
+                          <div className="text-3xl sm:text-4xl font-black font-mono text-emerald-300 leading-tight">
+                            {u.colis.toLocaleString('pt-BR')} <span className="text-lg font-bold text-emerald-400/80">Colis</span>
+                          </div>
                         </div>
-                        <span className="text-xs font-bold font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
-                          {u.montanhaPct}%
-                        </span>
-                      </div>
-                      <div className="mt-3 text-[11px] text-slate-400 flex justify-between">
-                        <span>Status: <strong className="text-emerald-400">Regular</strong></span>
-                        <span>Colis/Pkts</span>
-                      </div>
-                    </div>
-
-                    {/* Mochila / L7 */}
-                    <div className="bg-[#0b0b14] border border-sky-500/30 p-4 rounded-xl relative overflow-hidden">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
-                            <Package size={13} /> L7 Mochila / Colis
+                        <div className="text-right">
+                          <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/20 px-2 py-1 rounded border border-emerald-500/30">
+                            Pronto p/ Coleta
                           </span>
-                          <p className="text-3xl font-black font-mono text-white mt-1.5">{(u.mochila + u.colis).toLocaleString('pt-BR')}</p>
                         </div>
-                        <span className="text-xs font-bold font-mono text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
-                          {u.mochilaPct + u.colisPct}%
-                        </span>
-                      </div>
-                      <div className="mt-3 text-[11px] text-slate-400 flex justify-between">
-                        <span>Mochila: {u.mochila}</span>
-                        <span>Colis: {u.colis}</span>
                       </div>
                     </div>
 
-                    {/* E-Log & Reapro */}
-                    <div className="bg-[#0b0b14] border border-slate-700 p-4 rounded-xl relative overflow-hidden flex flex-col justify-between">
-                      <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                          E-Log & Reapro
-                        </span>
-                        <p className="text-sm font-bold font-mono text-amber-300 truncate" title={u.elog}>
-                          {u.elog}
-                        </p>
+                    {/* CARD OPERACIONAL: E-LOG & REAPRO */}
+                    <div 
+                      onClick={(e) => handleOpenEditUniversos(id, e)}
+                      className="bg-[#0b0b14] border border-slate-700 hover:border-slate-500 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all flex flex-col justify-between group"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex justify-between items-start">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                            E-Log &amp; Reaprovisionamento
+                          </span>
+                          <span className="text-[10px] text-slate-400 group-hover:text-white font-semibold">
+                            Editar ✎
+                          </span>
+                        </div>
+                        <div className="bg-black/40 p-2 rounded-lg border border-white/5">
+                          <span className="text-[9px] text-slate-400 block uppercase">E-Log</span>
+                          <p className="text-xs font-bold font-mono text-amber-300 truncate" title={u.elog}>
+                            {u.elog || 'N/A'}
+                          </p>
+                        </div>
+                        <div className="bg-black/40 p-2 rounded-lg border border-white/5">
+                          <span className="text-[9px] text-slate-400 block uppercase">Reaprovisionamento</span>
+                          <p className="text-xs font-bold font-mono text-white truncate" title={u.reapro}>
+                            {u.reapro || 'N/A'}
+                          </p>
+                        </div>
                       </div>
-                      <div className="mt-2 text-[11px] text-slate-400 flex justify-between items-center border-t border-white/5 pt-2">
-                        <span>Reapro:</span>
-                        <span className="font-bold text-white font-mono">{u.reapro}</span>
+                      <div className="mt-2 text-[10px] text-slate-400 flex justify-between items-center border-t border-white/5 pt-1.5">
+                        <span>Fluxo Integrado</span>
+                        <span className="text-indigo-400 font-semibold">Decathlon WMS</span>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Barra visual de proporção completa */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex justify-between text-xs text-slate-400">
-                      <span>Distribuição Visual do Mix de Atividade</span>
-                      <span className="font-mono font-bold text-white">100% da Carga</span>
-                    </div>
-                    <div className="w-full h-3 rounded-full overflow-hidden flex bg-zinc-900 border border-[#1e1e2a]">
-                      <div style={{ width: `${u.alimentoPct}%` }} className="bg-amber-500 h-full flex items-center justify-center text-[9px] font-bold text-black" title={`Alimento: ${u.alimentoPct}%`}>
-                        {u.alimentoPct > 15 ? `${u.alimentoPct}% Alimento` : ''}
-                      </div>
-                      <div style={{ width: `${u.montanhaPct}%` }} className="bg-purple-500 h-full flex items-center justify-center text-[9px] font-bold text-white" title={`Montanha: ${u.montanhaPct}%`}>
-                        {u.montanhaPct > 15 ? `${u.montanhaPct}% Montanha` : ''}
-                      </div>
-                      <div style={{ width: `${u.mochilaPct}%` }} className="bg-sky-500 h-full flex items-center justify-center text-[9px] font-bold text-white" title={`Mochila: ${u.mochilaPct}%`}>
-                        {u.mochilaPct > 10 ? `${u.mochilaPct}%` : ''}
-                      </div>
-                      <div style={{ width: `${u.colisPct}%` }} className="bg-emerald-500 h-full" title={`Colis: ${u.colisPct}%`}></div>
                     </div>
                   </div>
                 </div>
@@ -1109,106 +1301,286 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
         )}
       </main>
 
-      {/* MODAL DE AJUSTE RÁPIDO DE UNIVERSOS (ALIMENTO & MONTANHA) */}
+      {/* MODAL DE AJUSTE RÁPIDO DE UNIVERSOS (ALIMENTO & MONTANHA & COLIS) */}
       {editingSectorUniversos && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[99999] flex items-center justify-center p-4">
-          <div className="bg-[#111118] border border-[#2a2a3c] rounded-2xl p-6 w-full max-w-md shadow-2xl space-y-4">
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[99999] flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-[#2a2a3c] rounded-2xl p-6 w-full max-w-lg shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-[#222234] pb-3">
-              <div className="flex items-center gap-2">
-                <Sliders size={18} className="text-indigo-400" />
-                <h3 className="text-base font-bold text-white">
-                  Ajustar Universos • Setor {editingSectorUniversos}
-                </h3>
+              <div className="flex items-center gap-2.5">
+                <Sliders size={20} className="text-indigo-400" />
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Parâmetros por Universo • Setor {editingSectorUniversos}
+                  </h3>
+                  <p className="text-xs text-slate-400">Edição direta e calibração de parâmetros de atividade</p>
+                </div>
               </div>
               <button 
                 onClick={() => setEditingSectorUniversos(null)}
-                className="p-1 rounded-lg hover:bg-zinc-800 text-slate-400 hover:text-white transition-colors"
+                className="p-1.5 rounded-lg hover:bg-zinc-800 text-slate-400 hover:text-white transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <p className="text-xs text-slate-400">
-              Ajuste as quantidades por categoria para calibrar os parâmetros de atividade e proporções operacionais do setor.
-            </p>
+            {/* Presets Rápidos */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <span className="text-[11px] text-slate-400 self-center">Presets:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const cfg = CONFIG_SETORES[editingSectorUniversos] || CONFIG_SETORES['88'];
+                  const total = editAlimento + editMontanha || 6000;
+                  setEditAlimento(Math.round(total * (cfg.mixPadrao.alimentoPct / 100)));
+                  setEditMontanha(Math.round(total * (cfg.mixPadrao.montanhaPct / 100)));
+                  setEditColis(Math.round(total * 0.05) || 120);
+                }}
+                className="px-2.5 py-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold transition-colors"
+              >
+                Mix Padrão Setor {editingSectorUniversos}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const total = editAlimento + editMontanha || 6000;
+                  setEditAlimento(Math.round(total * 0.5));
+                  setEditMontanha(Math.round(total * 0.5));
+                  setEditColis(Math.round(total * 0.05) || 120);
+                }}
+                className="px-2.5 py-1 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-semibold transition-colors"
+              >
+                50% Alim / 50% Mont
+              </button>
+            </div>
 
-            <div className="space-y-3">
-              {/* Alimento */}
-              <div className="bg-[#0b0b12] p-3 rounded-xl border border-amber-500/20 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-amber-400 text-xs font-bold">
-                  <Apple size={16} />
-                  <span>Universo Alimento</span>
+            {/* SEÇÃO 1: UNIVERSOS DE PRODUTOS */}
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-300 uppercase tracking-wider">
+                <div className="flex items-center gap-1.5">
+                  <PieChart size={14} className="text-indigo-400" />
+                  <span>1. Universos de Produtos (Artigos em Separação)</span>
                 </div>
-                <input
-                  type="number"
-                  value={editAlimento}
-                  onChange={(e) => setEditAlimento(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-28 text-right font-mono font-bold text-sm bg-black border border-amber-500/40 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-amber-400"
-                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newId = `custom-${Date.now()}`;
+                    setEditCustomUniversos([
+                      ...editCustomUniversos,
+                      { id: newId, name: `Novo Universo ${editCustomUniversos.length + 1}`, value: 0 }
+                    ]);
+                  }}
+                  className="px-2.5 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-colors"
+                >
+                  <Plus size={13} />
+                  <span>+ Adicionar Universo</span>
+                </button>
               </div>
 
-              {/* Montanha */}
-              <div className="bg-[#0b0b12] p-3 rounded-xl border border-purple-500/20 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-purple-400 text-xs font-bold">
-                  <Mountain size={16} />
-                  <span>Universo Montanha</span>
+              {/* Universos Padrão */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* Alimento */}
+                <div className="bg-[#0b0b12] p-3 rounded-xl border border-amber-500/20 flex flex-col justify-between gap-1.5">
+                  <div className="flex items-center justify-between text-amber-400 text-xs font-bold">
+                    <span className="flex items-center gap-1"><Apple size={14} /> 🍎 Alimento</span>
+                    <span className="text-[10px] text-amber-400/70 font-mono">
+                      {(() => {
+                        const tot = editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0);
+                        return tot > 0 ? `${((editAlimento / tot) * 100).toFixed(1)}%` : '0%';
+                      })()}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    value={editAlimento}
+                    onChange={(e) => setEditAlimento(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full text-right font-mono font-bold text-sm bg-black border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-400"
+                  />
                 </div>
-                <input
-                  type="number"
-                  value={editMontanha}
-                  onChange={(e) => setEditMontanha(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-28 text-right font-mono font-bold text-sm bg-black border border-purple-500/40 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-purple-400"
-                />
+
+                {/* Montanha */}
+                <div className="bg-[#0b0b12] p-3 rounded-xl border border-purple-500/20 flex flex-col justify-between gap-1.5">
+                  <div className="flex items-center justify-between text-purple-400 text-xs font-bold">
+                    <span className="flex items-center gap-1"><Mountain size={14} /> ⛰️ Montanha</span>
+                    <span className="text-[10px] text-purple-400/70 font-mono">
+                      {(() => {
+                        const tot = editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0);
+                        return tot > 0 ? `${((editMontanha / tot) * 100).toFixed(1)}%` : '0%';
+                      })()}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    value={editMontanha}
+                    onChange={(e) => setEditMontanha(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full text-right font-mono font-bold text-sm bg-black border border-purple-500/40 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-purple-400"
+                  />
+                </div>
               </div>
 
-              {/* L7 Mochila */}
-              <div className="bg-[#0b0b12] p-3 rounded-xl border border-sky-500/20 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sky-400 text-xs font-bold">
-                  <Package size={16} />
-                  <span>L7 / Mochila</span>
+              {/* Universos Customizados Adicionados */}
+              {editCustomUniversos.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-[#1e1e2a]/60">
+                  <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                    <Tag size={13} /> Universos Customizados ({editCustomUniversos.length})
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {editCustomUniversos.map((item, idx) => {
+                      const pal = PALETTE_CUSTOM[idx % PALETTE_CUSTOM.length];
+                      const tot = editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0);
+                      const pct = tot > 0 ? ((item.value / tot) * 100).toFixed(1) : '0';
+                      return (
+                        <div 
+                          key={item.id || `edit-custom-${idx}`} 
+                          className="bg-[#090912] p-3 rounded-xl border border-cyan-500/20 flex flex-col gap-2 relative group"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={(e) => {
+                                const updated = [...editCustomUniversos];
+                                updated[idx].name = e.target.value;
+                                setEditCustomUniversos(updated);
+                              }}
+                              placeholder="Nome do Universo"
+                              className={`w-full font-bold text-xs bg-black/60 border border-slate-700 rounded-md px-2 py-1 ${pal.text} focus:outline-none focus:border-cyan-400`}
+                            />
+                            <span className="text-[10px] font-mono text-cyan-400/80 font-bold whitespace-nowrap bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/20">
+                              {pct}%
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditCustomUniversos(editCustomUniversos.filter((_, i) => i !== idx));
+                              }}
+                              className="p-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors"
+                              title="Remover este universo"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-slate-400 font-sans">Artigos:</span>
+                            <input
+                              type="number"
+                              value={item.value}
+                              onChange={(e) => {
+                                const updated = [...editCustomUniversos];
+                                updated[idx].value = Math.max(0, parseInt(e.target.value) || 0);
+                                setEditCustomUniversos(updated);
+                              }}
+                              className="w-full text-right font-mono font-bold text-sm bg-black border border-cyan-500/40 rounded-lg px-2.5 py-1 text-white focus:outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <input
-                  type="number"
-                  value={editMochila}
-                  onChange={(e) => setEditMochila(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-28 text-right font-mono font-bold text-sm bg-black border border-sky-500/40 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-sky-400"
-                />
+              )}
+            </div>
+
+            {/* SEÇÃO 2: COLETA & SUPORTE OPERACIONAL */}
+            <div className="space-y-2 pt-2 border-t border-[#1e1e2a]">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                <span className="flex items-center gap-1.5">
+                  <Package size={15} /> 2. Coleta &amp; Suporte Operacional
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">Volumes / Artigos a Coletar</span>
               </div>
 
-              {/* Colis */}
-              <div className="bg-[#0b0b12] p-3 rounded-xl border border-[#222234] flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-slate-400 text-xs font-bold">
-                  <Package size={16} />
-                  <span>Colis / Outros</span>
+              {/* COLIS - DESTAQUE ESPECIAL EM VERDE ESMERALDA */}
+              <div className="bg-[#081813] p-3.5 rounded-xl border-2 border-emerald-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                <div className="flex items-center justify-between text-emerald-400 text-xs font-black uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5">
+                    <Package size={16} className="text-emerald-400" /> COLIS PARA COLETA
+                  </span>
+                  <span className="text-[11px] font-bold text-emerald-300 font-mono">
+                    Artigos p/ Coleta
+                  </span>
                 </div>
                 <input
                   type="number"
                   value={editColis}
                   onChange={(e) => setEditColis(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-28 text-right font-mono font-bold text-sm bg-black border border-zinc-700 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-indigo-400"
+                  className="w-full text-right font-mono font-black text-xl bg-black border-2 border-emerald-500/70 rounded-lg px-3 py-2 text-emerald-300 focus:outline-none focus:border-emerald-400 shadow-inner"
+                  placeholder="Qtd de Colis para Coleta"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* E-Log */}
+                <div className="bg-[#0b0b12] p-3 rounded-xl border border-slate-700 flex flex-col justify-between gap-1.5">
+                  <div className="text-slate-300 text-xs font-bold">
+                    <span>E-Log (Identificador / Linha)</span>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Ex: 2J RA FALC (174)"
+                    value={editElog}
+                    onChange={(e) => setEditElog(e.target.value)}
+                    className="w-full text-left font-mono font-semibold text-xs bg-black border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400"
+                  />
+                </div>
+
+                {/* Reapro */}
+                <div className="bg-[#0b0b12] p-3 rounded-xl border border-slate-700 flex flex-col justify-between gap-1.5">
+                  <div className="text-slate-300 text-xs font-bold">
+                    <span>Reaprovisionamento (Caixas)</span>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Ex: 127 CX"
+                    value={editReapro}
+                    onChange={(e) => setEditReapro(e.target.value)}
+                    className="w-full text-left font-mono font-semibold text-xs bg-black border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-between items-center text-xs font-mono pt-2 border-t border-[#222234]">
-              <span className="text-slate-400">Total Calculado:</span>
-              <span className="text-white font-bold text-sm">{(editAlimento + editMontanha + editMochila + editColis).toLocaleString('pt-BR')} un</span>
+            <div className="flex justify-between items-center text-xs font-mono pt-3 border-t border-[#222234] bg-[#0b0b12] px-4 py-2.5 rounded-xl border">
+              <span className="text-slate-400">Total Artigos Universos:</span>
+              <span className="text-white font-black text-base">
+                {(editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0)).toLocaleString('pt-BR')} un
+              </span>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setEditingSectorUniversos(null)}
-                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveUniversos}
-                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-md"
-              >
-                <Check size={14} />
-                <span>Salvar Parâmetros</span>
-              </button>
+            <div className="flex flex-wrap justify-between items-center gap-2.5 pt-2">
+              <div>
+                {onNavigateTab && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSectorUniversos(null);
+                      if (onChangeSector && editingSectorUniversos) {
+                        onChangeSector(editingSectorUniversos);
+                      }
+                      onNavigateTab('override');
+                    }}
+                    className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                    title="Abrir o painel completo de Override para este setor"
+                  >
+                    <Sliders size={14} />
+                    <span>⚡ Abrir no Override Geral</span>
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingSectorUniversos(null)}
+                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveUniversos}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-lg active:scale-95"
+                >
+                  <Check size={16} />
+                  <span>Salvar &amp; Aplicar Parâmetros</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

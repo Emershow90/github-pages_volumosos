@@ -43,8 +43,14 @@ import {
   Package,
   Sliders,
   PieChart,
+  Check,
+  X,
+  Tag,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { useSectorStore } from "../stores/useSectorStore";
+import { useUserStore } from "../stores/useUserStore";
 
 interface DashboardTabProps {
   setores: Setor[];
@@ -66,6 +72,7 @@ interface DashboardTabProps {
   historico: HistoricoRegistro[];
   capacidade: CapacidadeSetor[];
   onUpdateSetor?: (sid: string, field: string, val: string | number) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
@@ -88,6 +95,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   historico,
   capacidade,
   onUpdateSetor,
+  onNavigateTab,
 }) => {
   // Widget Order State with Drag & Drop & Persistence
   const [cardOrder, setCardOrder] = useState<string[]>(() => {
@@ -159,59 +167,128 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   // Leitura reativa das entradas de atividade do useSectorStore
-  const activityEntries = useSectorStore((s) => s.activityEntries);
+  const { activityEntries, updateActivityUniversosBatch } = useSectorStore();
+  const { currentUser, currentUserUid } = useUserStore();
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Helper de mix de universos (Alimento, Montanha, Mochila, Colis)
+  // Modal / Edição rápida de universos
+  const [editingSectorUniversos, setEditingSectorUniversos] = useState<string | null>(null);
+  const [editAlimento, setEditAlimento] = useState<number>(0);
+  const [editMontanha, setEditMontanha] = useState<number>(0);
+  const [editCustomUniversos, setEditCustomUniversos] = useState<{ id: string; name: string; value: number }[]>([]);
+  const [editColis, setEditColis] = useState<number>(0);
+  const [editElog, setEditElog] = useState<string>('');
+  const [editReapro, setEditReapro] = useState<string>('');
+
+  const handleOpenEditUniversos = (sid: string, ativTotal: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const mix = getSectorMix(sid, ativTotal);
+    const entry = activityEntries.find(e => e.sectorId === sid && e.activityDate === todayStr) ||
+                  activityEntries.find(e => e.sectorId === sid);
+    setEditingSectorUniversos(sid);
+    setEditAlimento(mix.alimento);
+    setEditMontanha(mix.montanha);
+    setEditCustomUniversos(mix.customUniversos.map(c => ({ id: c.id, name: c.name, value: c.value })));
+    setEditColis(mix.colis);
+    setEditElog(entry?.elog || '');
+    setEditReapro(entry?.reapro || '');
+  };
+
+  const handleSaveUniversos = async () => {
+    if (!editingSectorUniversos) return;
+    try {
+      const uId = currentUserUid || currentUser || 'system';
+      const customObj: Record<string, number> = {};
+      editCustomUniversos.forEach(item => {
+        if (item.name.trim()) {
+          customObj[item.name.trim()] = item.value;
+        }
+      });
+
+      await updateActivityUniversosBatch(editingSectorUniversos, todayStr, uId, {
+        alimento: editAlimento,
+        montanha: editMontanha,
+        l7Mochila: 0,
+        adhocCategories: customObj,
+        colis: editColis,
+        elog: editElog,
+        reapro: editReapro
+      });
+      setEditingSectorUniversos(null);
+    } catch (err) {
+      console.error('[DashboardTab] Erro ao salvar universos:', err);
+      setEditingSectorUniversos(null);
+    }
+  };
+
+  // Helper de mix de universos (Alimento, Montanha, Custom) e Coleta (Colis)
   const getSectorMix = (sid: string, ativTotal: number) => {
     const entry = activityEntries.find(e => e.sectorId === sid && e.activityDate === todayStr) ||
                   activityEntries.find(e => e.sectorId === sid);
 
-    if (entry && (entry.alimento > 0 || entry.montanha > 0)) {
-      const tot = (entry.alimento || 0) + (entry.montanha || 0) + (entry.l7Mochila || 0) + (entry.colis || 0);
-      const safeTot = tot > 0 ? tot : ativTotal || 1;
+    // Custom categories extraction
+    const customList: { id: string; name: string; value: number; pct: number }[] = [];
+    if (entry?.adhocCategories && typeof entry.adhocCategories === 'object') {
+      Object.entries(entry.adhocCategories).forEach(([name, val], idx) => {
+        const numVal = typeof val === 'number' ? val : parseInt(String(val)) || 0;
+        if (numVal > 0) {
+          customList.push({
+            id: `custom-${idx}-${name}`,
+            name,
+            value: numVal,
+            pct: 0
+          });
+        }
+      });
+    }
+
+    if (entry && (entry.alimento > 0 || entry.montanha > 0 || entry.colis > 0 || customList.length > 0)) {
+      const customSum = customList.reduce((acc, c) => acc + c.value, 0);
+      const totUniversos = (entry.alimento || 0) + (entry.montanha || 0) + customSum;
+      const safeTot = totUniversos > 0 ? totUniversos : ativTotal || 1;
       const alim = entry.alimento || 0;
       const mont = entry.montanha || 0;
-      const moch = entry.l7Mochila || 0;
-      const colis = entry.colis || 0;
+      const colis = entry.colis !== undefined && entry.colis > 0 ? entry.colis : Math.max(1, Math.round(safeTot * 0.05));
+
+      customList.forEach(c => {
+        c.pct = Math.round((c.value / safeTot) * 100);
+      });
+
       return {
         alimento: alim,
         montanha: mont,
-        mochila: moch,
+        customUniversos: customList,
         colis: colis,
         alimentoPct: Math.round((alim / safeTot) * 100),
         montanhaPct: Math.round((mont / safeTot) * 100),
-        mochilaPct: Math.round((moch / safeTot) * 100),
         colisPct: Math.round((colis / safeTot) * 100),
-        total: tot > 0 ? tot : ativTotal
+        total: totUniversos > 0 ? totUniversos : ativTotal
       };
     }
 
-    // Proporções operacionais de referência padrão do CD por setor
-    const mixPadrao: Record<string, { alim: number; mont: number; moch: number; colis: number }> = {
-      '88': { alim: 0.60, mont: 0.30, moch: 0.08, colis: 0.02 }, // Setor 88 com ~6.000 un (60% alimento, 30% montanha)
-      '87': { alim: 0.35, mont: 0.45, moch: 0.15, colis: 0.05 },
-      '86': { alim: 0.20, mont: 0.50, moch: 0.20, colis: 0.10 },
-      '89': { alim: 0.50, mont: 0.25, moch: 0.15, colis: 0.10 },
-      '85': { alim: 0.40, mont: 0.40, moch: 0.15, colis: 0.05 },
+    // Proporções operacionais de referência padrão do CD por setor (Universos Alimento, Montanha)
+    const mixPadrao: Record<string, { alim: number; mont: number; colisPct: number }> = {
+      '88': { alim: 0.65, mont: 0.35, colisPct: 0.05 },
+      '87': { alim: 0.40, mont: 0.60, colisPct: 0.05 },
+      '86': { alim: 0.30, mont: 0.70, colisPct: 0.05 },
+      '89': { alim: 0.60, mont: 0.40, colisPct: 0.05 },
+      '85': { alim: 0.50, mont: 0.50, colisPct: 0.05 },
     };
 
-    const ratio = mixPadrao[sid] || { alim: 0.40, mont: 0.40, moch: 0.15, colis: 0.05 };
+    const ratio = mixPadrao[sid] || { alim: 0.50, mont: 0.50, colisPct: 0.05 };
     const base = ativTotal > 0 ? ativTotal : (sid === '88' ? 5965 : 4500);
     const alim = Math.round(base * ratio.alim);
-    const mont = Math.round(base * ratio.mont);
-    const moch = Math.round(base * ratio.moch);
-    const colis = Math.max(0, base - alim - mont - moch);
+    const mont = Math.max(0, base - alim);
+    const colis = Math.max(1, Math.round(base * ratio.colisPct));
 
     return {
       alimento: alim,
       montanha: mont,
-      mochila: moch,
+      customUniversos: [] as { id: string; name: string; value: number; pct: number }[],
       colis: colis,
       alimentoPct: Math.round(ratio.alim * 100),
       montanhaPct: Math.round(ratio.mont * 100),
-      mochilaPct: Math.round(ratio.moch * 100),
-      colisPct: Math.round(ratio.colis * 100),
+      colisPct: Math.round(ratio.colisPct * 100),
       total: base
     };
   };
@@ -960,52 +1037,94 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                           </span>
                         </div>
 
-                        {/* DETALHE RÁPIDO E PRÁTICO DOS UNIVERSOS (ALIMENTO & MONTANHA) */}
+                        {/* BLOCO DE UNIVERSOS DE PRODUTOS & COLETA */}
                         {(() => {
                           const mix = getSectorMix(s.id, s.ativ);
                           return (
-                            <div className="bg-white/[0.02] border border-white/5 p-2.5 rounded-xl space-y-1.5">
+                            <div 
+                              onClick={(e) => isEditable && handleOpenEditUniversos(s.id, s.ativ, e)}
+                              className={`bg-white/[0.02] border border-white/5 p-2.5 rounded-xl space-y-2 transition-all group/uni ${
+                                isEditable ? "cursor-pointer hover:bg-white/[0.04] hover:border-indigo-500/30" : ""
+                              }`}
+                            >
                               <div className="flex justify-between items-center text-[0.6rem] font-bold text-zinc-400">
                                 <span className="flex items-center gap-1 text-indigo-300">
-                                  <PieChart size={10} />
-                                  <span>UNIVERSOS DO SETOR</span>
+                                  <PieChart size={11} />
+                                  <span>UNIVERSOS DE PRODUTOS</span>
                                 </span>
-                                <span className="font-mono text-zinc-300">{mix.total.toLocaleString('pt-BR')} un</span>
+                                <div className="flex items-center gap-1.5 font-mono">
+                                  <span className="text-zinc-300">{mix.total.toLocaleString('pt-BR')} un</span>
+                                  {isEditable && (
+                                    <span className="text-[9px] text-indigo-400 font-sans font-bold group-hover/uni:underline flex items-center gap-0.5">
+                                      <Sliders size={9} /> Editar
+                                    </span>
+                                  )}
+                                </div>
                               </div>
 
-                              {/* Mini Barra Segmentada Proporcional */}
+                              {/* Mini Barra Segmentada Proporcional dos Universos */}
                               <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-black/40 border border-white/5">
                                 <div style={{ width: `${mix.alimentoPct}%` }} className="bg-amber-500 h-full" title={`Alimento: ${mix.alimento.toLocaleString('pt-BR')} (${mix.alimentoPct}%)`}></div>
                                 <div style={{ width: `${mix.montanhaPct}%` }} className="bg-purple-500 h-full" title={`Montanha: ${mix.montanha.toLocaleString('pt-BR')} (${mix.montanhaPct}%)`}></div>
-                                <div style={{ width: `${mix.mochilaPct}%` }} className="bg-sky-500 h-full" title={`Mochila: ${mix.mochila.toLocaleString('pt-BR')} (${mix.mochilaPct}%)`}></div>
-                                <div style={{ width: `${mix.colisPct}%` }} className="bg-emerald-500 h-full" title={`Colis: ${mix.colis.toLocaleString('pt-BR')} (${mix.colisPct}%)`}></div>
+                                {mix.customUniversos.map((cu, idx) => (
+                                  <div
+                                    key={`dash-bar-custom-${idx}`}
+                                    style={{ width: `${cu.pct}%` }}
+                                    className="bg-cyan-500 h-full"
+                                    title={`${cu.name}: ${cu.value.toLocaleString('pt-BR')} (${cu.pct}%)`}
+                                  ></div>
+                                ))}
                               </div>
 
-                              {/* Pílulas de Alimento e Montanha em Destaque */}
-                              <div className="grid grid-cols-2 gap-1.5 text-[0.65rem] font-mono">
-                                <div className="bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg flex items-center justify-between">
-                                  <span className="text-amber-400 font-sans flex items-center gap-1 font-bold text-[0.6rem]">
-                                    <Apple size={10} /> Alimento
+                              {/* Pílulas de Universos (Alimento, Montanha) */}
+                              <div className="grid grid-cols-2 gap-1.5 text-[0.6rem] font-mono">
+                                <div className="bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg flex flex-col">
+                                  <span className="text-amber-400 font-sans flex items-center gap-0.5 font-bold text-[0.55rem]">
+                                    <Apple size={9} /> 🍎 Alimento
                                   </span>
-                                  <span className="text-white font-bold">{mix.alimento.toLocaleString('pt-BR')} <span className="text-amber-400/80 font-normal">({mix.alimentoPct}%)</span></span>
+                                  <span className="text-white font-bold text-[0.65rem]">{mix.alimento.toLocaleString('pt-BR')} <span className="text-amber-400/80 font-normal text-[0.55rem]">({mix.alimentoPct}%)</span></span>
                                 </div>
 
-                                <div className="bg-purple-500/10 border border-purple-500/20 px-2 py-1 rounded-lg flex items-center justify-between">
-                                  <span className="text-purple-400 font-sans flex items-center gap-1 font-bold text-[0.6rem]">
-                                    <Mountain size={10} /> Montanha
+                                <div className="bg-purple-500/10 border border-purple-500/20 px-2 py-1 rounded-lg flex flex-col">
+                                  <span className="text-purple-400 font-sans flex items-center gap-0.5 font-bold text-[0.55rem]">
+                                    <Mountain size={9} /> ⛰️ Montanha
                                   </span>
-                                  <span className="text-white font-bold">{mix.montanha.toLocaleString('pt-BR')} <span className="text-purple-400/80 font-normal">({mix.montanhaPct}%)</span></span>
+                                  <span className="text-white font-bold text-[0.65rem]">{mix.montanha.toLocaleString('pt-BR')} <span className="text-purple-400/80 font-normal text-[0.55rem]">({mix.montanhaPct}%)</span></span>
                                 </div>
                               </div>
 
-                              {/* Pílula de Colis com Fonte Grande e Nítida */}
-                              <div className="bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
-                                <span className="text-emerald-400 font-sans flex items-center gap-1 font-black text-[0.7rem] uppercase tracking-wide">
-                                  <Package size={12} className="text-emerald-400" /> Colis
-                                </span>
-                                <div className="flex items-baseline gap-1.5 font-mono">
-                                  <span className="text-emerald-300 font-black text-sm sm:text-base">{mix.colis.toLocaleString('pt-BR')}</span>
-                                  <span className="text-emerald-400/80 text-[0.7rem] font-bold">({mix.colisPct}%)</span>
+                              {/* Universos Customizados */}
+                              {mix.customUniversos.length > 0 && (
+                                <div className="grid grid-cols-2 gap-1.5 text-[0.6rem] font-mono">
+                                  {mix.customUniversos.map((cu, idx) => (
+                                    <div key={`dash-cu-${idx}`} className="bg-cyan-500/10 border border-cyan-500/20 px-2 py-1 rounded-lg flex flex-col">
+                                      <span className="text-cyan-400 font-sans flex items-center gap-0.5 font-bold text-[0.55rem] truncate">
+                                        <Tag size={9} /> {cu.name}
+                                      </span>
+                                      <span className="text-white font-bold text-[0.65rem]">{cu.value.toLocaleString('pt-BR')} <span className="text-cyan-400/80 font-normal text-[0.55rem]">({cu.pct}%)</span></span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Card Destacado de Colis para Coleta */}
+                              <div className="bg-emerald-950/50 border border-emerald-500/50 px-3 py-2 rounded-xl flex items-center justify-between shadow-sm">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                                    <Package size={13} />
+                                  </div>
+                                  <div>
+                                    <span className="text-emerald-400 font-sans font-black text-[0.65rem] uppercase tracking-wider block">
+                                      COLIS PARA COLETA
+                                    </span>
+                                    <span className="text-[0.55rem] text-emerald-300/70 font-sans block">
+                                      Artigos em Coleta
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-baseline gap-1 font-mono">
+                                  <span className="text-emerald-300 font-black text-lg">{mix.colis.toLocaleString('pt-BR')}</span>
+                                  <span className="text-emerald-400/80 text-[0.65rem] font-bold">Colis</span>
                                 </div>
                               </div>
                             </div>
@@ -1994,6 +2113,284 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           }
         })}
       </div>
+
+      {/* MODAL DE AJUSTE RÁPIDO DE UNIVERSOS (ALIMENTO, MONTANHA, COLIS, ETC.) */}
+      {editingSectorUniversos && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[99999] flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-[#2a2a3c] rounded-2xl p-6 w-full max-w-lg shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-[#222234] pb-3">
+              <div className="flex items-center gap-2.5">
+                <Sliders size={20} className="text-indigo-400" />
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Parâmetros por Universo • Setor {editingSectorUniversos}
+                  </h3>
+                  <p className="text-xs text-slate-400">Edição e override de parâmetros de atividade e proporções</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setEditingSectorUniversos(null)}
+                className="p-1.5 rounded-lg hover:bg-zinc-800 text-slate-400 hover:text-white transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Presets Rápidos */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <span className="text-[11px] text-slate-400 self-center">Presets Rápidos:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const total = editAlimento + editMontanha || 6000;
+                  setEditAlimento(Math.round(total * 0.65));
+                  setEditMontanha(Math.round(total * 0.35));
+                  setEditColis(Math.round(total * 0.05) || 120);
+                }}
+                className="px-2.5 py-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold transition-colors"
+              >
+                Mix Padrão (65% Alim / 35% Mont)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const total = editAlimento + editMontanha || 6000;
+                  setEditAlimento(Math.round(total * 0.5));
+                  setEditMontanha(Math.round(total * 0.5));
+                  setEditColis(Math.round(total * 0.05) || 120);
+                }}
+                className="px-2.5 py-1 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-semibold transition-colors"
+              >
+                50% Alim / 50% Mont
+              </button>
+            </div>
+
+            {/* SEÇÃO 1: UNIVERSOS DE PRODUTOS */}
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-300 uppercase tracking-wider">
+                <div className="flex items-center gap-1.5">
+                  <PieChart size={14} className="text-indigo-400" />
+                  <span>1. Universos de Produtos (Artigos em Separação)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newId = `custom-${Date.now()}`;
+                    setEditCustomUniversos([
+                      ...editCustomUniversos,
+                      { id: newId, name: `Novo Universo ${editCustomUniversos.length + 1}`, value: 0 }
+                    ]);
+                  }}
+                  className="px-2.5 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-colors"
+                >
+                  <Plus size={13} />
+                  <span>+ Adicionar Universo</span>
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* Alimento */}
+                <div className="bg-[#0b0b12] p-3 rounded-xl border border-amber-500/20 flex flex-col justify-between gap-1.5">
+                  <div className="flex items-center justify-between text-amber-400 text-xs font-bold">
+                    <span className="flex items-center gap-1"><Apple size={14} /> 🍎 Alimento</span>
+                    <span className="text-[10px] text-amber-400/70 font-mono">
+                      {(() => {
+                        const tot = editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0);
+                        return tot > 0 ? `${((editAlimento / tot) * 100).toFixed(1)}%` : '0%';
+                      })()}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    value={editAlimento}
+                    onChange={(e) => setEditAlimento(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full text-right font-mono font-bold text-sm bg-black border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                {/* Montanha */}
+                <div className="bg-[#0b0b12] p-3 rounded-xl border border-purple-500/20 flex flex-col justify-between gap-1.5">
+                  <div className="flex items-center justify-between text-purple-400 text-xs font-bold">
+                    <span className="flex items-center gap-1"><Mountain size={14} /> ⛰️ Montanha</span>
+                    <span className="text-[10px] text-purple-400/70 font-mono">
+                      {(() => {
+                        const tot = editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0);
+                        return tot > 0 ? `${((editMontanha / tot) * 100).toFixed(1)}%` : '0%';
+                      })()}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    value={editMontanha}
+                    onChange={(e) => setEditMontanha(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full text-right font-mono font-bold text-sm bg-black border border-purple-500/40 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-purple-400"
+                  />
+                </div>
+              </div>
+
+              {/* Universos Customizados Adicionados */}
+              {editCustomUniversos.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-[#1e1e2a]/60">
+                  <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                    <Tag size={13} /> Universos Customizados ({editCustomUniversos.length})
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {editCustomUniversos.map((item, idx) => {
+                      const tot = editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0);
+                      const pct = tot > 0 ? ((item.value / tot) * 100).toFixed(1) : '0';
+                      return (
+                        <div 
+                          key={item.id || `edit-custom-dash-${idx}`} 
+                          className="bg-[#090912] p-3 rounded-xl border border-cyan-500/20 flex flex-col gap-2 relative group"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={(e) => {
+                                const updated = [...editCustomUniversos];
+                                updated[idx].name = e.target.value;
+                                setEditCustomUniversos(updated);
+                              }}
+                              placeholder="Nome do Universo"
+                              className="w-full font-bold text-xs bg-black/60 border border-slate-700 rounded-md px-2 py-1 text-cyan-400 focus:outline-none focus:border-cyan-400"
+                            />
+                            <span className="text-[10px] font-mono text-cyan-400/80 font-bold whitespace-nowrap bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/20">
+                              {pct}%
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditCustomUniversos(editCustomUniversos.filter((_, i) => i !== idx));
+                              }}
+                              className="p-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors"
+                              title="Remover este universo"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-slate-400 font-sans">Artigos:</span>
+                            <input
+                              type="number"
+                              value={item.value}
+                              onChange={(e) => {
+                                const updated = [...editCustomUniversos];
+                                updated[idx].value = Math.max(0, parseInt(e.target.value) || 0);
+                                setEditCustomUniversos(updated);
+                              }}
+                              className="w-full text-right font-mono font-bold text-sm bg-black border border-cyan-500/40 rounded-lg px-2.5 py-1 text-white focus:outline-none focus:border-cyan-400"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* SEÇÃO 2: COLETA & SUPORTE OPERACIONAL */}
+            <div className="space-y-2 pt-2 border-t border-[#1e1e2a]">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-400 uppercase tracking-wider">
+                <span className="flex items-center gap-1.5">
+                  <Package size={15} /> 2. Coleta &amp; Suporte Operacional
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">Volumes / Artigos a Coletar</span>
+              </div>
+
+              {/* COLIS - DESTAQUE ESPECIAL EM VERDE ESMERALDA */}
+              <div className="bg-[#081813] p-3.5 rounded-xl border-2 border-emerald-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                <div className="flex items-center justify-between text-emerald-400 text-xs font-black uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5">
+                    <Package size={16} className="text-emerald-400" /> COLIS PARA COLETA
+                  </span>
+                  <span className="text-[11px] font-bold text-emerald-300 font-mono">
+                    Artigos p/ Coleta
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  value={editColis}
+                  onChange={(e) => setEditColis(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full text-right font-mono font-black text-xl bg-black border-2 border-emerald-500/70 rounded-lg px-3 py-2 text-emerald-300 focus:outline-none focus:border-emerald-400 shadow-inner"
+                  placeholder="Qtd de Colis para Coleta"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {/* E-Log */}
+                <div className="bg-[#0b0b12] p-3 rounded-xl border border-slate-700 flex flex-col justify-between gap-1.5">
+                  <div className="text-slate-300 text-xs font-bold">
+                    <span>E-Log (Identificador / Linha)</span>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Ex: 2J RA FALC (174)"
+                    value={editElog}
+                    onChange={(e) => setEditElog(e.target.value)}
+                    className="w-full text-left font-mono font-semibold text-xs bg-black border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400"
+                  />
+                </div>
+
+                {/* Reapro */}
+                <div className="bg-[#0b0b12] p-3 rounded-xl border border-slate-700 flex flex-col justify-between gap-1.5">
+                  <div className="text-slate-300 text-xs font-bold">
+                    <span>Reaprovisionamento (Caixas)</span>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Ex: 127 CX"
+                    value={editReapro}
+                    onChange={(e) => setEditReapro(e.target.value)}
+                    className="w-full text-left font-mono font-semibold text-xs bg-black border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center text-xs font-mono pt-3 border-t border-[#222234] bg-[#0b0b12] px-4 py-2.5 rounded-xl border">
+              <span className="text-slate-400">Total Artigos Universos:</span>
+              <span className="text-white font-black text-base">
+                {(editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0)).toLocaleString('pt-BR')} un
+              </span>
+            </div>
+
+            <div className="flex flex-wrap justify-between items-center gap-2.5 pt-2">
+              <div>
+                {onNavigateTab && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSectorUniversos(null);
+                      onNavigateTab('override');
+                    }}
+                    className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                    title="Abrir o painel completo de Override para este setor"
+                  >
+                    <Sliders size={14} />
+                    <span>⚡ Abrir no Override Geral</span>
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingSectorUniversos(null)}
+                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveUniversos}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-lg active:scale-95"
+                >
+                  <Check size={16} />
+                  <span>Salvar &amp; Aplicar Parâmetros</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -6,18 +6,21 @@ interface ApresentacaoAtividadeTabProps {
   setores: Setor[];
   activeSectorId: string;
   onChangeSector: (id: string) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export const ApresentacaoAtividadeTab: React.FC<ApresentacaoAtividadeTabProps> = ({
   setores,
   activeSectorId,
-  onChangeSector
+  onChangeSector,
+  onNavigateTab
 }) => {
   return (
     <ConsoleOperacional 
       setores={setores} 
       activeSectorId={activeSectorId} 
       onChangeSector={onChangeSector} 
+      onNavigateTab={onNavigateTab}
     />
   );
 };

@@ -55,34 +55,12 @@ export interface EscalaColaborador {
   updated_at?: string;
 }
 
-// UNIVERSOS: Alimento, Montanha (inclui Mochila), e Card de Colis (Decathlon Logística)
-export interface Universe {
-  id: string; // "alimento", "montanha", "colis"
-  name: string; // "Alimento", "Montanha", "Colis"
-  color: string; // tailwind color class
-  icon: string; // emoji or icon name
-  description?: string;
-  active: boolean;
-}
-
-export interface SectorActivityMix {
-  alimento: number;
-  montanha: number; // inclui mochila como subgrupo
-  colis: number; // card de Decathlon (quantidade artigos)
-  alimentoPct: number;
-  montanhaPct: number;
-  colisPct: number;
-  total: number;
-}
-
 export interface UniversoMix {
   id?: string;
   setor_id: string;
-  data?: string; // data da atividade
-  alimento: number;
-  montanha: number;
-  colis: number; // card de artigos para coleta
-  customUniverses?: Record<string, number>; // para futura extensibilidade
+  nome: string;
+  meta: number;
+  feito: number;
 }
 
 export interface CopilMatrizRow {
