@@ -1090,6 +1090,103 @@ export class SupabaseService {
   public static async syncOfflineQueue(): Promise<void> {
     return this.flushOfflineQueue();
   }
+
+  /**
+   * Limpeza e purga semestral (6 meses / 180 dias) para manter o banco enxuto e performático.
+   * Remove registros expirados de activity_entries, historico_consolidado, audit_logs e sync_logs.
+   */
+  public static async purgeRecordsOlderThanMonths(months: number = 6): Promise<{
+    activityEntriesPurged: number;
+    historicoPurged: number;
+    auditLogsPurged: number;
+    syncLogsPurged: number;
+    totalPurged: number;
+    success: boolean;
+  }> {
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - months);
+    const cutoffISO = cutoffDate.toISOString();
+
+    const stats = {
+      activityEntriesPurged: 0,
+      historicoPurged: 0,
+      auditLogsPurged: 0,
+      syncLogsPurged: 0,
+      totalPurged: 0,
+      success: true,
+    };
+
+    if (isStaticBuild || !navigator.onLine) {
+      return stats;
+    }
+
+    try {
+      // 1. Purga de activity_entries
+      try {
+        const { count, error } = await supabase
+          .from('activity_entries')
+          .delete({ count: 'exact' })
+          .lt('created_at', cutoffISO);
+        if (!error && typeof count === 'number') {
+          stats.activityEntriesPurged = count;
+        }
+      } catch (e) {
+        console.warn('[Retention Policy] activity_entries purge error:', e);
+      }
+
+      // 2. Purga de historico_consolidado
+      try {
+        const { count, error } = await supabase
+          .from('historico_consolidado')
+          .delete({ count: 'exact' })
+          .lt('created_at', cutoffISO);
+        if (!error && typeof count === 'number') {
+          stats.historicoPurged = count;
+        }
+      } catch (e) {
+        console.warn('[Retention Policy] historico_consolidado purge error:', e);
+      }
+
+      // 3. Purga de audit_logs
+      try {
+        const { count, error } = await supabase
+          .from('audit_logs')
+          .delete({ count: 'exact' })
+          .lt('created_at', cutoffISO);
+        if (!error && typeof count === 'number') {
+          stats.auditLogsPurged = count;
+        }
+      } catch (e) {
+        console.warn('[Retention Policy] audit_logs purge error:', e);
+      }
+
+      // 4. Purga de sync_logs
+      try {
+        const { count, error } = await supabase
+          .from('sync_logs')
+          .delete({ count: 'exact' })
+          .lt('created_at', cutoffISO);
+        if (!error && typeof count === 'number') {
+          stats.syncLogsPurged = count;
+        }
+      } catch (e) {
+        console.warn('[Retention Policy] sync_logs purge error:', e);
+      }
+
+      stats.totalPurged =
+        stats.activityEntriesPurged +
+        stats.historicoPurged +
+        stats.auditLogsPurged +
+        stats.syncLogsPurged;
+
+      console.log(`[Retention Policy] Purga semestral (6 meses) concluída:`, stats);
+      return stats;
+    } catch (err) {
+      console.error('[Retention Policy] Erro geral na purga:', err);
+      stats.success = false;
+      return stats;
+    }
+  }
 }
 
 if (typeof window !== 'undefined') {

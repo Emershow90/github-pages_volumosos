@@ -57,7 +57,7 @@ import {
 } from "../lib/supabaseAuth";
 import { OverrideOperacionalModal } from "./OverrideOperacionalModal";
 
-import { SupabaseService as FirebaseService } from "../lib/supabaseService";
+import { SupabaseService, SupabaseService as FirebaseService } from "../lib/supabaseService";
 import { IndexedDBService } from "../lib/indexedDb";
 import { ListaColetaItem, RadarLojaStatus } from "../types";
 import { ModalConfirmacao } from "./ModalConfirmacao";
@@ -511,25 +511,48 @@ export const HistoricoTab: React.FC<HistoricoTabProps> = ({
   currentRole,
 }) => {
   const isAdmin = currentRole === UserRole.Admin;
+  const [purging, setPurging] = useState(false);
+
+  const handlePurge6Months = async () => {
+    if (!confirm("Deseja aplicar a política de retenção semestral e limpar registros com mais de 6 meses (180 dias)?")) return;
+    setPurging(true);
+    try {
+      const stats = await SupabaseService.purgeRecordsOlderThanMonths(6);
+      alert(`Política de retenção semestral aplicada com sucesso! ${stats.totalPurged} registros arquivados.`);
+    } catch {
+      alert("Erro ao executar retenção semestral.");
+    } finally {
+      setPurging(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-3">
         <div>
           <h2 className="text-xl font-black text-white uppercase tracking-widest">Histórico de Apontamentos</h2>
-          <p className="text-xs text-zinc-500 font-semibold mt-1">Registros consolidados de fechamento de turno</p>
+          <p className="text-xs text-zinc-500 font-semibold mt-1">Registros consolidados de fechamento de turno (Retenção semestral de 6 meses)</p>
         </div>
         {isAdmin && (
-          <button
-            onClick={() => {
-              if (confirm("Deseja realmente limpar todo o histórico?")) {
-                onClearHistorico();
-              }
-            }}
-            className="px-4 py-2 bg-transparent border border-red-500/50 text-red-500 font-bold rounded hover:bg-red-500/10 text-xs uppercase tracking-widest transition cursor-pointer"
-          >
-            Limpar Histórico
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePurge6Months}
+              disabled={purging}
+              className="px-3 py-2 bg-purple-600/20 border border-purple-500/40 text-purple-300 font-bold rounded hover:bg-purple-600/30 text-xs uppercase tracking-wider transition cursor-pointer"
+            >
+              {purging ? "Purgando..." : "Purga > 6 Meses"}
+            </button>
+            <button
+              onClick={() => {
+                if (confirm("Deseja realmente limpar todo o histórico?")) {
+                  onClearHistorico();
+                }
+              }}
+              className="px-3 py-2 bg-transparent border border-red-500/50 text-red-500 font-bold rounded hover:bg-red-500/10 text-xs uppercase tracking-wider transition cursor-pointer"
+            >
+              Limpar Tudo
+            </button>
+          </div>
         )}
       </div>
 

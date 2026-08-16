@@ -26,7 +26,8 @@ import {
   PieChart,
   Plus,
   Trash2,
-  Tag
+  Tag,
+  RotateCcw
 } from 'lucide-react';
 import { usePainelProducaoStore } from '../stores/usePainelProducaoStore';
 import { useSectorStore } from '../stores/useSectorStore';
@@ -1141,7 +1142,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                     </div>
                   </div>
 
-                  {/* 2. CARD DEDICADO DE COLIS PARA COLETA & SUPORTE */}
+                  {/* 2. CARD DEDICADO DE CAIXAS PARA COLETA & SUPORTE */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
                     {/* CARD PRINCIPAL: COLIS PARA COLETA */}
                     <div 
@@ -1171,7 +1172,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                           </div>
                         </div>
                         <div className="text-right">
-                          <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/20 px-2 py-1 rounded border border-emerald-500/30">
+                          <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/30">
                             Pronto p/ Coleta
                           </span>
                         </div>
@@ -1207,7 +1208,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                       </div>
                       <div className="mt-2 text-[10px] text-slate-400 flex justify-between items-center border-t border-white/5 pt-1.5">
                         <span>Fluxo Integrado</span>
-                        <span className="text-indigo-400 font-semibold">Decathlon WMS</span>
+                        <span className="text-amber-400 font-mono font-bold">WMS OK</span>
                       </div>
                     </div>
                   </div>
@@ -1480,62 +1481,68 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
               )}
             </div>
 
-            {/* SEÇÃO 2: COLETA & SUPORTE OPERACIONAL */}
-            <div className="space-y-2 pt-2 border-t border-[#1e1e2a]">
-              <div className="flex items-center justify-between text-xs font-bold text-emerald-400 uppercase tracking-wider">
+            {/* SEÇÃO 2: REPRO & COLETA & SUPORTE OPERACIONAL */}
+            <div className="space-y-3 pt-2 border-t border-[#1e1e2a]">
+              <div className="flex items-center justify-between text-xs font-bold text-amber-400 uppercase tracking-wider">
                 <span className="flex items-center gap-1.5">
-                  <Package size={15} /> 2. Coleta &amp; Suporte Operacional
+                  <RotateCcw size={15} /> 2. Fluxo Operacional: Repro &amp; Coleta
                 </span>
-                <span className="text-[10px] text-slate-400 font-normal">Volumes / Artigos a Coletar</span>
+                <span className="text-[10px] text-slate-400 font-normal">Reaprovisionamento &amp; Coleta</span>
               </div>
 
-              {/* COLIS - DESTAQUE ESPECIAL EM VERDE ESMERALDA */}
-              <div className="bg-[#081813] p-3.5 rounded-xl border-2 border-emerald-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
-                <div className="flex items-center justify-between text-emerald-400 text-xs font-black uppercase tracking-wider">
-                  <span className="flex items-center gap-1.5">
-                    <Package size={16} className="text-emerald-400" /> COLIS PARA COLETA
-                  </span>
-                  <span className="text-[11px] font-bold text-emerald-300 font-mono">
-                    Artigos p/ Coleta
-                  </span>
-                </div>
-                <input
-                  type="number"
-                  value={editColis}
-                  onChange={(e) => setEditColis(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full text-right font-mono font-black text-xl bg-black border-2 border-emerald-500/70 rounded-lg px-3 py-2 text-emerald-300 focus:outline-none focus:border-emerald-400 shadow-inner"
-                  placeholder="Qtd de Colis para Coleta"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {/* E-Log */}
-                <div className="bg-[#0b0b12] p-3 rounded-xl border border-slate-700 flex flex-col justify-between gap-1.5">
-                  <div className="text-slate-300 text-xs font-bold">
-                    <span>E-Log (Identificador / Linha)</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* REPRO (REAPROVISIONAMENTO) - DESTAQUE ESPECIAL EM AMARELO ÂMBAR */}
+                <div className="bg-[#1a1408] p-3.5 rounded-xl border-2 border-amber-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
+                  <div className="flex items-center justify-between text-amber-400 text-xs font-black uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5">
+                      <RotateCcw size={16} className="text-amber-400" /> REPRO (REAPRO)
+                    </span>
+                    <span className="text-[11px] font-bold text-amber-300 font-mono">
+                      Caixas / Reposição
+                    </span>
                   </div>
                   <input
                     type="text"
-                    placeholder="Ex: 2J RA FALC (174)"
-                    value={editElog}
-                    onChange={(e) => setEditElog(e.target.value)}
-                    className="w-full text-left font-mono font-semibold text-xs bg-black border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400"
-                  />
-                </div>
-
-                {/* Reapro */}
-                <div className="bg-[#0b0b12] p-3 rounded-xl border border-slate-700 flex flex-col justify-between gap-1.5">
-                  <div className="text-slate-300 text-xs font-bold">
-                    <span>Reaprovisionamento (Caixas)</span>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Ex: 127 CX"
                     value={editReapro}
                     onChange={(e) => setEditReapro(e.target.value)}
-                    className="w-full text-left font-mono font-semibold text-xs bg-black border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400"
+                    className="w-full text-left font-mono font-black text-lg bg-black border-2 border-amber-500/70 rounded-lg px-3 py-2 text-amber-300 focus:outline-none focus:border-amber-400 shadow-inner"
+                    placeholder="Ex: 143 CX ou Qtd Repro"
                   />
                 </div>
+
+                {/* COLIS - DESTAQUE ESPECIAL EM VERDE ESMERALDA */}
+                <div className="bg-[#081813] p-3.5 rounded-xl border-2 border-emerald-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                  <div className="flex items-center justify-between text-emerald-400 text-xs font-black uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5">
+                      <Package size={16} className="text-emerald-400" /> COLIS PARA COLETA
+                    </span>
+                    <span className="text-[11px] font-bold text-emerald-300 font-mono">
+                      Artigos p/ Coleta
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    value={editColis}
+                    onChange={(e) => setEditColis(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full text-right font-mono font-black text-lg bg-black border-2 border-emerald-500/70 rounded-lg px-3 py-2 text-emerald-300 focus:outline-none focus:border-emerald-400 shadow-inner"
+                    placeholder="Qtd de Colis para Coleta"
+                  />
+                </div>
+              </div>
+
+              {/* E-Log */}
+              <div className="bg-[#0b0b12] p-3 rounded-xl border border-slate-700 flex flex-col justify-between gap-1.5">
+                <div className="text-slate-300 text-xs font-bold flex justify-between items-center">
+                  <span>E-Log (Identificador / Linha)</span>
+                  <span className="text-[10px] text-slate-500 font-mono">Decathlon WMS</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Ex: 2J RA FALC (174)"
+                  value={editElog}
+                  onChange={(e) => setEditElog(e.target.value)}
+                  className="w-full text-left font-mono font-semibold text-xs bg-black border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400"
+                />
               </div>
             </div>
 

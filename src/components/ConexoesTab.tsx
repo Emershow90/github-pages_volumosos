@@ -237,10 +237,32 @@ export const ConexoesTab: React.FC = () => {
     }
   };
 
+  const [isPurgingRetention, setIsPurgingRetention] = useState(false);
+
+  const handlePurgeRetention = async () => {
+    if (!window.confirm('Deseja executar a purga de retenção semestral? Registros com mais de 6 meses (180 dias) em Histórico, Atividades e Logs serão removidos para otimizar o banco de dados.')) {
+      return;
+    }
+    setIsPurgingRetention(true);
+    try {
+      const stats = await SupabaseService.purgeRecordsOlderThanMonths(6);
+      if (stats.success) {
+        toast.success(`Purga concluída! ${stats.totalPurged} registros com mais de 6 meses foram arquivados/removidos.`);
+      } else {
+        toast.info('Purga executada (nenhum registro com mais de 6 meses encontrado ou erro parcial).');
+      }
+      loadTableCounts();
+    } catch {
+      toast.error('Erro ao executar purga de retenção.');
+    } finally {
+      setIsPurgingRetention(false);
+    }
+  };
+
   const loadTableCounts = async () => {
     setLoadingTables(true);
     try {
-      const [setores, colabs, matriz, historico, escalas, plano, ops, storesMaster] = await Promise.all([
+      const [setores, colabs, matriz, historico, escalas, plano, ops, storesMaster, activityEntries] = await Promise.all([
         SupabaseService.fetchTable('setores').catch(() => []),
         SupabaseService.fetchTable('colaboradores').catch(() => []),
         SupabaseService.fetchTable('matriz_performance').catch(() => []),
@@ -249,6 +271,7 @@ export const ConexoesTab: React.FC = () => {
         SupabaseService.fetchTable('plano_carregamento').catch(() => []),
         SupabaseService.fetchTable('store_operations').catch(() => []),
         SupabaseService.fetchTable('store_master').catch(() => []),
+        SupabaseService.fetchTable('activity_entries').catch(() => []),
       ]);
       setTableCounts({
         setores: setores.length,
@@ -259,6 +282,7 @@ export const ConexoesTab: React.FC = () => {
         plano_carregamento: plano.length,
         store_operations: ops.length,
         store_master: storesMaster.length,
+        activity_entries: activityEntries.length,
       });
     } catch (err) {
       console.error('[ConexoesTab] Erro ao carregar registros das tabelas:', err);
@@ -514,6 +538,7 @@ export const ConexoesTab: React.FC = () => {
                   { label: 'Colaboradores', key: 'colaboradores', color: 'text-cyan-400' },
                   { label: 'Matriz Performance', key: 'matriz_performance', color: 'text-purple-400' },
                   { label: 'Histórico Consolidado', key: 'historico_consolidado', color: 'text-amber-400' },
+                  { label: 'Atividades / Registros', key: 'activity_entries', color: 'text-rose-400' },
                   { label: 'Escalas Referentes', key: 'escalas_referentes', color: 'text-teal-400' },
                 ].map((tbl) => (
                   <div
@@ -537,13 +562,22 @@ export const ConexoesTab: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className="w-5 h-5 text-amber-400" />
-                  <h3 className="text-sm font-bold text-white">Ações de Manutenção</h3>
+                  <h3 className="text-sm font-bold text-white">Ações de Manutenção & Retenção</h3>
                 </div>
                 <p className="text-xs text-zinc-400 leading-relaxed mb-4">
-                  Sincronização imediata de lojas, testes de conectividade e gestão de filas offline.
+                  Sincronização imediata de lojas, gestão de filas offline e política de retenção semestral (6 meses).
                 </p>
               </div>
               <div className="space-y-2.5">
+                <button
+                  onClick={handlePurgeRetention}
+                  disabled={isPurgingRetention}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 rounded-xl text-xs font-semibold transition-colors border border-purple-500/30 cursor-pointer"
+                  title="Purga registros com mais de 6 meses de histórico e atividades"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isPurgingRetention ? 'animate-spin' : ''}`} />
+                  {isPurgingRetention ? 'Purgando Registros...' : 'Executar Retenção Semestral (6 Meses)'}
+                </button>
                 <button
                   onClick={handleFlushOfflineQueue}
                   disabled={isFlushingQueue}
