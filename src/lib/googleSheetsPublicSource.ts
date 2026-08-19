@@ -87,6 +87,72 @@ export async function clearPlanilhaCache(): Promise<void> {
  * Fetches and parses the public Google Sheets CSV for operational metrics (Atividade & UPH),
  * wrapped with IndexedDB caching (5 min TTL) for offline resilience.
  */
+export interface KpiSemanaMetrics {
+  s87: number;
+  s88: number;
+  s89: number;
+  s90: number;
+}
+
+export const KPI_SEMANA_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=515870420&single=true&output=csv';
+
+const CACHE_KPI_KEY = 'cache_kpi_semana';
+
+export async function fetchKpiSemanaMetrics(): Promise<KpiSemanaMetrics | null> {
+  let cached: { id: string; timestamp: number; data: KpiSemanaMetrics } | null = null;
+  try {
+    cached = await IndexedDBService.get('planilha_cache', CACHE_KPI_KEY);
+    if (cached && Date.now() - cached.timestamp < TTL_MS) {
+      return cached.data;
+    }
+  } catch {
+    // Ignore cache error
+  }
+
+  try {
+    const response = await fetch(KPI_SEMANA_SHEET_URL, { redirect: 'follow' });
+    if (!response.ok) throw new Error('Failed to fetch KPI DA SEMANA');
+    const csvText = await response.text();
+    
+    if (csvText.trim().startsWith('<') || csvText.includes('<!DOCTYPE')) {
+      throw new Error('Retornou HTML em vez de CSV');
+    }
+
+    const lines = csvText.split(/\r?\n/);
+    // H3 -> Row 2 (0-indexed is 2), Col H is index 7
+    // CSV might have empty columns as commas
+    
+    const getVal = (lineIdx: number) => {
+      if (lineIdx >= lines.length) return 0;
+      const cols = parseCsvLine(lines[lineIdx] || '');
+      // Try to find the numeric value that makes sense, usually at column 7 or so.
+      // We will parse column 7 strictly.
+      const val = cols[7];
+      return val ? parseInt(val.replace(/\./g, ''), 10) || 0 : 0;
+    };
+
+    const metrics: KpiSemanaMetrics = {
+      s87: getVal(2), // H3
+      s88: getVal(3), // H4
+      s89: getVal(4), // H5
+      s90: getVal(5), // H6
+    };
+
+    try {
+      await IndexedDBService.put('planilha_cache', {
+        id: CACHE_KPI_KEY,
+        timestamp: Date.now(),
+        data: metrics,
+      });
+    } catch {}
+
+    return metrics;
+  } catch (err) {
+    console.warn('[googleSheetsPublicSource] Erro ao buscar KPI DA SEMANA:', err);
+    return cached?.data || null;
+  }
+}
+
 export async function fetchPublicSpreadsheetMetrics(): Promise<PublicSpreadsheetMetricsMap> {
   // Check IndexedDB Cache first
   let cached: CacheEntry | null = null;

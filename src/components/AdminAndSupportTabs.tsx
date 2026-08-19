@@ -59,8 +59,9 @@ import { OverrideOperacionalModal } from "./OverrideOperacionalModal";
 
 import { SupabaseService, SupabaseService as FirebaseService } from "../lib/supabaseService";
 import { IndexedDBService } from "../lib/indexedDb";
-import { ListaColetaItem, RadarLojaStatus } from "../types";
+import { ListaColetaItem, RadarLojaStatus, UniversoMix } from "../types";
 import { ModalConfirmacao } from "./ModalConfirmacao";
+import { useSectorStore } from "../stores/useSectorStore";
 
 // ==========================================
 // EQUIPA TAB
@@ -1208,6 +1209,21 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [totalImportedCount, setTotalImportedCount] = useState(0);
 
+  // Store Sector Master UI State
+  const { universos: globUniversos, setUniversos: setGlobUniversos } = useSectorStore();
+  const [showSetorModal, setShowSetorModal] = useState(false);
+  const [editingSetorId, setEditingSetorId] = useState<string | null>(null);
+  const [setorFormId, setSetorFormId] = useState("");
+  const [setorFormNumero, setSetorFormNumero] = useState(0);
+  const [setorFormNome, setSetorFormNome] = useState("");
+  const [setorFormMeta, setSetorFormMeta] = useState(100);
+  
+  const [showUniversoModal, setShowUniversoModal] = useState(false);
+  const [activeSetorForUniverso, setActiveSetorForUniverso] = useState<string | null>(null);
+  const [editingUniversoIdx, setEditingUniversoIdx] = useState<number | null>(null);
+  const [universoFormNome, setUniversoFormNome] = useState("");
+  const [universoFormMeta, setUniversoFormMeta] = useState(0);
+
   // Store Master Zustand hook
   const {
     stores: masterStores,
@@ -1313,6 +1329,140 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   const showFeedback = (text: string, type: "success" | "error" | "info" = "success") => {
     setFeedback({ text, type });
     setTimeout(() => setFeedback(null), 4000);
+  };
+
+  const handleOpenNewSetor = () => {
+    setEditingSetorId(null);
+    setSetorFormId("");
+    setSetorFormNumero(0);
+    setSetorFormNome("");
+    setSetorFormMeta(100);
+    setShowSetorModal(true);
+  };
+
+  const handleOpenEditSetor = (st: Setor) => {
+    setEditingSetorId(st.id);
+    setSetorFormId(st.id);
+    setSetorFormNumero(st.numero);
+    setSetorFormNome(st.nome);
+    setSetorFormMeta(st.meta);
+    setShowSetorModal(true);
+  };
+
+  const { setSetores } = useSectorStore();
+
+  const handleSaveSetorForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!setorFormId || !setorFormNome) {
+      showFeedback("ID e Nome do Setor são obrigatórios.", "error");
+      return;
+    }
+
+    if (editingSetorId) {
+      setSetores(prev => prev.map(s => s.id === editingSetorId ? {
+        ...s,
+        id: setorFormId,
+        numero: setorFormNumero,
+        nome: setorFormNome,
+        meta: setorFormMeta,
+      } : s));
+      showFeedback(`Setor ${setorFormNome} atualizado com sucesso!`);
+    } else {
+      const novoSetor: Setor = {
+        id: setorFormId,
+        numero: setorFormNumero,
+        nome: setorFormNome,
+        meta: setorFormMeta,
+        resp: "PENDENTE",
+        ativ: 0,
+        promessa: 100,
+        varFin: 0,
+        bsi: 100,
+        nota5s: 100,
+        errosPicking: 0,
+        reproTotal: 0,
+        infracaoSeguranca: false,
+        horasDKT: 0,
+        poliRec: 0,
+        rdl: 0,
+        poliSaid: 0,
+        coletado: 0,
+        uph: 0,
+        situacao: 'Ativo'
+      };
+      setSetores(prev => [...prev, novoSetor]);
+      showFeedback(`Setor ${setorFormNome} adicionado com sucesso!`);
+    }
+    setShowSetorModal(false);
+  };
+
+  const handleDeleteSetor = (id: string) => {
+    if (confirm("Tem certeza que deseja excluir este setor?")) {
+      setSetores(prev => prev.filter(s => s.id !== id));
+      showFeedback("Setor removido com sucesso!");
+    }
+  };
+
+  const handleOpenNewUniverso = (setorId: string) => {
+    setActiveSetorForUniverso(setorId);
+    setEditingUniversoIdx(null);
+    setUniversoFormNome("");
+    setUniversoFormMeta(0);
+    setShowUniversoModal(true);
+  };
+
+  const handleOpenEditUniverso = (setorId: string, idx: number, univ: UniversoMix) => {
+    setActiveSetorForUniverso(setorId);
+    setEditingUniversoIdx(idx);
+    setUniversoFormNome(univ.nome);
+    setUniversoFormMeta(univ.meta);
+    setShowUniversoModal(true);
+  };
+
+  const handleSaveUniversoForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeSetorForUniverso || !universoFormNome) {
+      showFeedback("Nome do universo é obrigatório.", "error");
+      return;
+    }
+
+    const currentUnivs = globUniversos[activeSetorForUniverso] || [];
+    let nextUnivs = [...currentUnivs];
+
+    if (editingUniversoIdx !== null) {
+      nextUnivs[editingUniversoIdx] = {
+        ...nextUnivs[editingUniversoIdx],
+        nome: universoFormNome,
+        meta: universoFormMeta
+      };
+      showFeedback("Universo atualizado com sucesso!");
+    } else {
+      nextUnivs.push({
+        setor_id: activeSetorForUniverso,
+        nome: universoFormNome,
+        meta: universoFormMeta,
+        feito: 0
+      });
+      showFeedback("Universo adicionado com sucesso!");
+    }
+
+    setGlobUniversos({
+      ...globUniversos,
+      [activeSetorForUniverso]: nextUnivs
+    });
+    setShowUniversoModal(false);
+  };
+
+  const handleDeleteUniverso = (setorId: string, idx: number) => {
+    if (confirm("Tem certeza que deseja excluir este universo?")) {
+      const currentUnivs = globUniversos[setorId] || [];
+      const nextUnivs = currentUnivs.filter((_, i) => i !== idx);
+      setGlobUniversos({
+        ...globUniversos,
+        [setorId]: nextUnivs
+      });
+      showFeedback("Universo removido com sucesso!");
+    }
   };
 
 
@@ -2105,6 +2255,13 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
         </button>
 
         <button
+          onClick={() => setSubCat("setores")}
+          className={`cfg-nav ${subCat === "setores" ? "active" : ""}`}
+        >
+          🏷️ Setores &amp; Universos
+        </button>
+
+        <button
           onClick={() => setSubCat("lojas")}
           className={`cfg-nav flex items-center justify-between ${subCat === "lojas" ? "active" : ""}`}
         >
@@ -2297,6 +2454,83 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
         )}
 
         
+
+        {/* CATEGORY: SETORES E UNIVERSOS */}
+        {subCat === "setores" && (
+          <div className="space-y-6">
+            <div className="glass-card p-6 border-l-2 border-indigo-500/50 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-white/5 pb-4 gap-3">
+                <div>
+                  <h3 className="text-base font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg">🏷️</span>
+                    Gestão de Setores ({setores.length})
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    Adicione, edite ou remova setores e configure seus universos produtivos.
+                  </p>
+                </div>
+                <button
+                  onClick={handleOpenNewSetor}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 px-4 rounded-lg uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  <Plus size={14} />
+                  Cadastrar Setor
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {setores.map(setor => (
+                  <div key={setor.id} className="bg-black/40 border border-white/5 p-4 rounded-xl space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                          <span className="bg-indigo-500/20 text-indigo-400 text-[10px] px-1.5 py-0.5 rounded font-mono border border-indigo-500/20">{setor.id}</span>
+                          {setor.nome}
+                        </h4>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">Nº {setor.numero} • Meta Global: {setor.meta} UPH</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => handleOpenEditSetor(setor)} className="text-zinc-400 hover:text-white p-1 rounded hover:bg-white/10 transition cursor-pointer" title="Editar Setor">
+                          <Edit2 size={14} />
+                        </button>
+                        <button onClick={() => handleDeleteSetor(setor.id)} className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10 transition cursor-pointer" title="Excluir Setor">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="pt-2 border-t border-white/5">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-[10px] font-black text-zinc-500 uppercase">Universos (Mix)</span>
+                        <button onClick={() => handleOpenNewUniverso(setor.id)} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 uppercase transition">
+                          <Plus size={12} /> Adicionar
+                        </button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {(!globUniversos[setor.id] || globUniversos[setor.id].length === 0) ? (
+                          <div className="text-[10px] text-zinc-600 italic">Nenhum universo cadastrado.</div>
+                        ) : (
+                          globUniversos[setor.id].map((u, i) => (
+                            <div key={i} className="flex justify-between items-center bg-zinc-900/50 px-2 py-1.5 rounded border border-white/5">
+                              <span className="text-[10px] text-zinc-300 font-bold">{u.nome}</span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-[9px] text-zinc-500 font-mono">Meta: {u.meta}</span>
+                                <div className="flex gap-1">
+                                  <button onClick={() => handleOpenEditUniverso(setor.id, i, u)} className="text-zinc-400 hover:text-indigo-400 transition cursor-pointer"><Edit2 size={10} /></button>
+                                  <button onClick={() => handleDeleteUniverso(setor.id, i)} className="text-zinc-400 hover:text-red-400 transition cursor-pointer"><Trash2 size={10} /></button>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* CATEGORY: CADASTRO MASTER DE LOJAS */}
         {subCat === "lojas" && (
@@ -3330,6 +3564,84 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
         cancelLabel="Cancelar"
         recordCount={totalImportedCount}
       />
+
+      {/* MODAL SETOR */}
+      <AnimatePresence>
+        {showSetorModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-[#121218] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-white/[0.02]">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                  {editingSetorId ? "Editar Setor" : "Novo Setor"}
+                </h3>
+                <button onClick={() => setShowSetorModal(false)} className="text-zinc-500 hover:text-white p-1 rounded cursor-pointer">✕</button>
+              </div>
+              <form onSubmit={handleSaveSetorForm} className="p-5 space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Cód. Setor (ID)*</label>
+                  <input type="text" required disabled={!!editingSetorId} value={setorFormId} onChange={(e) => setSetorFormId(e.target.value)} placeholder="Ex: 87" className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50 disabled:opacity-60" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Número</label>
+                  <input type="number" required value={setorFormNumero} onChange={(e) => setSetorFormNumero(parseInt(e.target.value) || 0)} className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Nome do Setor*</label>
+                  <input type="text" required value={setorFormNome} onChange={(e) => setSetorFormNome(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Meta Global (UPH)</label>
+                  <input type="number" required value={setorFormMeta} onChange={(e) => setSetorFormMeta(parseInt(e.target.value) || 0)} className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50" />
+                </div>
+                <div className="flex justify-end gap-2 pt-4 border-t border-white/5">
+                  <button type="button" onClick={() => setShowSetorModal(false)} className="px-4 py-2 bg-white/5 hover:bg-white/10 text-zinc-300 font-bold text-xs uppercase rounded-lg cursor-pointer">Cancelar</button>
+                  <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase rounded-lg shadow-md cursor-pointer">Salvar</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL UNIVERSO */}
+      <AnimatePresence>
+        {showUniversoModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-[#121218] border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 bg-white/[0.02]">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">
+                  {editingUniversoIdx !== null ? "Editar Universo" : "Novo Universo"}
+                </h3>
+                <button onClick={() => setShowUniversoModal(false)} className="text-zinc-500 hover:text-white p-1 rounded cursor-pointer">✕</button>
+              </div>
+              <form onSubmit={handleSaveUniversoForm} className="p-5 space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Nome do Universo*</label>
+                  <input type="text" required value={universoFormNome} onChange={(e) => setUniversoFormNome(e.target.value)} placeholder="Ex: Picking Especial" className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Meta de Produtividade</label>
+                  <input type="number" required value={universoFormMeta} onChange={(e) => setUniversoFormMeta(parseInt(e.target.value) || 0)} className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50" />
+                </div>
+                <div className="flex justify-end gap-2 pt-4 border-t border-white/5">
+                  <button type="button" onClick={() => setShowUniversoModal(false)} className="px-4 py-2 bg-white/5 hover:bg-white/10 text-zinc-300 font-bold text-xs uppercase rounded-lg cursor-pointer">Cancelar</button>
+                  <button type="submit" className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase rounded-lg shadow-md cursor-pointer">Salvar</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

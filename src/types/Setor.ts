@@ -9,6 +9,13 @@ export interface Setor {
   horario?: string;
   situacao?: 'Ativo' | 'Inativo';
   
+  // Configuração por tipo de operação/setor
+  tipoOperacao?: 'PADRAO' | 'CAIXAS' | 'VOLUMOSOS';
+  fonteAtividade?: 'monitor_setores_ativos' | 'atividade_h3';
+  fonteColis?: 'kpi_semana' | 'sistema';
+  exibirCaixas?: boolean;
+  exibirReposicaoCaixas?: boolean;
+  
   // Realtime computed or loaded metrics
   ativ: number;
   promessa: number;

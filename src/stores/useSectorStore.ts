@@ -62,6 +62,7 @@ interface SectorStoreState {
       montanha?: number;
       l7Mochila?: number;
       colis?: number;
+      atividade?: number;
       elog?: string;
       reapro?: string;
       adhocCategories?: Record<string, string | number>;
@@ -170,6 +171,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
         elog: '',
         reapro: '',
         colis: 0,
+        atividade: 0,
         adhocCategories: {},
         [category]: quantity,
         createdAt: now,
@@ -222,6 +224,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
         elog: '',
         reapro: '',
         colis: 0,
+        atividade: 0,
         adhocCategories: {},
         [category]: value,
         createdAt: now,
@@ -271,6 +274,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
         elog: '',
         reapro: '',
         colis: 0,
+        atividade: 0,
         adhocCategories: {},
         [field]: value,
         createdAt: now,
@@ -299,6 +303,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
         ...(data.montanha !== undefined && { montanha: data.montanha }),
         ...(data.l7Mochila !== undefined && { l7Mochila: data.l7Mochila }),
         ...(data.colis !== undefined && { colis: data.colis }),
+        ...(data.atividade !== undefined && { atividade: data.atividade }),
         ...(data.elog !== undefined && { elog: data.elog }),
         ...(data.reapro !== undefined && { reapro: data.reapro }),
         ...(data.adhocCategories !== undefined && { adhocCategories: data.adhocCategories }),
@@ -323,6 +328,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
         montanha: data.montanha ?? 0,
         l7Mochila: data.l7Mochila ?? 0,
         colis: data.colis ?? 0,
+        atividade: data.atividade ?? 0,
         elog: data.elog ?? '',
         reapro: data.reapro ?? '',
         adhocCategories: data.adhocCategories ?? {},
@@ -376,6 +382,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
         elog: '',
         reapro: '',
         colis: 0,
+        atividade: 0,
         adhocCategories: {
           [categoryName]: value
         },

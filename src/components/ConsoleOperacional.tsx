@@ -33,6 +33,7 @@ import { usePainelProducaoStore } from '../stores/usePainelProducaoStore';
 import { useSectorStore } from '../stores/useSectorStore';
 import { useUserStore } from '../stores/useUserStore';
 import { useCopilMetrics } from '../hooks/useCopilMetrics';
+import { fetchKpiSemanaMetrics, KpiSemanaMetrics } from '../lib/googleSheetsPublicSource';
 import { Setor, ActivityEntry } from '../types';
 import { initialCapacidade } from '../initialData';
 
@@ -67,7 +68,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
 }) => {
   const { currentUser, currentUserUid } = useUserStore();
   const { registros, upsertRegistro, fetchRegistrosHoje } = usePainelProducaoStore();
-  const { activityEntries, capacidade, updateActivityUniversosBatch } = useSectorStore();
+  const { activityEntries, capacidade, updateActivityUniversosBatch, setSetores } = useSectorStore();
   const { metrics: copilData, summaryStats: copilSummary } = useCopilMetrics();
 
   const [visaoAtual, setVisaoAtual] = useState<string>('TODOS');
@@ -81,14 +82,16 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   const [editAlimento, setEditAlimento] = useState<number>(0);
   const [editMontanha, setEditMontanha] = useState<number>(0);
   const [editCustomUniversos, setEditCustomUniversos] = useState<Array<{ id: string; name: string; value: number }>>([]);
+  const [editReproTotal, setEditReproTotal] = useState<number>(0);
   const [editColis, setEditColis] = useState<number>(0);
+  const [editAtividade, setEditAtividade] = useState<number>(0);
   const [editElog, setEditElog] = useState<string>('');
-  const [editReapro, setEditReapro] = useState<string>('');
 
   // Modal de Carregamento
   const [isLoadingModalOpen, setIsLoadingModalOpen] = useState(false);
   const [loadPercent, setLoadPercent] = useState(0);
   const [loadStatusText, setLoadStatusText] = useState('Inicializando leitor...');
+  const [kpiMetrics, setKpiMetrics] = useState<KpiSemanaMetrics | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +100,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   // Initialize data fetch
   useEffect(() => {
     fetchRegistrosHoje(todayStr);
+    fetchKpiSemanaMetrics().then(setKpiMetrics);
   }, [fetchRegistrosHoje, todayStr]);
 
   // Live clock
@@ -237,10 +241,16 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   const getSectorUniversos = (sectorId: string) => {
     const cfg = CONFIG_SETORES[sectorId] || CONFIG_SETORES['88'];
     const sectorObj = setores.find(s => String(s.id) === String(sectorId) || String(s.numero) === String(sectorId));
-    const totalAtiv = sectorObj?.ativ || (sectorId === '88' ? 5965 : sectorId === '87' ? 15899 : 5000);
-
+    
+    const isCaixasSector = ['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(sectorId));
+    const kpiVal = kpiMetrics ? (kpiMetrics as any)[`s${parseInt(sectorId)}`] : 0;
     const entry = activityEntries.find(e => String(e.sectorId) === String(sectorId) && e.activityDate === todayStr) ||
                   activityEntries.find(e => String(e.sectorId) === String(sectorId));
+                  
+    const manualAtividade = entry?.atividade || 0;
+    const totalAtiv = isCaixasSector 
+      ? (manualAtividade > 0 ? manualAtividade : (kpiVal || sectorObj?.ativ || 0))
+      : (sectorObj?.ativ || 0);
 
     // Extrair universos customizados do adhocCategories (e converter mochila legada se houver)
     const customListRaw: Array<{ name: string; value: number }> = [];
@@ -258,10 +268,11 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
       customListRaw.push({ name: 'Mochila', value: entry.l7Mochila });
     }
 
-    if (entry && (entry.alimento > 0 || entry.montanha > 0 || entry.colis > 0 || customListRaw.length > 0)) {
+    if (entry && (entry.alimento > 0 || entry.montanha > 0 || customListRaw.length > 0)) {
       const alim = entry.alimento || 0;
       const mont = entry.montanha || 0;
-      const colisVal = entry.colis || 0;
+      const reproVal = sectorObj?.reproTotal ?? (parseInt(entry.reapro?.replace(" CX", "") || "0") || 151);
+      const colisVal = entry.colis || (sectorId === '87' ? 1500 : 0);
       const customSum = customListRaw.reduce((acc, c) => acc + c.value, 0);
       const sumUni = alim + mont + customSum;
       const totalUni = sumUni > 0 ? sumUni : totalAtiv;
@@ -280,9 +291,10 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
         total: totalUni,
         alimento: alim,
         montanha: mont,
-        colis: colisVal > 0 ? colisVal : Math.round(totalUni * 0.05),
+        colis: colisVal,
+        atividade: entry?.atividade || 0,
         elog: entry.elog || '2J RA FALC (174)',
-        reapro: entry.reapro || `${sectorObj?.reproTotal || 127} CX`,
+        reapro: `${reproVal} CX`,
         alimentoPct: totalUni > 0 ? Math.round((alim / totalUni) * 100) : 0,
         montanhaPct: totalUni > 0 ? Math.round((mont / totalUni) * 100) : 0,
         customUniversos,
@@ -294,15 +306,17 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     const mix = cfg.mixPadrao;
     const alim = Math.round((totalAtiv * (mix.alimentoPct || 65)) / 100);
     const mont = Math.max(0, totalAtiv - alim);
-    const colisVal = Math.round(totalAtiv * 0.05) || 120;
+    const reproVal = sectorObj?.reproTotal ?? 151;
+    const colisVal = sectorId === '87' ? 1500 : 0;
 
     return {
       total: totalAtiv,
       alimento: alim,
       montanha: mont,
       colis: colisVal,
+        atividade: entry?.atividade || 0,
       elog: '2J RA FALC (174)',
-      reapro: `${sectorObj?.reproTotal || 127} CX`,
+      reapro: `${reproVal} CX`,
       alimentoPct: mix.alimentoPct || 65,
       montanhaPct: mix.montanhaPct || 35,
       customUniversos: [] as Array<{ name: string; value: number; pct: number; color: typeof PALETTE_CUSTOM[0] }>,
@@ -346,12 +360,14 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   const handleOpenEditUniversos = (secId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const u = getSectorUniversos(secId);
+    const sectorObj = setores.find(s => String(s.id) === String(secId) || String(s.numero) === String(secId));
     setEditingSectorUniversos(secId);
     setEditAlimento(u.alimento);
     setEditMontanha(u.montanha);
-    setEditColis(u.colis);
+    setEditReproTotal(sectorObj?.reproTotal ?? (parseInt(u.reapro?.replace(" CX", "") || "0") || 151));
+    setEditColis(u.colis || 0);
+    setEditAtividade(u.caixas || 0);
     setEditElog(u.elog || '');
-    setEditReapro(u.reapro || '');
     setEditCustomUniversos(
       (u.customUniversos || []).map((c, i) => ({
         id: `custom-${i}-${c.name}`,
@@ -378,10 +394,14 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
         montanha: editMontanha,
         l7Mochila: 0,
         colis: editColis,
+        atividade: editAtividade,
         elog: editElog,
-        reapro: editReapro,
+        reapro: `${editReproTotal} CX`,
         adhocCategories: adhocRecord
       });
+
+      setSetores(prev => prev.map(s => String(s.id) === String(editingSectorUniversos) || String(s.numero) === String(editingSectorUniversos) ? { ...s, reproTotal: editReproTotal } : s));
+
       setEditingSectorUniversos(null);
     } catch (err) {
       console.error('[ConsoleOperacional] Erro ao salvar universos:', err);
@@ -821,7 +841,12 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                         <div className="flex justify-between items-center text-[11px]">
                           <span className="font-bold text-slate-300 flex items-center gap-1.5">
                             <PieChart size={13} className="text-indigo-400" />
-                            <span>Atividade do Dia: <strong className="text-white font-mono">{u.total.toLocaleString('pt-BR')} un</strong></span>
+                            <span>
+                              {['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(id)) ? '📦 CAIXAS: ' : 'Atividade do Dia: '}
+                              <strong className="text-white font-mono">
+                                {u.total.toLocaleString('pt-BR')} {['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(id)) ? 'cx' : 'un'}
+                              </strong>
+                            </span>
                           </span>
                           <span className="text-[10px] text-slate-500 font-mono">
                             {id === '88' ? 'Ref. ~6.000 un' : 'Ref. Setor'}
@@ -1143,43 +1168,91 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                   </div>
 
                   {/* 2. CARD DEDICADO DE CAIXAS PARA COLETA & SUPORTE */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
-                    {/* CARD PRINCIPAL: COLIS PARA COLETA */}
+                  <div className={`grid grid-cols-1 ${['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(id)) ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3.5`}>
+                    {/* CARD OPERACIONAL: REABASTECIMENTO */}
                     <div 
                       onClick={(e) => handleOpenEditUniversos(id, e)}
-                      className="lg:col-span-2 bg-[#06140f] border-2 border-emerald-500/60 hover:border-emerald-400 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all shadow-[0_0_20px_rgba(16,185,129,0.15)] group flex flex-col justify-between"
+                      className={`bg-[#1a1408] border-2 border-amber-500/60 hover:border-amber-400 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all shadow-[0_0_20px_rgba(245,158,11,0.15)] group flex flex-col justify-between ${['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(id)) ? 'lg:col-span-2' : 'lg:col-span-2'}`}
                     >
                       <div className="flex flex-wrap justify-between items-start gap-2">
                         <div>
                           <h4 className="text-base font-black text-white flex items-center gap-2">
-                            <Package size={18} className="text-emerald-400" />
-                            COLIS PARA COLETA
+                            <RotateCcw size={18} className="text-amber-400" />
+                            REABASTECIMENTO
                           </h4>
-                          <p className="text-xs text-slate-300 mt-0.5">
-                            Total de volumes e artigos agrupados para coleta no setor
+                          <p className="text-[10px] text-slate-300 mt-0.5 leading-tight">
+                            Caixas para reabastecimento
                           </p>
                         </div>
-                        <span className="text-xs text-emerald-400 group-hover:text-emerald-300 font-semibold bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/30 flex items-center gap-1">
-                          Calibrar Colis ✎
-                        </span>
                       </div>
 
-                      <div className="mt-3 flex items-baseline justify-between bg-black/40 p-3 rounded-lg border border-emerald-500/20">
+                      <div className="mt-3 flex items-baseline justify-between bg-black/40 p-3 rounded-lg border border-amber-500/20">
                         <div>
-                          <span className="text-[10px] uppercase text-slate-400 font-bold block">Volumes / Artigos a Coletar</span>
-                          <div className="text-3xl sm:text-4xl font-black font-mono text-emerald-300 leading-tight">
-                            {u.colis.toLocaleString('pt-BR')} <span className="text-lg font-bold text-emerald-400/80">Colis</span>
+                          <span className="text-[10px] uppercase text-slate-400 font-bold block">Qtd Reabastecimento</span>
+                          <div className="text-3xl sm:text-4xl font-black font-mono text-amber-300 leading-tight">
+                            {(setores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.reproTotal || parseInt(u.reapro?.replace(" CX", "") || "0") || 0).toLocaleString('pt-BR')} <span className="text-lg font-bold text-amber-400/80">CX</span>
                           </div>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/20 px-2.5 py-1 rounded-lg border border-emerald-500/30">
-                            Pronto p/ Coleta
-                          </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* CARD OPERACIONAL: E-LOG & REAPRO */}
+                    {/* APENAS S87, S88, S89, S90 */}
+                    {['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(id)) && (
+                      <>
+                        {/* CARD COLIS (COM VALIDAÇÃO) */}
+                        <div className="bg-[#0b0b14] border-2 border-emerald-500/30 p-4 rounded-xl flex flex-col justify-between shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                              COLIS COLETA
+                            </span>
+                          </div>
+                          
+                          <div className="space-y-3">
+                            <div className="bg-black/40 p-2 rounded-lg border border-emerald-500/20 flex justify-between items-center">
+                              <span className="text-[9px] text-slate-400 uppercase">SISTEMA:</span>
+                              <p className="text-lg font-black font-mono text-emerald-300">
+                                {(u.colis || 0).toLocaleString('pt-BR')}
+                              </p>
+                            </div>
+                            
+                            <div className="bg-black/40 p-2 rounded-lg border border-emerald-500/20 flex justify-between items-center">
+                              <span className="text-[9px] text-slate-400 uppercase">PLANILHA:</span>
+                              <p className="text-lg font-black font-mono text-slate-300">
+                                {kpiMetrics ? ((kpiMetrics as any)[`s${parseInt(String(id))}`]?.toLocaleString('pt-BR') || '---') : '---'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex justify-end">
+                            {(() => {
+                              const kpiColis = kpiMetrics ? (kpiMetrics as any)[`s${parseInt(String(id))}`] : null;
+                              if (!kpiColis || u.colis === kpiColis) {
+                                return (
+                                  <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20 flex items-center gap-1">
+                                    ✓ CONFERIDO
+                                  </span>
+                                );
+                              }
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] font-bold text-rose-400 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20">
+                                    ⚠ DIVERGÊNCIA
+                                  </span>
+                                  <button
+                                    onClick={(e) => handleOpenEditUniversos(id, e)}
+                                    className="text-[9px] font-bold text-white bg-indigo-500/80 hover:bg-indigo-500 px-2 py-1 rounded border border-indigo-400 transition-colors"
+                                  >
+                                    REFATURAR
+                                  </button>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* CARD OPERACIONAL: E-LOG */}
                     <div 
                       onClick={(e) => handleOpenEditUniversos(id, e)}
                       className="bg-[#0b0b14] border border-slate-700 hover:border-slate-500 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all flex flex-col justify-between group"
@@ -1187,7 +1260,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                       <div className="space-y-2.5">
                         <div className="flex justify-between items-start">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                            E-Log &amp; Reaprovisionamento
+                            E-Log
                           </span>
                           <span className="text-[10px] text-slate-400 group-hover:text-white font-semibold">
                             Editar ✎
@@ -1197,12 +1270,6 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                           <span className="text-[9px] text-slate-400 block uppercase">E-Log</span>
                           <p className="text-xs font-bold font-mono text-amber-300 truncate" title={u.elog}>
                             {u.elog || 'N/A'}
-                          </p>
-                        </div>
-                        <div className="bg-black/40 p-2 rounded-lg border border-white/5">
-                          <span className="text-[9px] text-slate-400 block uppercase">Reaprovisionamento</span>
-                          <p className="text-xs font-bold font-mono text-white truncate" title={u.reapro}>
-                            {u.reapro || 'N/A'}
                           </p>
                         </div>
                       </div>
@@ -1334,7 +1401,6 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                   const total = editAlimento + editMontanha || 6000;
                   setEditAlimento(Math.round(total * (cfg.mixPadrao.alimentoPct / 100)));
                   setEditMontanha(Math.round(total * (cfg.mixPadrao.montanhaPct / 100)));
-                  setEditColis(Math.round(total * 0.05) || 120);
                 }}
                 className="px-2.5 py-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold transition-colors"
               >
@@ -1346,12 +1412,43 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                   const total = editAlimento + editMontanha || 6000;
                   setEditAlimento(Math.round(total * 0.5));
                   setEditMontanha(Math.round(total * 0.5));
-                  setEditColis(Math.round(total * 0.05) || 120);
                 }}
                 className="px-2.5 py-1 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-semibold transition-colors"
               >
                 50% Alim / 50% Mont
               </button>
+            </div>
+
+            {/* SEÇÃO 0: ATIVIDADE DO SETOR */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between text-xs font-bold text-white uppercase tracking-wider">
+                <span className="flex items-center gap-1.5">
+                  <Activity size={15} /> ATIVIDADE
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">Sincronização &amp; Override</span>
+              </div>
+              <div className="bg-[#0b0b12] p-3.5 rounded-xl border-2 border-white/10 flex flex-col justify-between gap-2 shadow-sm">
+                <div className="flex items-center justify-between text-slate-300 text-xs font-black uppercase tracking-wider mb-1">
+                  <span>OVERRIDE MANUAL (OPCIONAL)</span>
+                </div>
+                <div className="relative flex items-center">
+                  <input
+                    type="number"
+                    value={editAtividade}
+                    onChange={(e) => setEditAtividade(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full text-right font-mono font-black text-xl bg-black border-2 border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400 shadow-inner"
+                    placeholder="Vazio = usa valor da planilha"
+                  />
+                </div>
+                {editAtividade === 0 && (
+                  <p className="text-[10px] text-slate-500 text-right mt-1">
+                    Atualmente puxando da planilha:{' '}
+                    <span className="font-mono text-emerald-400">
+                      {kpiMetrics ? ((kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`]?.toLocaleString('pt-BR') || '---') : '---'}
+                    </span>
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* SEÇÃO 1: UNIVERSOS DE PRODUTOS */}
@@ -1481,52 +1578,56 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
               )}
             </div>
 
-            {/* SEÇÃO 2: REPRO & COLETA & SUPORTE OPERACIONAL */}
+            {/* SEÇÃO 2: FLUXO OPERACIONAL */}
             <div className="space-y-3 pt-2 border-t border-[#1e1e2a]">
               <div className="flex items-center justify-between text-xs font-bold text-amber-400 uppercase tracking-wider">
                 <span className="flex items-center gap-1.5">
-                  <RotateCcw size={15} /> 2. Fluxo Operacional: Repro &amp; Coleta
+                  <RotateCcw size={15} /> 2. FLUXO OPERACIONAL
                 </span>
-                <span className="text-[10px] text-slate-400 font-normal">Reaprovisionamento &amp; Coleta</span>
+                <span className="text-[10px] text-slate-400 font-normal">Reabastecimento &amp; Coleta</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* REPRO (REAPROVISIONAMENTO) - DESTAQUE ESPECIAL EM AMARELO ÂMBAR */}
+                {/* REABASTECIMENTO */}
                 <div className="bg-[#1a1408] p-3.5 rounded-xl border-2 border-amber-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
                   <div className="flex items-center justify-between text-amber-400 text-xs font-black uppercase tracking-wider">
                     <span className="flex items-center gap-1.5">
-                      <RotateCcw size={16} className="text-amber-400" /> REPRO (REAPRO)
-                    </span>
-                    <span className="text-[11px] font-bold text-amber-300 font-mono">
-                      Caixas / Reposição
+                      <RotateCcw size={16} className="text-amber-400" /> REABASTECIMENTO
                     </span>
                   </div>
-                  <input
-                    type="text"
-                    value={editReapro}
-                    onChange={(e) => setEditReapro(e.target.value)}
-                    className="w-full text-left font-mono font-black text-lg bg-black border-2 border-amber-500/70 rounded-lg px-3 py-2 text-amber-300 focus:outline-none focus:border-amber-400 shadow-inner"
-                    placeholder="Ex: 143 CX ou Qtd Repro"
-                  />
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      value={editReproTotal}
+                      onChange={(e) => setEditReproTotal(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full text-right font-mono font-black text-xl bg-black border-2 border-amber-500/70 rounded-lg px-3 py-2 pr-12 text-amber-300 focus:outline-none focus:border-amber-400 shadow-inner"
+                      placeholder="Ex: 151"
+                    />
+                    <span className="absolute right-3 font-mono font-bold text-amber-400/80 text-sm pointer-events-none">
+                      CX
+                    </span>
+                  </div>
                 </div>
 
-                {/* COLIS - DESTAQUE ESPECIAL EM VERDE ESMERALDA */}
-                <div className="bg-[#081813] p-3.5 rounded-xl border-2 border-emerald-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                {/* COLIS COLETA */}
+                <div className="bg-[#0b0b12] p-3.5 rounded-xl border-2 border-emerald-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
                   <div className="flex items-center justify-between text-emerald-400 text-xs font-black uppercase tracking-wider">
                     <span className="flex items-center gap-1.5">
-                      <Package size={16} className="text-emerald-400" /> COLIS PARA COLETA
-                    </span>
-                    <span className="text-[11px] font-bold text-emerald-300 font-mono">
-                      Artigos p/ Coleta
+                      <Package size={16} className="text-emerald-400" /> COLIS COLETA
                     </span>
                   </div>
-                  <input
-                    type="number"
-                    value={editColis}
-                    onChange={(e) => setEditColis(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full text-right font-mono font-black text-lg bg-black border-2 border-emerald-500/70 rounded-lg px-3 py-2 text-emerald-300 focus:outline-none focus:border-emerald-400 shadow-inner"
-                    placeholder="Qtd de Colis para Coleta"
-                  />
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      value={editColis}
+                      onChange={(e) => setEditColis(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full text-right font-mono font-black text-xl bg-black border-2 border-emerald-500/70 rounded-lg px-3 py-2 pr-16 text-emerald-300 focus:outline-none focus:border-emerald-400 shadow-inner"
+                      placeholder="Ex: 1500"
+                    />
+                    <span className="absolute right-3 font-mono font-bold text-emerald-400/80 text-sm pointer-events-none">
+                      COLIS
+                    </span>
+                  </div>
                 </div>
               </div>
 

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import { fetchKpiSemanaMetrics, KpiSemanaMetrics } from "../lib/googleSheetsPublicSource";
 import { motion } from "motion/react";
 import {
   Setor,
@@ -98,6 +99,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onUpdateSetor,
   onNavigateTab,
 }) => {
+  const [kpiMetrics, setKpiMetrics] = useState<KpiSemanaMetrics | null>(null);
+
+  useEffect(() => {
+    fetchKpiSemanaMetrics().then(setKpiMetrics);
+  }, []);
+
   // Widget Order State with Drag & Drop & Persistence
   const [cardOrder, setCardOrder] = useState<string[]>(() => {
     try {
@@ -177,22 +184,27 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [editAlimento, setEditAlimento] = useState<number>(0);
   const [editMontanha, setEditMontanha] = useState<number>(0);
   const [editCustomUniversos, setEditCustomUniversos] = useState<{ id: string; name: string; value: number }[]>([]);
+  const [editReproTotal, setEditReproTotal] = useState<number>(0);
   const [editColis, setEditColis] = useState<number>(0);
+  const [editAtividade, setEditAtividade] = useState<number>(0);
   const [editElog, setEditElog] = useState<string>('');
-  const [editReapro, setEditReapro] = useState<string>('');
 
   const handleOpenEditUniversos = (sid: string, ativTotal: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const mix = getSectorMix(sid, ativTotal);
     const entry = activityEntries.find(e => e.sectorId === sid && e.activityDate === todayStr) ||
                   activityEntries.find(e => e.sectorId === sid);
+    const sectorObj = setores.find(s => String(s.id) === String(sid) || String(s.numero) === String(sid));
+    const currentRepro = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || 151);
+
     setEditingSectorUniversos(sid);
     setEditAlimento(mix.alimento);
     setEditMontanha(mix.montanha);
     setEditCustomUniversos(mix.customUniversos.map(c => ({ id: c.id, name: c.name, value: c.value })));
-    setEditColis(mix.colis);
+    setEditReproTotal(currentRepro);
+    setEditColis(entry?.colis || mix.colis || 0);
+    setEditAtividade(entry?.atividade || 0);
     setEditElog(entry?.elog || '');
-    setEditReapro(entry?.reapro || '');
   };
 
   const handleSaveUniversos = async () => {
@@ -212,9 +224,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         l7Mochila: 0,
         adhocCategories: customObj,
         colis: editColis,
+        atividade: editAtividade,
         elog: editElog,
-        reapro: editReapro
+        reapro: `${editReproTotal} CX`
       });
+
+      if (onUpdateSetor) {
+        onUpdateSetor(editingSectorUniversos, 'reproTotal', editReproTotal);
+      }
       setEditingSectorUniversos(null);
     } catch (err) {
       console.error('[DashboardTab] Erro ao salvar universos:', err);
@@ -222,11 +239,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     }
   };
 
-  // Helper de mix de universos (Alimento, Montanha, Custom), Coleta (Colis) e Repro
+  // Helper de mix de universos (Alimento, Montanha, Custom) e Reposição / Caixas
   const getSectorMix = (sid: string, ativTotal: number) => {
     const entry = activityEntries.find(e => e.sectorId === sid && e.activityDate === todayStr) ||
                   activityEntries.find(e => e.sectorId === sid);
     const sectorObj = setores.find(s => String(s.id) === String(sid) || String(s.numero) === String(sid));
+    const reproVal = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || (sid === '87' ? 151 : 127));
+    const colisVal = entry?.colis || (sid === '87' ? 1500 : 0);
+    const atividadeVal = entry?.atividade || 0;
 
     // Custom categories extraction
     const customList: { id: string; name: string; value: number; pct: number }[] = [];
@@ -244,13 +264,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       });
     }
 
-    if (entry && (entry.alimento > 0 || entry.montanha > 0 || entry.colis > 0 || customList.length > 0)) {
+    if (entry && (entry.alimento > 0 || entry.montanha > 0 || customList.length > 0)) {
       const customSum = customList.reduce((acc, c) => acc + c.value, 0);
       const totUniversos = (entry.alimento || 0) + (entry.montanha || 0) + customSum;
       const safeTot = totUniversos > 0 ? totUniversos : ativTotal || 1;
       const alim = entry.alimento || 0;
       const mont = entry.montanha || 0;
-      const colis = entry.colis !== undefined && entry.colis > 0 ? entry.colis : Math.max(1, Math.round(safeTot * 0.05));
 
       customList.forEach(c => {
         c.pct = Math.round((c.value / safeTot) * 100);
@@ -260,41 +279,42 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         alimento: alim,
         montanha: mont,
         customUniversos: customList,
-        colis: colis,
-        reapro: entry.reapro || `${sectorObj?.reproTotal || 127} CX`,
+        colis: colisVal,
+      atividade: atividadeVal,
+        reapro: `${reproVal} CX`,
         elog: entry.elog || '2J RA FALC (174)',
         alimentoPct: Math.round((alim / safeTot) * 100),
         montanhaPct: Math.round((mont / safeTot) * 100),
-        colisPct: Math.round((colis / safeTot) * 100),
+        colisPct: Math.round((colisVal / safeTot) * 100),
         total: totUniversos > 0 ? totUniversos : ativTotal
       };
     }
 
     // Proporções operacionais de referência padrão do CD por setor (Universos Alimento, Montanha)
-    const mixPadrao: Record<string, { alim: number; mont: number; colisPct: number }> = {
-      '88': { alim: 0.65, mont: 0.35, colisPct: 0.05 },
-      '87': { alim: 0.40, mont: 0.60, colisPct: 0.05 },
-      '86': { alim: 0.30, mont: 0.70, colisPct: 0.05 },
-      '89': { alim: 0.60, mont: 0.40, colisPct: 0.05 },
-      '85': { alim: 0.50, mont: 0.50, colisPct: 0.05 },
+    const mixPadrao: Record<string, { alim: number; mont: number }> = {
+      '88': { alim: 0.65, mont: 0.35 },
+      '87': { alim: 0.40, mont: 0.60 },
+      '86': { alim: 0.30, mont: 0.70 },
+      '89': { alim: 0.60, mont: 0.40 },
+      '85': { alim: 0.50, mont: 0.50 },
     };
 
-    const ratio = mixPadrao[sid] || { alim: 0.50, mont: 0.50, colisPct: 0.05 };
-    const base = ativTotal > 0 ? ativTotal : (sid === '88' ? 5965 : 4500);
+    const ratio = mixPadrao[sid] || { alim: 0.50, mont: 0.50 };
+    const base = ativTotal > 0 ? ativTotal : (sid === '88' ? 5965 : sid === '87' ? 15899 : 4500);
     const alim = Math.round(base * ratio.alim);
     const mont = Math.max(0, base - alim);
-    const colis = Math.max(1, Math.round(base * ratio.colisPct));
 
     return {
       alimento: alim,
       montanha: mont,
       customUniversos: [] as { id: string; name: string; value: number; pct: number }[],
-      colis: colis,
-      reapro: `${sectorObj?.reproTotal || 127} CX`,
+      colis: colisVal,
+      atividade: atividadeVal,
+      reapro: `${reproVal} CX`,
       elog: '2J RA FALC (174)',
       alimentoPct: Math.round(ratio.alim * 100),
       montanhaPct: Math.round(ratio.mont * 100),
-      colisPct: Math.round(ratio.colisPct * 100),
+      colisPct: Math.round((colisVal / (base || 1)) * 100),
       total: base
     };
   };
@@ -876,7 +896,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       ? "neon-border-red border-red-500/40"
                       : "";
                     const borderTopColor = isDanger ? "#ef4444" : "#6366f1";
-                    const unitText = s.id === "87" ? "CAIXAS" : "COLIS";
+                    const isCaixasSector = ["87","087","88","088","89","089","90","090"].includes(String(s.id));
+                    const unitText = isCaixasSector ? "CAIXAS" : "COLIS";
+                    
+                    const kpiVal = kpiMetrics ? (kpiMetrics as any)[`s${parseInt(s.id)}`] : 0;
+                    const tmpEntry = activityEntries.find(e => String(e.sectorId) === String(s.id) && e.activityDate === todayStr) || activityEntries.find(e => String(e.sectorId) === String(s.id));
+                    const manualAtividade = tmpEntry?.atividade || 0;
+                    
+                    const atividadeValue = isCaixasSector ? (manualAtividade > 0 ? manualAtividade : (kpiVal || s.ativ)) : s.ativ;
+                    const mix = getSectorMix(s.id, atividadeValue);
 
                     const plantaoLider = s.id === "87" 
                       ? (plantaoHoje?.ref87 || (plantaoHoje as Record<string, unknown>)?.referente_sb7 || s.resp) 
@@ -977,8 +1005,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                               </button>
                             </div>
                           ) : (
-                            <span className="text-4xl lg:text-5xl font-black font-mono tracking-tight text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
-                              {s.ativ.toLocaleString("pt-BR")}
+                            <span 
+                              onClick={(e) => {
+                                if (isEditable) {
+                                  e.stopPropagation();
+                                  handleOpenEditUniversos(s.id, atividadeValue, e);
+                                }
+                              }}
+                              className={`text-4xl lg:text-5xl font-black font-mono tracking-tight text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.05)] ${isEditable ? 'cursor-pointer hover:text-indigo-300 transition-colors' : ''}`}
+                              title={isEditable ? "Clique para editar os parâmetros e a atividade deste setor" : undefined}
+                            >
+                              {atividadeValue.toLocaleString("pt-BR")}
                             </span>
                           )}
 
@@ -1045,10 +1082,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
                         {/* BLOCO DE UNIVERSOS DE PRODUTOS & COLETA */}
                         {(() => {
-                          const mix = getSectorMix(s.id, s.ativ);
+                          const mix = getSectorMix(s.id, atividadeValue);
                           return (
                             <div 
-                              onClick={(e) => isEditable && handleOpenEditUniversos(s.id, s.ativ, e)}
+                              onClick={(e) => isEditable && handleOpenEditUniversos(s.id, atividadeValue, e)}
                               className={`bg-white/[0.02] border border-white/5 p-2.5 rounded-xl space-y-2 transition-all group/uni ${
                                 isEditable ? "cursor-pointer hover:bg-white/[0.04] hover:border-indigo-500/30" : ""
                               }`}
@@ -1113,26 +1150,80 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                 </div>
                               )}
 
-                              {/* Card Destacado de Colis para Coleta */}
-                              <div className="bg-emerald-950/50 border border-emerald-500/50 px-3 py-2 rounded-xl flex items-center justify-between shadow-sm">
+                              {/* Card de REABASTECIMENTO */}
+                              <div className="bg-amber-950/40 border border-amber-500/50 px-3 py-2 rounded-xl flex items-center justify-between shadow-sm">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400">
-                                    <Package size={13} />
+                                  <div className="w-6 h-6 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-400">
+                                    <RotateCcw size={13} />
                                   </div>
                                   <div>
-                                    <span className="text-emerald-400 font-sans font-black text-[0.65rem] uppercase tracking-wider block">
-                                      COLIS PARA COLETA
+                                    <span className="text-amber-400 font-sans font-black text-[0.65rem] uppercase tracking-wider block">
+                                      REABASTECIMENTO
                                     </span>
-                                    <span className="text-[0.55rem] text-emerald-300/70 font-sans block">
-                                      Artigos em Coleta
+                                    <span className="text-[0.55rem] text-amber-300/70 font-sans block">
+                                      Caixas para reabastecimento
                                     </span>
                                   </div>
                                 </div>
                                 <div className="flex items-baseline gap-1 font-mono">
-                                  <span className="text-emerald-300 font-black text-lg">{mix.colis.toLocaleString('pt-BR')}</span>
-                                  <span className="text-emerald-400/80 text-[0.65rem] font-bold">Colis</span>
+                                  <span className="text-amber-300 font-black text-lg">{s.reproTotal.toLocaleString('pt-BR')}</span>
+                                  <span className="text-amber-400/80 text-[0.65rem] font-bold">CX</span>
                                 </div>
                               </div>
+
+                              {/* Card COLIS COLETA - Para S87, S88, S89, S90 */}
+                              {['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(s.id)) && (
+                                <div className="bg-[#0b0b14] border border-emerald-500/30 px-3 py-2 rounded-xl shadow-sm">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-emerald-400 font-sans font-black text-[0.65rem] uppercase tracking-wider flex items-center gap-1">
+                                      COLIS COLETA
+                                    </span>
+                                    {(() => {
+                                      const kpiColis = kpiMetrics ? (kpiMetrics as any)[`s${parseInt(s.id)}`] : null;
+                                      if (!kpiColis || mix.colis === kpiColis) {
+                                        return (
+                                          <span className="text-[0.55rem] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 flex items-center gap-0.5">
+                                            <Check size={8} /> CONFERIDO
+                                          </span>
+                                        );
+                                      }
+                                      return (
+                                        <span className="text-[0.55rem] font-bold text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20 flex items-center gap-0.5">
+                                          <AlertTriangle size={8} /> DIVERGÊNCIA
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2 mt-1">
+                                    <div className="bg-black/40 p-1.5 rounded-lg border border-emerald-500/10 flex justify-between items-center">
+                                      <span className="text-[0.55rem] text-zinc-500 uppercase font-semibold">SISTEMA:</span>
+                                      <span className="text-sm font-black font-mono text-emerald-400">{mix.colis.toLocaleString('pt-BR')}</span>
+                                    </div>
+                                    <div className="bg-black/40 p-1.5 rounded-lg border border-emerald-500/10 flex justify-between items-center">
+                                      <span className="text-[0.55rem] text-zinc-500 uppercase font-semibold">PLANILHA:</span>
+                                      <span className="text-sm font-black font-mono text-zinc-300">
+                                        {kpiMetrics ? ((kpiMetrics as any)[`s${parseInt(s.id)}`]?.toLocaleString('pt-BR') || '---') : '---'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  {(() => {
+                                    const kpiColis = kpiMetrics ? (kpiMetrics as any)[`s${parseInt(s.id)}`] : null;
+                                    if (kpiColis && mix.colis !== kpiColis && isEditable) {
+                                      return (
+                                        <div className="mt-1.5 flex justify-end">
+                                          <button
+                                            onClick={(e) => handleOpenEditUniversos(s.id, atividadeValue, e)}
+                                            className="text-[0.55rem] font-bold text-white bg-indigo-500/80 hover:bg-indigo-500 px-2 py-0.5 rounded border border-indigo-400 transition-colors"
+                                          >
+                                            REFATURAR
+                                          </button>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
@@ -2151,7 +2242,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   const total = editAlimento + editMontanha || 6000;
                   setEditAlimento(Math.round(total * 0.65));
                   setEditMontanha(Math.round(total * 0.35));
-                  setEditColis(Math.round(total * 0.05) || 120);
                 }}
                 className="px-2.5 py-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold transition-colors"
               >
@@ -2163,12 +2253,43 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   const total = editAlimento + editMontanha || 6000;
                   setEditAlimento(Math.round(total * 0.5));
                   setEditMontanha(Math.round(total * 0.5));
-                  setEditColis(Math.round(total * 0.05) || 120);
                 }}
                 className="px-2.5 py-1 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-semibold transition-colors"
               >
                 50% Alim / 50% Mont
               </button>
+            </div>
+
+            {/* SEÇÃO 0: ATIVIDADE DO SETOR */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between text-xs font-bold text-white uppercase tracking-wider">
+                <span className="flex items-center gap-1.5">
+                  <Activity size={15} /> ATIVIDADE
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">Sincronização &amp; Override</span>
+              </div>
+              <div className="bg-[#0b0b12] p-3.5 rounded-xl border-2 border-white/10 flex flex-col justify-between gap-2 shadow-sm">
+                <div className="flex items-center justify-between text-slate-300 text-xs font-black uppercase tracking-wider mb-1">
+                  <span>OVERRIDE MANUAL (OPCIONAL)</span>
+                </div>
+                <div className="relative flex items-center">
+                  <input
+                    type="number"
+                    value={editAtividade}
+                    onChange={(e) => setEditAtividade(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full text-right font-mono font-black text-xl bg-black border-2 border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400 shadow-inner"
+                    placeholder="Vazio = usa valor da planilha"
+                  />
+                </div>
+                {editAtividade === 0 && (
+                  <p className="text-[10px] text-slate-500 text-right mt-1">
+                    Atualmente puxando da planilha:{' '}
+                    <span className="font-mono text-emerald-400">
+                      {kpiMetrics ? ((kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`]?.toLocaleString('pt-BR') || '---') : '---'}
+                    </span>
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* SEÇÃO 1: UNIVERSOS DE PRODUTOS */}
@@ -2295,52 +2416,56 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               )}
             </div>
 
-            {/* SEÇÃO 2: REPRO & COLETA & SUPORTE OPERACIONAL */}
+            {/* SEÇÃO 2: FLUXO OPERACIONAL */}
             <div className="space-y-3 pt-2 border-t border-[#1e1e2a]">
               <div className="flex items-center justify-between text-xs font-bold text-amber-400 uppercase tracking-wider">
                 <span className="flex items-center gap-1.5">
-                  <RotateCcw size={15} /> 2. Fluxo Operacional: Repro &amp; Coleta
+                  <RotateCcw size={15} /> 2. FLUXO OPERACIONAL
                 </span>
-                <span className="text-[10px] text-slate-400 font-normal">Reaprovisionamento &amp; Coleta</span>
+                <span className="text-[10px] text-slate-400 font-normal">Reabastecimento &amp; Coleta</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* REPRO (REAPROVISIONAMENTO) - DESTAQUE ESPECIAL EM AMARELO ÂMBAR */}
+                {/* REABASTECIMENTO */}
                 <div className="bg-[#1a1408] p-3.5 rounded-xl border-2 border-amber-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
                   <div className="flex items-center justify-between text-amber-400 text-xs font-black uppercase tracking-wider">
                     <span className="flex items-center gap-1.5">
-                      <RotateCcw size={16} className="text-amber-400" /> REPRO (REAPRO)
-                    </span>
-                    <span className="text-[11px] font-bold text-amber-300 font-mono">
-                      Caixas / Reposição
+                      <RotateCcw size={16} className="text-amber-400" /> REABASTECIMENTO
                     </span>
                   </div>
-                  <input
-                    type="text"
-                    value={editReapro}
-                    onChange={(e) => setEditReapro(e.target.value)}
-                    className="w-full text-left font-mono font-black text-lg bg-black border-2 border-amber-500/70 rounded-lg px-3 py-2 text-amber-300 focus:outline-none focus:border-amber-400 shadow-inner"
-                    placeholder="Ex: 143 CX ou Qtd Repro"
-                  />
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      value={editReproTotal}
+                      onChange={(e) => setEditReproTotal(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full text-right font-mono font-black text-xl bg-black border-2 border-amber-500/70 rounded-lg px-3 py-2 pr-12 text-amber-300 focus:outline-none focus:border-amber-400 shadow-inner"
+                      placeholder="Ex: 151"
+                    />
+                    <span className="absolute right-3 font-mono font-bold text-amber-400/80 text-[10px] pointer-events-none">
+                      CX
+                    </span>
+                  </div>
                 </div>
 
-                {/* COLIS - DESTAQUE ESPECIAL EM VERDE ESMERALDA */}
-                <div className="bg-[#081813] p-3.5 rounded-xl border-2 border-emerald-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                {/* COLIS COLETA */}
+                <div className="bg-[#0b0b12] p-3.5 rounded-xl border-2 border-emerald-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
                   <div className="flex items-center justify-between text-emerald-400 text-xs font-black uppercase tracking-wider">
                     <span className="flex items-center gap-1.5">
-                      <Package size={16} className="text-emerald-400" /> COLIS PARA COLETA
-                    </span>
-                    <span className="text-[11px] font-bold text-emerald-300 font-mono">
-                      Artigos p/ Coleta
+                      <Package size={16} className="text-emerald-400" /> COLIS COLETA
                     </span>
                   </div>
-                  <input
-                    type="number"
-                    value={editColis}
-                    onChange={(e) => setEditColis(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full text-right font-mono font-black text-lg bg-black border-2 border-emerald-500/70 rounded-lg px-3 py-2 text-emerald-300 focus:outline-none focus:border-emerald-400 shadow-inner"
-                    placeholder="Qtd de Colis para Coleta"
-                  />
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      value={editColis}
+                      onChange={(e) => setEditColis(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full text-right font-mono font-black text-xl bg-black border-2 border-emerald-500/70 rounded-lg px-3 py-2 pr-16 text-emerald-300 focus:outline-none focus:border-emerald-400 shadow-inner"
+                      placeholder="Ex: 1500"
+                    />
+                    <span className="absolute right-3 font-mono font-bold text-emerald-400/80 text-[10px] pointer-events-none">
+                      COLIS
+                    </span>
+                  </div>
                 </div>
               </div>
 
