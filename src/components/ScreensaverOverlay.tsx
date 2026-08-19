@@ -104,7 +104,7 @@ export const ScreensaverOverlay: React.FC<ScreensaverOverlayProps> = ({
       {
         name: "Variação de Estoque",
         meta: "< R$ 2.000",
-        real: `R$ ${stockReal.toLocaleString("pt-BR")}`,
+        real: `R$ ${(stockReal ?? 0).toLocaleString("pt-BR")}`,
         score: stockScore,
       },
       { name: "BSI Cruzado", meta: "98%", real: `${bsiReal}%`, score: bsiScore },
@@ -239,7 +239,7 @@ export const ScreensaverOverlay: React.FC<ScreensaverOverlayProps> = ({
                       Atividade
                     </p>
                     <p className="text-base font-black font-mono text-white mt-0.5">
-                      {s.ativ.toLocaleString("pt-BR")}{" "}
+                      {(s.ativ ?? 0).toLocaleString("pt-BR")}{" "}
                       <span className="text-[10px] font-bold text-zinc-400 font-sans">
                         {unitText}
                       </span>

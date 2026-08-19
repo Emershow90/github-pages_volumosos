@@ -663,11 +663,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 "executivos",
                 "Indicadores Executivos Consolidados",
                 <TrendingUp size={14} className="text-indigo-400" />,
-                `Volume: ${totalVolume.toLocaleString("pt-BR")} | SLA: ${mediaSLA}%`,
+                `Volume: ${(totalVolume ?? 0).toLocaleString("pt-BR")} | SLA: ${mediaSLA}%`,
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 w-full">
                   <div className="kpi-card">
                     <div className="kpi-value text-white font-mono">
-                      {totalVolume.toLocaleString("pt-BR")}
+                      {(totalVolume ?? 0).toLocaleString("pt-BR")}
                     </div>
                     <div className="kpi-label">Volume Total</div>
                     <div className="text-[9px] text-zinc-500 mt-1 font-sans">
@@ -694,7 +694,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   </div>
                   <div className="kpi-card">
                     <div className="kpi-value text-indigo-400 font-mono">
-                      {capTotal.toLocaleString("pt-BR")}
+                      {(capTotal ?? 0).toLocaleString("pt-BR")}
                     </div>
                     <div className="kpi-label">Capacidade Ativa</div>
                     <div className="text-[9px] text-zinc-500 mt-1 font-sans">
@@ -1018,7 +1018,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                               className={`text-4xl lg:text-5xl font-black font-mono tracking-tight text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.05)] ${isEditable ? 'cursor-pointer hover:text-indigo-300 transition-colors' : ''}`}
                               title={isEditable ? "Clique para editar os parâmetros e a atividade deste setor" : undefined}
                             >
-                              {atividadeValue.toLocaleString("pt-BR")}
+                              {(atividadeValue ?? 0).toLocaleString("pt-BR")}
                             </span>
                           )}
 
@@ -1028,7 +1028,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                               if (isEditable) {
                                 e.stopPropagation();
                                 setEditingMetric({ sid: s.id, field: "reproTotal" });
-                                setEditMetricValue(String(s.reproTotal));
+                                setEditMetricValue(String(s.reproTotal ?? 151));
                               }
                             }}
                             className={`mt-3 flex items-center gap-1.5 text-xs font-black uppercase tracking-wider group/repro transition-all duration-200 ${
@@ -1099,7 +1099,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                   <span>UNIVERSOS DE PRODUTOS</span>
                                 </span>
                                 <div className="flex items-center gap-1.5 font-mono">
-                                  <span className="text-zinc-300">{mix.total.toLocaleString('pt-BR')} un</span>
+                                  <span className="text-zinc-300">{(mix.total ?? 0).toLocaleString('pt-BR')} un</span>
                                   {isEditable && (
                                     <span className="text-[9px] text-indigo-400 font-sans font-bold group-hover/uni:underline flex items-center gap-0.5">
                                       <Sliders size={9} /> Editar
@@ -1110,14 +1110,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
                               {/* Mini Barra Segmentada Proporcional dos Universos */}
                               <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-black/40 border border-white/5">
-                                <div style={{ width: `${mix.alimentoPct}%` }} className="bg-amber-500 h-full" title={`Alimento: ${mix.alimento.toLocaleString('pt-BR')} (${mix.alimentoPct}%)`}></div>
-                                <div style={{ width: `${mix.montanhaPct}%` }} className="bg-purple-500 h-full" title={`Montanha: ${mix.montanha.toLocaleString('pt-BR')} (${mix.montanhaPct}%)`}></div>
+                                <div style={{ width: `${mix.alimentoPct}%` }} className="bg-amber-500 h-full" title={`Alimento: ${(mix.alimento ?? 0).toLocaleString('pt-BR')} (${mix.alimentoPct}%)`}></div>
+                                <div style={{ width: `${mix.montanhaPct}%` }} className="bg-purple-500 h-full" title={`Montanha: ${(mix.montanha ?? 0).toLocaleString('pt-BR')} (${mix.montanhaPct}%)`}></div>
                                 {mix.customUniversos.map((cu, idx) => (
                                   <div
                                     key={`dash-bar-custom-${idx}`}
                                     style={{ width: `${cu.pct}%` }}
                                     className="bg-cyan-500 h-full"
-                                    title={`${cu.name}: ${cu.value.toLocaleString('pt-BR')} (${cu.pct}%)`}
+                                    title={`${cu.name}: ${(cu.value ?? 0).toLocaleString('pt-BR')} (${cu.pct}%)`}
                                   ></div>
                                 ))}
                               </div>
@@ -1128,14 +1128,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                   <span className="text-amber-400 font-sans flex items-center gap-0.5 font-bold text-[0.55rem]">
                                     <Apple size={9} /> 🍎 Alimento
                                   </span>
-                                  <span className="text-white font-bold text-[0.65rem]">{mix.alimento.toLocaleString('pt-BR')} <span className="text-amber-400/80 font-normal text-[0.55rem]">({mix.alimentoPct}%)</span></span>
+                                  <span className="text-white font-bold text-[0.65rem]">{(mix.alimento ?? 0).toLocaleString('pt-BR')} <span className="text-amber-400/80 font-normal text-[0.55rem]">({mix.alimentoPct}%)</span></span>
                                 </div>
 
                                 <div className="bg-purple-500/10 border border-purple-500/20 px-2 py-1 rounded-lg flex flex-col">
                                   <span className="text-purple-400 font-sans flex items-center gap-0.5 font-bold text-[0.55rem]">
                                     <Mountain size={9} /> ⛰️ Montanha
                                   </span>
-                                  <span className="text-white font-bold text-[0.65rem]">{mix.montanha.toLocaleString('pt-BR')} <span className="text-purple-400/80 font-normal text-[0.55rem]">({mix.montanhaPct}%)</span></span>
+                                  <span className="text-white font-bold text-[0.65rem]">{(mix.montanha ?? 0).toLocaleString('pt-BR')} <span className="text-purple-400/80 font-normal text-[0.55rem]">({mix.montanhaPct}%)</span></span>
                                 </div>
                               </div>
 
@@ -1147,7 +1147,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                       <span className="text-cyan-400 font-sans flex items-center gap-0.5 font-bold text-[0.55rem] truncate">
                                         <Tag size={9} /> {cu.name}
                                       </span>
-                                      <span className="text-white font-bold text-[0.65rem]">{cu.value.toLocaleString('pt-BR')} <span className="text-cyan-400/80 font-normal text-[0.55rem]">({cu.pct}%)</span></span>
+                                      <span className="text-white font-bold text-[0.65rem]">{(cu.value ?? 0).toLocaleString('pt-BR')} <span className="text-cyan-400/80 font-normal text-[0.55rem]">({cu.pct}%)</span></span>
                                     </div>
                                   ))}
                                 </div>
@@ -1169,7 +1169,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                   </div>
                                 </div>
                                 <div className="flex items-baseline gap-1 font-mono">
-                                  <span className="text-amber-300 font-black text-lg">{s.reproTotal.toLocaleString('pt-BR')}</span>
+                                  <span className="text-amber-300 font-black text-lg">{(s.reproTotal ?? (parseInt(reaproData?.setores?.[s.id]?.feitoDAll?.toString() || "0") || (s.id === '87' ? 151 : 127))).toLocaleString('pt-BR')}</span>
                                   <span className="text-amber-400/80 text-[0.65rem] font-bold">CX</span>
                                 </div>
                               </div>
@@ -1200,12 +1200,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                   <div className="grid grid-cols-2 gap-2 mt-1">
                                     <div className="bg-black/40 p-1.5 rounded-lg border border-emerald-500/10 flex justify-between items-center">
                                       <span className="text-[0.55rem] text-zinc-500 uppercase font-semibold">SISTEMA:</span>
-                                      <span className="text-sm font-black font-mono text-emerald-400">{mix.colis.toLocaleString('pt-BR')}</span>
+                                      <span className="text-sm font-black font-mono text-emerald-400">{(mix.colis ?? 0).toLocaleString('pt-BR')}</span>
                                     </div>
                                     <div className="bg-black/40 p-1.5 rounded-lg border border-emerald-500/10 flex justify-between items-center">
                                       <span className="text-[0.55rem] text-zinc-500 uppercase font-semibold">PLANILHA:</span>
                                       <span className="text-sm font-black font-mono text-zinc-300">
-                                        {kpiMetrics ? ((kpiMetrics as any)[`s${parseInt(s.id)}`]?.toLocaleString('pt-BR') || '---') : '---'}
+                                        {kpiMetrics ? (typeof (kpiMetrics as any)[`s${parseInt(s.id)}`] === 'number' ? (kpiMetrics as any)[`s${parseInt(s.id)}`].toLocaleString('pt-BR') : ((kpiMetrics as any)[`s${parseInt(s.id)}`] || '---')) : '---'}
                                       </span>
                                     </div>
                                   </div>
@@ -1679,13 +1679,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                               <span>
                                 Vol:{" "}
                                 <b className="text-white">
-                                  {l.vol.toLocaleString("pt-BR")}
+                                  {(l.vol ?? 0).toLocaleString("pt-BR")}
                                 </b>
                               </span>
                               <span>
                                 Ativ:{" "}
                                 <b className="text-sky-400">
-                                  {l.ativ.toLocaleString("pt-BR")}
+                                  {(l.ativ ?? 0).toLocaleString("pt-BR")}
                                 </b>
                               </span>
                             </div>
@@ -1798,8 +1798,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         <div className="flex justify-between text-xs font-mono mb-1">
                           <span className="text-amber-400 font-bold">Hoje Coleta</span>
                           <span className="text-zinc-500">
-                            {bolsaoData.hojeFeito.toLocaleString("pt-BR")} /{" "}
-                            {bolsaoData.hojeMeta.toLocaleString("pt-BR")}
+                            {(bolsaoData?.hojeFeito ?? 0).toLocaleString("pt-BR")} /{" "}
+                            {(bolsaoData?.hojeMeta ?? 0).toLocaleString("pt-BR")}
                           </span>
                         </div>
                         <div className="prog-track">
@@ -1808,8 +1808,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             style={{
                               width: `${Math.min(
                                 100,
-                                (bolsaoData.hojeFeito /
-                                  (bolsaoData.hojeMeta || 1)) *
+                                ((bolsaoData?.hojeFeito || 0) /
+                                  (bolsaoData?.hojeMeta || 1)) *
                                   100
                               )}%`,
                             }}
@@ -1822,8 +1822,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             Amanhã (D+1)
                           </span>
                           <span className="text-zinc-500">
-                            {bolsaoData.amanhaFeito.toLocaleString("pt-BR")} /{" "}
-                            {bolsaoData.amanhaMeta.toLocaleString("pt-BR")}
+                            {(bolsaoData?.amanhaFeito ?? 0).toLocaleString("pt-BR")} /{" "}
+                            {(bolsaoData?.amanhaMeta ?? 0).toLocaleString("pt-BR")}
                           </span>
                         </div>
                         <div className="prog-track">
@@ -1964,7 +1964,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             />
                           ) : (
                             <p className="text-lg font-black text-white font-mono mt-1">
-                              {reaproData.indicadores.emCursoColetado.toLocaleString(
+                              {(reaproData?.indicadores?.emCursoColetado ?? 0).toLocaleString(
                                 "pt-BR"
                               )}
                             </p>
@@ -1988,7 +1988,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             />
                           ) : (
                             <p className="text-lg font-black text-sky-400 font-mono mt-1">
-                              {reaproData.indicadores.totalEmMaquina.toLocaleString(
+                              {(reaproData?.indicadores?.totalEmMaquina ?? 0).toLocaleString(
                                 "pt-BR"
                               )}
                             </p>
@@ -2288,7 +2288,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   <p className="text-[10px] text-slate-500 text-right mt-1">
                     Atualmente puxando da planilha:{' '}
                     <span className="font-mono text-emerald-400">
-                      {kpiMetrics ? ((kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`]?.toLocaleString('pt-BR') || '---') : '---'}
+                      {kpiMetrics ? (typeof (kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`] === 'number' ? (kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`].toLocaleString('pt-BR') : ((kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`] || '---')) : '---'}
                     </span>
                   </p>
                 )}

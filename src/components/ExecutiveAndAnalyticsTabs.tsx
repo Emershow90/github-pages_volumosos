@@ -72,7 +72,7 @@ export const ExecutivoTab: React.FC<ExecutivoTabProps> = ({
       {/* KPI Bento Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <div className="kpi-card">
-          <div className="kpi-value text-white font-mono">{totalVolume.toLocaleString("pt-BR")}</div>
+          <div className="kpi-value text-white font-mono">{(totalVolume ?? 0).toLocaleString("pt-BR")}</div>
           <div className="kpi-label">Volume Total</div>
           <div className="text-[10px] text-zinc-500 mt-1 font-sans">Soma ATIV real-time</div>
         </div>
@@ -87,7 +87,7 @@ export const ExecutivoTab: React.FC<ExecutivoTabProps> = ({
           <div className="text-[10px] text-zinc-500 mt-1 font-sans">SLA médio da entrega</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-value text-indigo-400 font-mono">{capTotal.toLocaleString("pt-BR")}</div>
+          <div className="kpi-value text-indigo-400 font-mono">{(capTotal ?? 0).toLocaleString("pt-BR")}</div>
           <div className="kpi-label">Capacidade Ativa</div>
           <div className="text-[10px] text-zinc-500 mt-1 font-sans">Meta de abertura</div>
         </div>
@@ -205,7 +205,7 @@ export const ExecutivoTab: React.FC<ExecutivoTabProps> = ({
                   <tr key={s.id} className="hover:bg-white/[0.01] transition-colors">
                     <td className="p-3 font-black text-white">S{s.id}</td>
                     <td className="p-3 font-sans text-zinc-400">{s.resp}</td>
-                    <td className="p-3 text-right text-white font-bold">{s.ativ.toLocaleString("pt-BR")}</td>
+                    <td className="p-3 text-right text-white font-bold">{(s.ativ ?? 0).toLocaleString("pt-BR")}</td>
                     <td className="p-3 text-right text-indigo-400">{s.uph}</td>
                     <td className="p-3 text-right text-emerald-400 font-bold">{s.promessa}%</td>
                     <td className="p-3 text-right text-sky-400">{s.nota5s}%</td>
@@ -329,7 +329,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ setores, historico }
                   <tr key={i} className="hover:bg-white/[0.01]">
                     <td className="p-3 text-zinc-400">{h.data} {h.hora}</td>
                     <td className="p-3 text-center text-white font-black">S{h.setor}</td>
-                    <td className="p-3 text-right font-bold text-sky-400">{h.ativ.toLocaleString("pt-BR")}</td>
+                    <td className="p-3 text-right font-bold text-sky-400">{(h.ativ ?? 0).toLocaleString("pt-BR")}</td>
                     <td className="p-3 text-right text-indigo-400">{h.uph}</td>
                     <td className="p-3 text-right text-emerald-400">{h.promessa}%</td>
                   </tr>

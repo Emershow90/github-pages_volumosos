@@ -43,7 +43,7 @@ export const CapacidadeTab: React.FC<CapacidadeTabProps> = ({
         </div>
         <div className="bg-black/30 p-3 rounded-lg border border-white/5 flex items-center gap-4">
           <span className="text-[0.55rem] text-zinc-400 font-bold uppercase tracking-widest">Abertura Armazém Meta</span>
-          <span className="text-2xl font-black text-white font-mono">{totalArmazemMeta.toLocaleString("pt-BR")}</span>
+          <span className="text-2xl font-black text-white font-mono">{(totalArmazemMeta ?? 0).toLocaleString("pt-BR")}</span>
         </div>
       </div>
       <div className="overflow-x-auto custom-scrollbar">
@@ -64,12 +64,12 @@ export const CapacidadeTab: React.FC<CapacidadeTabProps> = ({
               const pessoasOpCount = colaboradores.filter(
                 (c) => c.setor === `Setor ${s.id}` && c.status === ColaboradorStatus.Operacao
               ).length;
-              const calcAtiv = cap.fechoHora * pessoasOpCount;
+              const calcAtiv = (cap.fechoHora || 0) * pessoasOpCount;
 
               return (
                 <tr key={s.id} className="hover:bg-white/[0.01] transition-colors">
                   <td className="p-3 font-bold text-white font-sans">
-                    S{s.id} — {s.resp.split(" ")[0]}
+                    S{s.id} — {s.resp?.split(" ")?.[0] || `Setor ${s.id}`}
                   </td>
                   <td className="p-3 text-center text-blue-400 font-bold">{pessoasOpCount}</td>
                   <td className="p-3 text-right">
@@ -88,8 +88,8 @@ export const CapacidadeTab: React.FC<CapacidadeTabProps> = ({
                       className="capacidade-input"
                     />
                   </td>
-                  <td className="p-3 text-right text-zinc-400">{calcAtiv.toLocaleString("pt-BR")}</td>
-                  <td className="p-3 text-right font-black text-white">{s.ativ.toLocaleString("pt-BR")}</td>
+                  <td className="p-3 text-right text-zinc-400">{(calcAtiv ?? 0).toLocaleString("pt-BR")}</td>
+                  <td className="p-3 text-right font-black text-white">{(s.ativ ?? 0).toLocaleString("pt-BR")}</td>
                 </tr>
               );
             })}

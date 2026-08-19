@@ -1218,7 +1218,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                             <div className="bg-black/40 p-2 rounded-lg border border-emerald-500/20 flex justify-between items-center">
                               <span className="text-[9px] text-slate-400 uppercase">PLANILHA:</span>
                               <p className="text-lg font-black font-mono text-slate-300">
-                                {kpiMetrics ? ((kpiMetrics as any)[`s${parseInt(String(id))}`]?.toLocaleString('pt-BR') || '---') : '---'}
+                                {kpiMetrics ? (typeof (kpiMetrics as any)[`s${parseInt(String(id))}`] === 'number' ? (kpiMetrics as any)[`s${parseInt(String(id))}`].toLocaleString('pt-BR') : ((kpiMetrics as any)[`s${parseInt(String(id))}`] || '---')) : '---'}
                               </p>
                             </div>
                           </div>
@@ -1444,7 +1444,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                   <p className="text-[10px] text-slate-500 text-right mt-1">
                     Atualmente puxando da planilha:{' '}
                     <span className="font-mono text-emerald-400">
-                      {kpiMetrics ? ((kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`]?.toLocaleString('pt-BR') || '---') : '---'}
+                      {kpiMetrics ? (typeof (kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`] === 'number' ? (kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`].toLocaleString('pt-BR') : ((kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`] || '---')) : '---'}
                     </span>
                   </p>
                 )}
