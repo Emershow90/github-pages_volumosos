@@ -366,7 +366,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     setEditMontanha(u.montanha);
     setEditReproTotal(sectorObj?.reproTotal ?? (parseInt(u.reapro?.replace(" CX", "") || "0") || 151));
     setEditColis(u.colis || 0);
-    setEditAtividade(u.caixas || 0);
+    setEditAtividade(u.atividade || 0);
     setEditElog(u.elog || '');
     setEditCustomUniversos(
       (u.customUniversos || []).map((c, i) => ({

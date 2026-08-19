@@ -881,10 +881,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         <span>Plantão Ativo ({plantaoHoje.dia || nomeHoje}):</span>
                       </div>
                       <div className="flex flex-wrap items-center gap-4 text-zinc-300 font-mono text-[11px]">
-                        <span><strong className="text-indigo-300 font-sans">SB7 (S87):</strong> {plantaoHoje.ref87 || (plantaoHoje as Record<string, unknown>).referente_sb7 || "—"}</span>
-                        <span><strong className="text-amber-300 font-sans">Volumosos:</strong> {plantaoHoje.refVol || (plantaoHoje as Record<string, unknown>).referente_volumosos || "—"}</span>
-                        {(plantaoHoje.apoios || (plantaoHoje as Record<string, unknown>).apoio) && (
-                          <span><strong className="text-sky-300 font-sans">Apoio:</strong> {plantaoHoje.apoios || (plantaoHoje as Record<string, unknown>).apoio}</span>
+                        <span><strong className="text-indigo-300 font-sans">SB7 (S87):</strong> {plantaoHoje.ref87 || plantaoHoje.referente_sb7 || "—"}</span>
+                        <span><strong className="text-amber-300 font-sans">Volumosos:</strong> {plantaoHoje.refVol || plantaoHoje.referente_volumosos || "—"}</span>
+                        {(plantaoHoje.apoios || plantaoHoje.apoio) && (
+                          <span><strong className="text-sky-300 font-sans">Apoio:</strong> {plantaoHoje.apoios || plantaoHoje.apoio}</span>
                         )}
                       </div>
                     </div>
@@ -907,8 +907,11 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     const mix = getSectorMix(s.id, atividadeValue);
 
                     const plantaoLider = s.id === "87" 
-                      ? (plantaoHoje?.ref87 || (plantaoHoje as Record<string, unknown>)?.referente_sb7 || s.resp) 
-                      : (plantaoHoje?.refVol || (plantaoHoje as Record<string, unknown>)?.referente_volumosos || s.resp);
+                      ? (plantaoHoje?.ref87 || plantaoHoje?.referente_sb7 || s.resp || 'Líder') 
+                      : (plantaoHoje?.refVol || plantaoHoje?.referente_volumosos || s.resp || 'Líder');
+                    const plantaoLiderStr = String(plantaoLider || 'Líder');
+                    const initialLetter = plantaoLiderStr.charAt(0).toUpperCase() || 'L';
+                    const plantaoPrimeiroNome = plantaoLiderStr.split(" ")[0] || 'Líder';
 
                     return (
                       <div
@@ -930,14 +933,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 rounded-full border border-white/10 overflow-hidden bg-black/50 flex items-center justify-center text-sm font-black text-zinc-300">
-                              {(plantaoLider || s.resp)[0]}
+                              {initialLetter}
                             </div>
                             <div>
                               <p className="text-sm font-black text-white leading-none uppercase tracking-wider">
                                 SETOR {s.id} • {unitText}
                               </p>
-                              <p className="text-[0.6rem] font-bold text-indigo-300 mt-1 uppercase tracking-widest truncate max-w-[120px]" title={`Plantão: ${plantaoLider}`}>
-                                Plantão: {plantaoLider.split(" ")[0]}
+                              <p className="text-[0.6rem] font-bold text-indigo-300 mt-1 uppercase tracking-widest truncate max-w-[120px]" title={`Plantão: ${plantaoLiderStr}`}>
+                                Plantão: {plantaoPrimeiroNome}
                               </p>
                             </div>
                           </div>
@@ -1452,7 +1455,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     >
                       {setores.map((s) => (
                         <option key={s.id} value={s.id}>
-                          Setor {s.id} — {s.resp.split(" ")[0]}
+                          Setor {s.id} — {String(s.resp || 'Líder').split(" ")[0]}
                         </option>
                       ))}
                     </select>
@@ -1495,18 +1498,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                   className="hover:bg-white/[0.02]"
                                 >
                                   <td className="p-2 text-zinc-300 text-[0.65rem] font-sans flex items-center gap-1.5">
-                                    {kpi.kpi}
-                                    {kpi.auto && (
+                                    {String(kpi.kpi ?? "")}
+                                    {Boolean(kpi.auto) && (
                                       <span className="text-[8px] bg-sky-500/15 text-sky-400 px-1 py-0.2 rounded font-sans font-bold">
                                         AUTO
                                       </span>
                                     )}
                                   </td>
                                   <td className="p-2 text-center text-zinc-500">
-                                    {kpi.comp}
+                                    {String(kpi.comp ?? "")}
                                   </td>
                                   <td className="p-2 text-center text-white font-bold">
-                                    {kpi.real}
+                                    {String(kpi.real ?? "")}
                                   </td>
                                   <td className={`p-2 text-center font-bold ${cls}`}>
                                     {nota}

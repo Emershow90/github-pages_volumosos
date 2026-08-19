@@ -3,10 +3,13 @@ import { AlertTriangle, X } from "lucide-react";
 
 interface ModalConfirmacaoProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose?: () => void;
+  onCancel?: () => void;
   onConfirm: () => void;
-  title: string;
-  description: string;
+  title?: string;
+  titulo?: string;
+  description?: string;
+  mensagem?: string;
   confirmLabel?: string;
   cancelLabel?: string;
   recordCount?: number;
@@ -15,13 +18,20 @@ interface ModalConfirmacaoProps {
 export const ModalConfirmacao: React.FC<ModalConfirmacaoProps> = ({
   isOpen,
   onClose,
+  onCancel,
   onConfirm,
   title,
+  titulo,
   description,
+  mensagem,
   confirmLabel = "Confirmar Exclusão",
   cancelLabel = "Cancelar",
   recordCount,
 }) => {
+  const handleClose = onCancel || onClose || (() => {});
+  const displayTitle = titulo || title || "Confirmação";
+  const displayDesc = mensagem || description || "";
+
   if (!isOpen) return null;
 
   return (
@@ -35,7 +45,7 @@ export const ModalConfirmacao: React.FC<ModalConfirmacaoProps> = ({
 
         {/* Close Button */}
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-4 right-4 text-zinc-400 hover:text-white transition p-1 rounded-lg hover:bg-white/5 cursor-pointer"
         >
           <X className="w-5 h-5" />
@@ -48,10 +58,10 @@ export const ModalConfirmacao: React.FC<ModalConfirmacaoProps> = ({
             </div>
             <div className="space-y-2">
               <h3 className="text-lg font-black text-white uppercase tracking-widest leading-none">
-                {title}
+                {displayTitle}
               </h3>
               <p className="text-xs text-zinc-400 leading-relaxed font-mono">
-                {description}
+                {displayDesc}
               </p>
             </div>
           </div>
@@ -67,7 +77,7 @@ export const ModalConfirmacao: React.FC<ModalConfirmacaoProps> = ({
 
           <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-end font-mono">
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white border border-white/5 hover:border-white/10 rounded-lg text-xs font-bold uppercase transition cursor-pointer"
             >
               {cancelLabel}
@@ -75,7 +85,7 @@ export const ModalConfirmacao: React.FC<ModalConfirmacaoProps> = ({
             <button
               onClick={() => {
                 onConfirm();
-                onClose();
+                handleClose();
               }}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-lg shadow-red-600/15 hover:shadow-red-600/30 transition cursor-pointer border border-red-500/30"
             >

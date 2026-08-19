@@ -37,14 +37,14 @@ import { StoreService } from "../services/storeService";
 import { fetchPlanoCarregamento, PlanoCarregamentoRow } from "../lib/googleSheetsPublicSource";
 import { BusinessRules } from "../services/businessRules";
 import { SupabaseService as FirebaseService, isOnline } from "../lib/supabaseService";
-import { StoreOperation, ParsedProgramRow, StoreMaster } from "../types";
+import { StoreOperation, ParsedProgramRow, StoreMaster, RadarLoja } from "../types";
 import { useSectorStore } from "../stores/useSectorStore";
 import { ModalConfirmacao } from "./ModalConfirmacao";
 import { usePlanoCarregamentoRisk, RiskLevel } from "../hooks/usePlanoCarregamentoRisk";
 
 interface RadarLojasTabProps {
   currentRole?: string;
-  onSaveRadar?: (items: Record<string, unknown>[]) => void;
+  onSaveRadar?: (items: RadarLoja[] | Record<string, unknown>[]) => void;
   activeSectorId?: string;
 }
 

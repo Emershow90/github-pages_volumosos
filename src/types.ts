@@ -43,6 +43,9 @@ export interface ReferenteSemana {
   ref87: string;
   refVol: string;
   apoios?: string;
+  referente_sb7?: string;
+  referente_volumosos?: string;
+  apoio?: string;
 }
 
 export interface EscalaColaborador {
@@ -91,6 +94,8 @@ export interface RadarLoja {
   vol: number;
   ativ: number;
   prog: number; // percentage
+  statusOCR?: string;
+  erroDesc?: string;
 }
 
 export interface MasterLoja {

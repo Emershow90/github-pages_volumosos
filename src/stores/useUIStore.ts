@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { ScreensaverConfig } from '../types';
+import { HeaderBarNotification } from '../components/HeaderBar';
 
 interface UIStoreState {
   activeTab: string;
@@ -7,7 +8,7 @@ interface UIStoreState {
   showTerminal: boolean;
   terminalInput: string;
   terminalLogs: string[];
-  notifications: unknown[];
+  notifications: HeaderBarNotification[];
   screensaver: ScreensaverConfig;
 
   setActiveTab: (tab: string) => void;
@@ -15,7 +16,7 @@ interface UIStoreState {
   setShowTerminal: (show: boolean) => void;
   setTerminalInput: (input: string) => void;
   setTerminalLogs: (logs: string[] | ((prev: string[]) => string[])) => void;
-  setNotifications: (notifications: unknown[] | ((prev: unknown[]) => unknown[])) => void;
+  setNotifications: (notifications: HeaderBarNotification[] | ((prev: HeaderBarNotification[]) => HeaderBarNotification[])) => void;
   setScreensaver: (screensaver: ScreensaverConfig | ((prev: ScreensaverConfig) => ScreensaverConfig)) => void;
 }
 

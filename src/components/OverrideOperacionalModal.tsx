@@ -339,7 +339,7 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
                 <div className="space-y-2">
                   {Object.entries(formData).map(([field, val]) => {
                     const isChanged = val !== '';
-                    const oldVal = (activeSectorData as Record<string, unknown>)?.[field];
+                    const oldVal = (activeSectorData as unknown as Record<string, unknown>)?.[field];
                     const isSuggested = 
                       (field === 'ativ' && isAtivSuggested) || 
                       (field === 'uph' && isUphSuggested) ||

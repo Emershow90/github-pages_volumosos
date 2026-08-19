@@ -3,13 +3,14 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 export interface ToastItem {
   id: string;
   message: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'warning';
 }
 
 interface ToastContextType {
   success: (message: string) => void;
   error: (message: string) => void;
   info: (message: string) => void;
+  warning?: (message: string) => void;
   toasts: ToastItem[];
   removeToast: (id: string) => void;
 }

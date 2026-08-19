@@ -55,6 +55,7 @@ import { SupabaseService as FirebaseService } from "./lib/supabaseService";
 import { StoreService } from "./services/storeService";
 
 // Layout & Modular UI Components
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { OverrideTab } from "./components/OverrideTab";
 import { HeaderBar } from "./components/HeaderBar";
 import { NavigationPanel } from "./components/NavigationPanel";
@@ -1134,6 +1135,7 @@ function App() {
       <div className="flex-1 flex flex-col">
         {/* CONTENT STAGE */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar pb-24">
+          <ErrorBoundary fallbackTitle="Erro ao carregar o módulo">
           {activeTab === "radar_lojas_live" && (
             <ProtectedRoute
               userRole={currentRole}
@@ -1391,7 +1393,7 @@ function App() {
                   setReferentesSemana((prev) => {
                     const copy = [...prev];
                     copy[idx] = { ...copy[idx], [field]: val };
-                    FirebaseService.upsertRecord("escalas_referentes", copy[idx], "dia" as any)
+                    FirebaseService.upsertRecord("escalas_referentes", copy[idx] as any, "dia" as any)
                       .catch((err) => console.error("Failed to persist referente:", err));
                     return copy;
                   });
@@ -1509,6 +1511,7 @@ function App() {
               />
             </ProtectedRoute>
           )}
+          </ErrorBoundary>
         </main>
       </div>
 
