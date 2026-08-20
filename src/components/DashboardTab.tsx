@@ -4,7 +4,6 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { fetchKpiSemanaMetrics, KpiSemanaMetrics } from "../lib/googleSheetsPublicSource";
 import { motion } from "motion/react";
 import {
   Setor,
@@ -99,12 +98,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onUpdateSetor,
   onNavigateTab,
 }) => {
-  const [kpiMetrics, setKpiMetrics] = useState<KpiSemanaMetrics | null>(null);
-
-  useEffect(() => {
-    fetchKpiSemanaMetrics().then(setKpiMetrics);
-  }, []);
-
   // Widget Order State with Drag & Drop & Persistence
   const [cardOrder, setCardOrder] = useState<string[]>(() => {
     try {
@@ -899,11 +892,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     const isCaixasSector = ["87","087","88","088","89","089","90","090"].includes(String(s.id));
                     const unitText = isCaixasSector ? "CAIXAS" : "COLIS";
                     
-                    const kpiVal = kpiMetrics ? (kpiMetrics as any)[`s${parseInt(s.id)}`] : 0;
-                    const tmpEntry = activityEntries.find(e => String(e.sectorId) === String(s.id) && e.activityDate === todayStr) || activityEntries.find(e => String(e.sectorId) === String(s.id));
-                    const manualAtividade = tmpEntry?.atividade || 0;
-                    
-                    const atividadeValue = isCaixasSector ? (manualAtividade > 0 ? manualAtividade : (kpiVal || s.ativ)) : s.ativ;
+                    // Única fonte da verdade resolvida (Override > Sugerido > Default)
+                    const atividadeValue = s.ativ;
                     const mix = getSectorMix(s.id, atividadeValue);
 
                     const plantaoLider = s.id === "87" 
@@ -1083,7 +1073,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                           </span>
                         </div>
 
-                        {/* BLOCO DE UNIVERSOS DE PRODUTOS & COLETA */}
+                        {/* BLOCO DE UNIVERSOS DE PRODUTOS */}
                         {(() => {
                           const mix = getSectorMix(s.id, atividadeValue);
                           return (
@@ -1173,60 +1163,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                   <span className="text-amber-400/80 text-[0.65rem] font-bold">CX</span>
                                 </div>
                               </div>
-
-                              {/* Card COLIS COLETA - Para S87, S88, S89, S90 */}
-                              {['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(s.id)) && (
-                                <div className="bg-[#0b0b14] border border-emerald-500/30 px-3 py-2 rounded-xl shadow-sm">
-                                  <div className="flex items-center justify-between mb-1.5">
-                                    <span className="text-emerald-400 font-sans font-black text-[0.65rem] uppercase tracking-wider flex items-center gap-1">
-                                      COLIS COLETA
-                                    </span>
-                                    {(() => {
-                                      const kpiColis = kpiMetrics ? (kpiMetrics as any)[`s${parseInt(s.id)}`] : null;
-                                      if (!kpiColis || mix.colis === kpiColis) {
-                                        return (
-                                          <span className="text-[0.55rem] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 flex items-center gap-0.5">
-                                            <Check size={8} /> CONFERIDO
-                                          </span>
-                                        );
-                                      }
-                                      return (
-                                        <span className="text-[0.55rem] font-bold text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20 flex items-center gap-0.5">
-                                          <AlertTriangle size={8} /> DIVERGÊNCIA
-                                        </span>
-                                      );
-                                    })()}
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-2 mt-1">
-                                    <div className="bg-black/40 p-1.5 rounded-lg border border-emerald-500/10 flex justify-between items-center">
-                                      <span className="text-[0.55rem] text-zinc-500 uppercase font-semibold">SISTEMA:</span>
-                                      <span className="text-sm font-black font-mono text-emerald-400">{(mix.colis ?? 0).toLocaleString('pt-BR')}</span>
-                                    </div>
-                                    <div className="bg-black/40 p-1.5 rounded-lg border border-emerald-500/10 flex justify-between items-center">
-                                      <span className="text-[0.55rem] text-zinc-500 uppercase font-semibold">PLANILHA:</span>
-                                      <span className="text-sm font-black font-mono text-zinc-300">
-                                        {kpiMetrics ? (typeof (kpiMetrics as any)[`s${parseInt(s.id)}`] === 'number' ? (kpiMetrics as any)[`s${parseInt(s.id)}`].toLocaleString('pt-BR') : ((kpiMetrics as any)[`s${parseInt(s.id)}`] || '---')) : '---'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  {(() => {
-                                    const kpiColis = kpiMetrics ? (kpiMetrics as any)[`s${parseInt(s.id)}`] : null;
-                                    if (kpiColis && mix.colis !== kpiColis && isEditable) {
-                                      return (
-                                        <div className="mt-1.5 flex justify-end">
-                                          <button
-                                            onClick={(e) => handleOpenEditUniversos(s.id, atividadeValue, e)}
-                                            className="text-[0.55rem] font-bold text-white bg-indigo-500/80 hover:bg-indigo-500 px-2 py-0.5 rounded border border-indigo-400 transition-colors"
-                                          >
-                                            REFATURAR
-                                          </button>
-                                        </div>
-                                      );
-                                    }
-                                    return null;
-                                  })()}
-                                </div>
-                              )}
                             </div>
                           );
                         })()}
@@ -2286,9 +2222,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </div>
                 {editAtividade === 0 && (
                   <p className="text-[10px] text-slate-500 text-right mt-1">
-                    Atualmente puxando da planilha:{' '}
+                    Atividade atual do setor:{' '}
                     <span className="font-mono text-emerald-400">
-                      {kpiMetrics ? (typeof (kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`] === 'number' ? (kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`].toLocaleString('pt-BR') : ((kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`] || '---')) : '---'}
+                      {editingSectorUniversos ? (setores.find(s => String(s.id) === String(editingSectorUniversos) || String(s.numero) === String(editingSectorUniversos))?.ativ || 0).toLocaleString('pt-BR') : '---'}
                     </span>
                   </p>
                 )}

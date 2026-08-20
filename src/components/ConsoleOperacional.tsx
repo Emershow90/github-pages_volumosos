@@ -33,7 +33,6 @@ import { usePainelProducaoStore } from '../stores/usePainelProducaoStore';
 import { useSectorStore } from '../stores/useSectorStore';
 import { useUserStore } from '../stores/useUserStore';
 import { useCopilMetrics } from '../hooks/useCopilMetrics';
-import { fetchKpiSemanaMetrics, KpiSemanaMetrics } from '../lib/googleSheetsPublicSource';
 import { Setor, ActivityEntry } from '../types';
 import { initialCapacidade } from '../initialData';
 
@@ -91,7 +90,6 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   const [isLoadingModalOpen, setIsLoadingModalOpen] = useState(false);
   const [loadPercent, setLoadPercent] = useState(0);
   const [loadStatusText, setLoadStatusText] = useState('Inicializando leitor...');
-  const [kpiMetrics, setKpiMetrics] = useState<KpiSemanaMetrics | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -100,7 +98,6 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   // Initialize data fetch
   useEffect(() => {
     fetchRegistrosHoje(todayStr);
-    fetchKpiSemanaMetrics().then(setKpiMetrics);
   }, [fetchRegistrosHoje, todayStr]);
 
   // Live clock
@@ -242,15 +239,11 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     const cfg = CONFIG_SETORES[sectorId] || CONFIG_SETORES['88'];
     const sectorObj = setores.find(s => String(s.id) === String(sectorId) || String(s.numero) === String(sectorId));
     
-    const isCaixasSector = ['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(sectorId));
-    const kpiVal = kpiMetrics ? (kpiMetrics as any)[`s${parseInt(sectorId)}`] : 0;
     const entry = activityEntries.find(e => String(e.sectorId) === String(sectorId) && e.activityDate === todayStr) ||
                   activityEntries.find(e => String(e.sectorId) === String(sectorId));
                   
-    const manualAtividade = entry?.atividade || 0;
-    const totalAtiv = isCaixasSector 
-      ? (manualAtividade > 0 ? manualAtividade : (kpiVal || sectorObj?.ativ || 0))
-      : (sectorObj?.ativ || 0);
+    // Única fonte de verdade vinda do store / resolved sector
+    const totalAtiv = sectorObj?.ativ || 0;
 
     // Extrair universos customizados do adhocCategories (e converter mochila legada se houver)
     const customListRaw: Array<{ name: string; value: number }> = [];
@@ -1168,11 +1161,11 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                   </div>
 
                   {/* 2. CARD DEDICADO DE CAIXAS PARA COLETA & SUPORTE */}
-                  <div className={`grid grid-cols-1 ${['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(id)) ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3.5`}>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
                     {/* CARD OPERACIONAL: REABASTECIMENTO */}
                     <div 
                       onClick={(e) => handleOpenEditUniversos(id, e)}
-                      className={`bg-[#1a1408] border-2 border-amber-500/60 hover:border-amber-400 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all shadow-[0_0_20px_rgba(245,158,11,0.15)] group flex flex-col justify-between ${['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(id)) ? 'lg:col-span-2' : 'lg:col-span-2'}`}
+                      className="bg-[#1a1408] border-2 border-amber-500/60 hover:border-amber-400 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all shadow-[0_0_20px_rgba(245,158,11,0.15)] group flex flex-col justify-between"
                     >
                       <div className="flex flex-wrap justify-between items-start gap-2">
                         <div>
@@ -1195,62 +1188,6 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                         </div>
                       </div>
                     </div>
-
-                    {/* APENAS S87, S88, S89, S90 */}
-                    {['87', '087', '88', '088', '89', '089', '90', '090'].includes(String(id)) && (
-                      <>
-                        {/* CARD COLIS (COM VALIDAÇÃO) */}
-                        <div className="bg-[#0b0b14] border-2 border-emerald-500/30 p-4 rounded-xl flex flex-col justify-between shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
-                              COLIS COLETA
-                            </span>
-                          </div>
-                          
-                          <div className="space-y-3">
-                            <div className="bg-black/40 p-2 rounded-lg border border-emerald-500/20 flex justify-between items-center">
-                              <span className="text-[9px] text-slate-400 uppercase">SISTEMA:</span>
-                              <p className="text-lg font-black font-mono text-emerald-300">
-                                {(u.colis || 0).toLocaleString('pt-BR')}
-                              </p>
-                            </div>
-                            
-                            <div className="bg-black/40 p-2 rounded-lg border border-emerald-500/20 flex justify-between items-center">
-                              <span className="text-[9px] text-slate-400 uppercase">PLANILHA:</span>
-                              <p className="text-lg font-black font-mono text-slate-300">
-                                {kpiMetrics ? (typeof (kpiMetrics as any)[`s${parseInt(String(id))}`] === 'number' ? (kpiMetrics as any)[`s${parseInt(String(id))}`].toLocaleString('pt-BR') : ((kpiMetrics as any)[`s${parseInt(String(id))}`] || '---')) : '---'}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="mt-3 flex justify-end">
-                            {(() => {
-                              const kpiColis = kpiMetrics ? (kpiMetrics as any)[`s${parseInt(String(id))}`] : null;
-                              if (!kpiColis || u.colis === kpiColis) {
-                                return (
-                                  <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20 flex items-center gap-1">
-                                    ✓ CONFERIDO
-                                  </span>
-                                );
-                              }
-                              return (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[9px] font-bold text-rose-400 bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20">
-                                    ⚠ DIVERGÊNCIA
-                                  </span>
-                                  <button
-                                    onClick={(e) => handleOpenEditUniversos(id, e)}
-                                    className="text-[9px] font-bold text-white bg-indigo-500/80 hover:bg-indigo-500 px-2 py-1 rounded border border-indigo-400 transition-colors"
-                                  >
-                                    REFATURAR
-                                  </button>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      </>
-                    )}
 
                     {/* CARD OPERACIONAL: E-LOG */}
                     <div 
@@ -1442,9 +1379,9 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                 </div>
                 {editAtividade === 0 && (
                   <p className="text-[10px] text-slate-500 text-right mt-1">
-                    Atualmente puxando da planilha:{' '}
+                    Atividade atual do setor:{' '}
                     <span className="font-mono text-emerald-400">
-                      {kpiMetrics ? (typeof (kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`] === 'number' ? (kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`].toLocaleString('pt-BR') : ((kpiMetrics as any)[`s${parseInt(editingSectorUniversos || "0")}`] || '---')) : '---'}
+                      {editingSectorUniversos ? (setores.find(s => String(s.id) === String(editingSectorUniversos) || String(s.numero) === String(editingSectorUniversos))?.ativ || 0).toLocaleString('pt-BR') : '---'}
                     </span>
                   </p>
                 )}

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { SupabaseService } from '../lib/supabaseService';
-import { Setor, CapacidadeSetor, RadarLoja, ReaproData, BolsaoData, CopilSetor, UniversoMix, ReferenteSemana, ActivityEntry } from '../types';
+import { Setor, SectorOverrideValues, CapacidadeSetor, RadarLoja, ReaproData, BolsaoData, CopilSetor, UniversoMix, ReferenteSemana, ActivityEntry } from '../types';
 import {
   initialSetores,
   initialCapacidade,
@@ -24,6 +24,9 @@ interface SectorStoreState {
   activityEntries: ActivityEntry[];
 
   setSetores: (setores: Setor[] | ((prev: Setor[]) => Setor[])) => void;
+  updateSectorOverride: (sectorId: string, overrides: Partial<SectorOverrideValues>, userId?: string) => Promise<void>;
+  applySuggestedMetrics: (suggestedMap: Record<string, SectorOverrideValues>) => void;
+  getResolvedSector: (sectorId: string) => Setor | undefined;
   setCapacidade: (capacidade: CapacidadeSetor[] | ((prev: CapacidadeSetor[]) => CapacidadeSetor[])) => void;
   setReferentesSemana: (referentes: ReferenteSemana[] | ((prev: ReferenteSemana[]) => ReferenteSemana[])) => void;
   setUniversos: (universos: Record<string, UniversoMix[]> | ((prev: Record<string, UniversoMix[]>) => Record<string, UniversoMix[]>)) => void;
@@ -77,8 +80,56 @@ interface SectorStoreState {
   ) => Promise<void>;
 }
 
+/**
+ * Função pura que calcula os valores finais do setor respeitando a hierarquia:
+ * Valor Final = Override ?? Valor Sugerido da Planilha ?? Valor Baseline
+ */
+function resolveSectorMetrics(sector: Setor): Setor {
+  const overrides = sector.overrides || {};
+  const suggested = sector.suggestedMetrics || {};
+
+  const ativFinal = overrides.ativ !== undefined && overrides.ativ !== null
+    ? overrides.ativ
+    : (suggested.ativ !== undefined && suggested.ativ !== null ? suggested.ativ : sector.ativ);
+
+  const uphFinal = overrides.uph !== undefined && overrides.uph !== null
+    ? overrides.uph
+    : (suggested.uph !== undefined && suggested.uph !== null ? suggested.uph : sector.uph);
+
+  const reproFinal = overrides.reproTotal !== undefined && overrides.reproTotal !== null
+    ? overrides.reproTotal
+    : (suggested.reproTotal !== undefined && suggested.reproTotal !== null ? suggested.reproTotal : sector.reproTotal);
+
+  const promessaFinal = overrides.promessa !== undefined && overrides.promessa !== null
+    ? overrides.promessa
+    : (suggested.promessa !== undefined && suggested.promessa !== null ? suggested.promessa : sector.promessa);
+
+  const nota5sFinal = overrides.nota5s !== undefined && overrides.nota5s !== null
+    ? overrides.nota5s
+    : (suggested.nota5s !== undefined && suggested.nota5s !== null ? suggested.nota5s : sector.nota5s);
+
+  const bsiFinal = overrides.bsi !== undefined && overrides.bsi !== null
+    ? overrides.bsi
+    : (suggested.bsi !== undefined && suggested.bsi !== null ? suggested.bsi : sector.bsi);
+
+  const errosFinal = overrides.errosPicking !== undefined && overrides.errosPicking !== null
+    ? overrides.errosPicking
+    : (suggested.errosPicking !== undefined && suggested.errosPicking !== null ? suggested.errosPicking : sector.errosPicking);
+
+  return {
+    ...sector,
+    ativ: ativFinal,
+    uph: uphFinal,
+    reproTotal: reproFinal,
+    promessa: promessaFinal,
+    nota5s: nota5sFinal,
+    bsi: bsiFinal,
+    errosPicking: errosFinal
+  };
+}
+
 export const useSectorStore = create<SectorStoreState>((set, get) => ({
-  setores: initialSetores,
+  setores: initialSetores.map(resolveSectorMetrics),
   capacidade: initialCapacidade,
   referentesSemana: initialReferentesSemana || [],
   universos: initialUniversos,
@@ -89,9 +140,64 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
   activityEntries: [],
 
   setSetores: (val) => set((state) => {
-    const next = typeof val === 'function' ? val(state.setores) : val;
-    return { setores: next };
+    const rawList = typeof val === 'function' ? val(state.setores) : val;
+    return { setores: rawList.map(resolveSectorMetrics) };
   }),
+
+  applySuggestedMetrics: (suggestedMap) => set((state) => {
+    const updated = state.setores.map((s) => {
+      const sug = suggestedMap[s.id] || suggestedMap[String(s.numero)] || suggestedMap[s.id.replace('-', '')];
+      if (!sug) return s;
+      const mergedSug: SectorOverrideValues = {
+        ...(s.suggestedMetrics || {}),
+        ...sug
+      };
+      return resolveSectorMetrics({
+        ...s,
+        suggestedMetrics: mergedSug
+      });
+    });
+    return { setores: updated };
+  }),
+
+  updateSectorOverride: async (sectorId, newOverrides, userId = 'system') => {
+    const state = get();
+    const targetSector = state.setores.find(s => s.id === sectorId || String(s.numero) === sectorId);
+    if (!targetSector) return;
+
+    const mergedOverrides: SectorOverrideValues = {
+      ...(targetSector.overrides || {}),
+      ...newOverrides
+    };
+
+    const updatedSector = resolveSectorMetrics({
+      ...targetSector,
+      overrides: mergedOverrides
+    });
+
+    set((s) => ({
+      setores: s.setores.map(sec => (sec.id === targetSector.id ? updatedSector : sec))
+    }));
+
+    try {
+      await SupabaseService.upsertRecord('setores', updatedSector, 'id');
+      await SupabaseService.upsertRecord('audit_logs', {
+        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        acao: 'override_salvo',
+        setor_id: sectorId,
+        dados: newOverrides,
+        usuario: userId,
+        timestamp: new Date().toISOString()
+      }, 'id');
+    } catch (err) {
+      console.warn('[useSectorStore] Erro ao sincronizar override no Supabase:', err);
+    }
+  },
+
+  getResolvedSector: (sectorId) => {
+    const found = get().setores.find(s => s.id === sectorId || String(s.numero) === sectorId);
+    return found ? resolveSectorMetrics(found) : undefined;
+  },
 
   setCapacidade: (val) => set((state) => {
     const next = typeof val === 'function' ? val(state.capacidade) : val;

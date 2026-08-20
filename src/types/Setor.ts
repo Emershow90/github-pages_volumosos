@@ -1,5 +1,15 @@
+export interface SectorOverrideValues {
+  ativ?: number | null;
+  uph?: number | null;
+  reproTotal?: number | null;
+  promessa?: number | null;
+  nota5s?: number | null;
+  bsi?: number | null;
+  errosPicking?: number | null;
+}
+
 export interface Setor {
-  id: string; // e.g. "S87"
+  id: string; // e.g. "87" or "S87"
   numero: number; // e.g. 87
   nome: string; // e.g. "Picking"
   resp: string; // Responsável / Líder
@@ -11,12 +21,16 @@ export interface Setor {
   
   // Configuração por tipo de operação/setor
   tipoOperacao?: 'PADRAO' | 'CAIXAS' | 'VOLUMOSOS';
-  fonteAtividade?: 'monitor_setores_ativos' | 'atividade_h3';
-  fonteColis?: 'kpi_semana' | 'sistema';
+  fonteAtividade?: string;
+  fonteColis?: string;
   exibirCaixas?: boolean;
   exibirReposicaoCaixas?: boolean;
   
-  // Realtime computed or loaded metrics
+  // Overrides e Valores Sugeridos
+  overrides?: SectorOverrideValues;
+  suggestedMetrics?: SectorOverrideValues;
+
+  // Realtime computed or loaded metrics (Valores Finais Resolvidos)
   ativ: number;
   promessa: number;
   varFin: number;
