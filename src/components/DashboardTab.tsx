@@ -9,8 +9,10 @@ import {
   Setor,
   ReferenteSemana,
   Colaborador,
+  ColaboradorStatus,
   RadarLoja,
   ReaproData,
+  ReaproSetor,
   BolsaoData,
   CopilSetor,
   HistoricoRegistro,
@@ -49,6 +51,12 @@ import {
   Plus,
   Trash2,
   RotateCcw,
+  Boxes,
+  Clock,
+  Sparkles,
+  Timer,
+  Gauge,
+  CheckCircle2,
 } from "lucide-react";
 import { useSectorStore } from "../stores/useSectorStore";
 import { useUserStore } from "../stores/useUserStore";
@@ -76,6 +84,8 @@ interface DashboardTabProps {
   onNavigateTab?: (tab: string) => void;
 }
 
+import { exportToGoogleSheets, initGoogleIdentity } from '../services/googleSheetsExportService';
+
 export const DashboardTab: React.FC<DashboardTabProps> = ({
   setores,
   referentesSemana,
@@ -98,6 +108,34 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onUpdateSetor,
   onNavigateTab,
 }) => {
+  const [isExporting, setIsExporting] = useState(false);
+
+  useEffect(() => {
+    // We delay the initialization slightly to ensure the external script has loaded.
+    const tId = setTimeout(() => {
+      initGoogleIdentity();
+    }, 1500);
+    return () => clearTimeout(tId);
+  }, []);
+
+  const handleExportSheets = async () => {
+    setIsExporting(true);
+    try {
+      const url = await exportToGoogleSheets({
+        setores,
+        colaboradores,
+        reapro: reaproData
+      });
+      window.open(url, '_blank');
+      alert('Relatório exportado com sucesso no Google Sheets!');
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao exportar: ' + (err.message || 'Erro desconhecido'));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // Widget Order State with Drag & Drop & Persistence
   const [cardOrder, setCardOrder] = useState<string[]>(() => {
     try {
@@ -168,7 +206,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   // Leitura reativa das entradas de atividade do useSectorStore
-  const { activityEntries, updateActivityUniversosBatch } = useSectorStore();
+  const { activityEntries, updateActivityUniversosBatch, updateSectorOverride } = useSectorStore();
   const { currentUser, currentUserUid } = useUserStore();
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -189,14 +227,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   activityEntries.find(e => e.sectorId === sid);
     const sectorObj = setores.find(s => String(s.id) === String(sid) || String(s.numero) === String(sid));
     const currentRepro = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || 151);
+    const currentColis = sectorObj?.colis ?? entry?.colis ?? mix.colis ?? 0;
+    const currentAtiv = sectorObj?.ativ ?? entry?.atividade ?? ativTotal;
 
     setEditingSectorUniversos(sid);
     setEditAlimento(mix.alimento);
     setEditMontanha(mix.montanha);
     setEditCustomUniversos(mix.customUniversos.map(c => ({ id: c.id, name: c.name, value: c.value })));
     setEditReproTotal(currentRepro);
-    setEditColis(entry?.colis || mix.colis || 0);
-    setEditAtividade(entry?.atividade || 0);
+    setEditColis(currentColis);
+    setEditAtividade(currentAtiv);
     setEditElog(entry?.elog || '');
   };
 
@@ -211,6 +251,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         }
       });
 
+      // 1. Atualiza dados operacionais detalhados na coleção activity_entries
       await updateActivityUniversosBatch(editingSectorUniversos, todayStr, uId, {
         alimento: editAlimento,
         montanha: editMontanha,
@@ -222,8 +263,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         reapro: `${editReproTotal} CX`
       });
 
+      // 2. Atualiza os overrides no Setor (Single Source of Truth para o Painel)
+      await updateSectorOverride(editingSectorUniversos, {
+        ...(editAtividade > 0 ? { ativ: editAtividade } : {}),
+        reproTotal: editReproTotal,
+        colis: editColis,
+      }, uId);
+
       if (onUpdateSetor) {
+        if (editAtividade > 0) onUpdateSetor(editingSectorUniversos, 'ativ', editAtividade);
         onUpdateSetor(editingSectorUniversos, 'reproTotal', editReproTotal);
+        onUpdateSetor(editingSectorUniversos, 'colis', editColis);
       }
       setEditingSectorUniversos(null);
     } catch (err) {
@@ -238,8 +288,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   activityEntries.find(e => e.sectorId === sid);
     const sectorObj = setores.find(s => String(s.id) === String(sid) || String(s.numero) === String(sid));
     const reproVal = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || (sid === '87' ? 151 : 127));
-    const colisVal = entry?.colis || (sid === '87' ? 1500 : 0);
-    const atividadeVal = entry?.atividade || 0;
+    const colisVal = sectorObj?.colis ?? entry?.colis ?? (sid === '87' ? 1500 : 0);
+    const atividadeVal = sectorObj?.ativ ?? entry?.atividade ?? 0;
 
     // Custom categories extraction
     const customList: { id: string; name: string; value: number; pct: number }[] = [];
@@ -343,14 +393,100 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     setBolsaoEdit(!bolsaoEdit);
   };
 
-  const handleReaproEditToggle = () => {
+  const handleReaproEditToggle = async () => {
     if (reaproEdit) {
       onSaveReapro(localReapro);
+
+      // Sincroniza bidirecionalmente cada setor editado no Card Repro com a store e o banco
+      const uId = currentUserUid || currentUser || "system";
+      for (const s of setores) {
+        const secVal = localReapro.setores[s.id]?.feitoDAll;
+        if (secVal !== undefined && secVal !== s.reproTotal) {
+          await updateSectorOverride(s.id, { reproTotal: secVal }, uId);
+          if (onUpdateSetor) {
+            onUpdateSetor(s.id, "reproTotal", secVal);
+          }
+        }
+      }
     } else {
-      setLocalReapro({ ...reaproData });
+      const initialSetoresMap: Record<string, ReaproSetor> = { ...reaproData.setores };
+      setores.forEach((s) => {
+        initialSetoresMap[s.id] = {
+          feitoDAll: s.reproTotal ?? initialSetoresMap[s.id]?.feitoDAll ?? 0,
+          feitoElog: initialSetoresMap[s.id]?.feitoElog ?? 0,
+        };
+      });
+      setLocalReapro({
+        ...reaproData,
+        setores: initialSetoresMap,
+      });
     }
     setReaproEdit(!reaproEdit);
   };
+
+  // Métricas automáticas e conscientes do Painel REAPRO (Reabastecimento)
+  const totalDAllReal = setores.reduce((sum, s) => {
+    const val = s.reproTotal ?? (reaproData?.setores?.[s.id]?.feitoDAll || 0);
+    return sum + (val || 0);
+  }, 0);
+
+  const operadoresApoio = colaboradores.filter(
+    (c) =>
+      c.status === ColaboradorStatus.Reabastecimento ||
+      c.status === ColaboradorStatus.Apoio ||
+      c.status === ColaboradorStatus.GestaoEstoque ||
+      (c.funcao &&
+        (c.funcao.toLowerCase().includes("reabast") ||
+          c.funcao.toLowerCase().includes("repos") ||
+          c.funcao.toLowerCase().includes("estoque")))
+  );
+
+  const capFechamentoAuto = Math.max(1, operadoresApoio.length) * 120;
+  const capFechamentoDisplay =
+    reaproData?.capacidadeFechamentoEst && reaproData.capacidadeFechamentoEst > 0
+      ? reaproData.capacidadeFechamentoEst
+      : capFechamentoAuto;
+
+  const presoDAllReal = reaproData?.indicadores?.totalPresoDAll || 0;
+  const emCursoReal =
+    reaproData?.indicadores?.emCursoColetado && reaproData.indicadores.emCursoColetado > 0
+      ? reaproData.indicadores.emCursoColetado
+      : Math.round(totalDAllReal * 0.85);
+
+  const emMaquinaReal =
+    reaproData?.indicadores?.totalEmMaquina && reaproData.indicadores.totalEmMaquina > 0
+      ? reaproData.indicadores.totalEmMaquina
+      : Math.round(totalDAllReal * 0.15);
+
+  const disponibilidadeCalculada =
+    totalDAllReal === 0
+      ? 100
+      : Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(((totalDAllReal - presoDAllReal) / totalDAllReal) * 100)
+          )
+        );
+
+  // Projeção Inteligente de Término
+  const horasRestantes =
+    capFechamentoDisplay > 0 ? totalDAllReal / capFechamentoDisplay : 1;
+  const minRestantes = Math.round(horasRestantes * 60);
+  const projectedDate = new Date(Date.now() + minRestantes * 60 * 1000);
+  const autoTerminoPrevisao = `${String(projectedDate.getHours()).padStart(
+    2,
+    "0"
+  )}:${String(projectedDate.getMinutes()).padStart(2, "0")}`;
+  const displayTerminoPrevisao =
+    reaproData?.terminoPrevisao && reaproData.terminoPrevisao.trim() !== ""
+      ? reaproData.terminoPrevisao
+      : autoTerminoPrevisao;
+
+  const tempoRestanteStr =
+    minRestantes >= 60
+      ? `${Math.floor(minRestantes / 60)}h ${minRestantes % 60}m`
+      : `${minRestantes}m`;
 
   const handleTerminalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -592,6 +728,30 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Ações Globais do Painel */}
+      <div className="flex justify-between items-center bg-black/40 border border-white/5 p-4 rounded-xl">
+        <div>
+          <h2 className="text-sm font-black text-white tracking-widest uppercase">
+            Visão Geral & Consolidado
+          </h2>
+          <p className="text-[10px] text-zinc-500 font-mono mt-1">
+            Geração de relatórios e exportações diárias
+          </p>
+        </div>
+        <button
+          onClick={handleExportSheets}
+          disabled={isExporting}
+          className="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-lg text-xs font-black transition-all disabled:opacity-50"
+        >
+          {isExporting ? (
+            <span className="w-3 h-3 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin"></span>
+          ) : (
+            <span className="text-[14px]">☁️</span>
+          )}
+          {isExporting ? "EXPORTANDO..." : "SALVAR NO GOOGLE SHEETS"}
+        </button>
+      </div>
+
       {/* Draggable & Animating Widgets Flow */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {cardOrder.map((id) => {
@@ -1012,65 +1172,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                             </span>
                           )}
 
-                          {/* REPRO TOTAL ACCENT (Rendered always but editable) */}
-                          <span
-                            onClick={(e) => {
-                              if (isEditable) {
-                                e.stopPropagation();
-                                setEditingMetric({ sid: s.id, field: "reproTotal" });
-                                setEditMetricValue(String(s.reproTotal ?? 151));
-                              }
-                            }}
-                            className={`mt-3 flex items-center gap-1.5 text-xs font-black uppercase tracking-wider group/repro transition-all duration-200 ${
-                              isEditable ? "cursor-pointer hover:scale-105 border-indigo-500/40" : ""
-                            }`}
-                            style={{
-                              backgroundColor: "#2B1D08",
-                              color: "#F5B041",
-                              border: "1px solid #7A5313",
-                              borderRadius: "10px",
-                              padding: "6px 12px",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {editingMetric?.sid === s.id && editingMetric?.field === "reproTotal" ? (
-                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="number"
-                                  value={editMetricValue}
-                                  onChange={(e) => setEditMetricValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") handleSaveInline();
-                                    if (e.key === "Escape") setEditingMetric(null);
-                                  }}
-                                  className="w-16 text-center font-bold font-mono text-[11px] bg-black border border-amber-500 rounded px-1 py-0.5 text-amber-400 focus:outline-none"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={handleSaveInline}
-                                  className="p-0.5 bg-emerald-600 text-white rounded text-[8px] font-bold"
-                                >
-                                  ✓
-                                </button>
-                                <button
-                                  onClick={() => setEditingMetric(null)}
-                                  className="p-0.5 bg-zinc-700 text-zinc-300 rounded text-[8px] font-bold"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            ) : (
-                              <>
-                                📦 {s.reproTotal} CAIXAS
-                                {isEditable && (
-                                  <Edit3
-                                    size={8}
-                                    className="text-amber-500/60 group-hover/repro:text-amber-400 transition-colors ml-0.5"
-                                  />
-                                )}
-                              </>
-                            )}
-                          </span>
+
                         </div>
 
                         {/* BLOCO DE UNIVERSOS DE PRODUTOS */}
@@ -1161,6 +1263,41 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                                 <div className="flex items-baseline gap-1 font-mono">
                                   <span className="text-amber-300 font-black text-lg">{(s.reproTotal ?? (parseInt(reaproData?.setores?.[s.id]?.feitoDAll?.toString() || "0") || (s.id === '87' ? 151 : 127))).toLocaleString('pt-BR')}</span>
                                   <span className="text-amber-400/80 text-[0.65rem] font-bold">CX</span>
+                                </div>
+                              </div>
+
+                              {/* Card de COLIS COLETA */}
+                              <div 
+                                onClick={(e) => {
+                                  if (isEditable) {
+                                    handleOpenEditUniversos(s.id, s.ativ, e);
+                                  }
+                                }}
+                                className={`bg-emerald-950/40 border border-emerald-500/50 ${isEditable ? 'hover:border-emerald-400 cursor-pointer' : ''} px-3 py-2 rounded-xl flex items-center justify-between shadow-sm transition-all group`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+                                    <Package size={13} />
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-emerald-400 font-sans font-black text-[0.65rem] uppercase tracking-wider block">
+                                        COLIS COLETA
+                                      </span>
+                                      {s.overrides?.colis !== undefined && s.overrides?.colis !== null && (
+                                        <span className="text-[0.55rem] font-bold text-amber-300 bg-amber-500/20 px-1 rounded border border-amber-500/30">
+                                          MANUAL
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[0.55rem] text-emerald-300/70 font-sans block">
+                                      Volume total de colis
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-baseline gap-1 font-mono">
+                                  <span className="text-emerald-300 font-black text-lg">{(s.colis ?? mix.colis ?? 0).toLocaleString('pt-BR')}</span>
+                                  <span className="text-emerald-400/80 text-[0.65rem] font-bold">COLIS</span>
                                 </div>
                               </div>
                             </div>
@@ -1786,70 +1923,142 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               return renderWidget(
                 "reapro",
                 "Painel Operacional REAPRO",
-                <RefreshCw size={14} className="text-sky-400" />,
-                `Término: ${reaproData.terminoPrevisao}`,
-                <div className="w-full">
-                  <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/5">
-                    <p className="text-[10px] text-zinc-500 uppercase font-black">
-                      Separação de Peças de Reabastecimento
-                    </p>
-                    {isEditable && (
-                      <button
-                        type="button"
-                        onClick={handleReaproEditToggle}
-                        className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 px-3 py-1 rounded text-xs font-bold transition-colors"
-                      >
-                        {reaproEdit ? "Salvar" : "Editar Reapro"}
-                      </button>
-                    )}
+                <Boxes size={14} className="text-amber-400" />,
+                `D-ALL Total: ${totalDAllReal.toLocaleString("pt-BR")} CX • Término: ${displayTerminoPrevisao} (${tempoRestanteStr})`,
+                <div className="w-full" id="widget-reapro-panel">
+                  {/* Barra de Ações e Contexto Consciente */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-white/5">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono text-[10px] font-bold">
+                        <RotateCcw size={10} className="text-amber-400" />
+                        D-ALL CONECTADO
+                      </span>
+                      <span className="text-[10px] text-zinc-400 font-medium">
+                        Reposição de Caixas & Abastecimento Contínuo
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
+                        <Sparkles size={10} />
+                        <span>Automação Ativa ({operadoresApoio.length} op. apoio)</span>
+                      </div>
+                      {isEditable && (
+                        <button
+                          id="reapro-btn-edit-toggle"
+                          type="button"
+                          onClick={handleReaproEditToggle}
+                          className="flex items-center gap-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 px-3 py-1 rounded text-xs font-bold transition-all shadow-sm active:scale-95"
+                        >
+                          <Edit3 size={11} />
+                          {reaproEdit ? "Salvar Alterações" : "Editar Parâmetros"}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-black/30 p-4 rounded-xl border border-sky-500/10 col-span-1 md:col-span-2">
-                        <p className="text-[0.6rem] text-zinc-500 uppercase font-black mb-3">
-                          Setores REAPRO
-                        </p>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                    {/* Coluna Principal: Setores e KPIs de Movimentação */}
+                    <div className="lg:col-span-8 space-y-4">
+                      {/* Setores D-ALL Conectados */}
+                      <div className="bg-black/35 p-4 rounded-xl border border-amber-500/15 backdrop-blur-sm">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-amber-400/90 uppercase font-black tracking-wider">
+                              Alocação D-ALL por Setor
+                            </span>
+                            <span className="text-[10px] text-zinc-500 font-mono">
+                              ({totalDAllReal.toLocaleString("pt-BR")} caixas total)
+                            </span>
+                          </div>
+                          <span className="text-[9px] text-zinc-500 font-mono">
+                            Sincronizado com Cards de Setor
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                           {setores.map((s) => {
-                            const sectorData =
-                              (reaproEdit ? localReapro : reaproData).setores[
-                                s.id
-                              ] || { feitoDAll: 0, feitoElog: 0 };
+                            const sectorDAll =
+                              s.reproTotal ??
+                              reaproData.setores?.[s.id]?.feitoDAll ??
+                              0;
+                            const isManual =
+                              s.overrides?.reproTotal !== undefined &&
+                              s.overrides?.reproTotal !== null;
+                            const pctCD = totalDAllReal > 0 ? Math.round((sectorDAll / totalDAllReal) * 100) : 0;
+                            const sectorLocalVal =
+                              (reaproEdit ? localReapro : reaproData).setores?.[s.id]?.feitoDAll ?? sectorDAll;
+
                             return (
                               <div
                                 key={s.id}
-                                className="bg-black/40 p-3 rounded-lg border border-white/5"
+                                id={`reapro-sector-card-${s.id}`}
+                                className="bg-zinc-950/60 p-3 rounded-lg border border-white/5 hover:border-amber-500/30 transition-colors flex flex-col justify-between"
                               >
-                                <p className="text-xs font-black text-sky-400">
-                                  S{s.id}
-                                </p>
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-xs font-black text-amber-400 font-mono">
+                                    S{s.id}
+                                  </span>
+                                  <span
+                                    className={`text-[8px] px-1 py-0.2 rounded font-mono font-bold ${
+                                      isManual
+                                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                        : "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/20"
+                                    }`}
+                                  >
+                                    {isManual ? "MANUAL" : "AUTO"}
+                                  </span>
+                                </div>
+
                                 {reaproEdit ? (
-                                  <div className="space-y-1 mt-2">
-                                    <input
-                                      type="number"
-                                      value={sectorData.feitoDAll}
-                                      onChange={(e) => {
-                                        const copy = { ...localReapro };
-                                        copy.setores[s.id] = {
-                                          ...sectorData,
-                                          feitoDAll:
-                                            parseInt(e.target.value) || 0,
-                                        };
-                                        setLocalReapro(copy);
-                                      }}
-                                      className="inp py-1 text-[10px] font-mono"
-                                      placeholder="D-ALL"
-                                    />
+                                  <div className="space-y-1 mt-1">
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        id={`reapro-input-sector-${s.id}`}
+                                        type="number"
+                                        value={sectorLocalVal}
+                                        onChange={(e) => {
+                                          const copy = { ...localReapro };
+                                          if (!copy.setores) copy.setores = {};
+                                          copy.setores[s.id] = {
+                                            feitoDAll: parseInt(e.target.value) || 0,
+                                            feitoElog: copy.setores[s.id]?.feitoElog || 0,
+                                          };
+                                          setLocalReapro(copy);
+                                        }}
+                                        className="inp py-1 px-1.5 text-xs font-mono w-full text-center bg-black/70 border-amber-500/40 text-amber-200"
+                                        placeholder="CX D-ALL"
+                                      />
+                                    </div>
+                                    <span className="text-[8px] text-zinc-500 text-center block">
+                                      Caixas D-ALL
+                                    </span>
                                   </div>
                                 ) : (
-                                  <div className="mt-2 text-xs font-mono">
-                                    <div className="flex justify-between">
-                                      <span className="text-zinc-500">
+                                  <div className="space-y-1.5 mt-1">
+                                    <div className="flex items-baseline justify-between">
+                                      <span className="text-[10px] text-zinc-500 font-sans">
                                         D-ALL:
                                       </span>
-                                      <b className="text-white">
-                                        {sectorData.feitoDAll}
-                                      </b>
+                                      <div className="flex items-baseline gap-1 font-mono">
+                                        <b className="text-sm font-black text-white">
+                                          {sectorDAll.toLocaleString("pt-BR")}
+                                        </b>
+                                        <span className="text-[9px] text-amber-400 font-bold">
+                                          CX
+                                        </span>
+                                      </div>
+                                    </div>
+                                    {/* Barra proporcional de carga */}
+                                    <div className="w-full bg-zinc-800/80 rounded-full h-1 overflow-hidden">
+                                      <div
+                                        className="bg-amber-400 h-full rounded-full transition-all duration-500"
+                                        style={{ width: `${Math.min(100, Math.max(5, pctCD))}%` }}
+                                      />
+                                    </div>
+                                    <div className="flex justify-between items-center text-[9px] text-zinc-500 font-mono">
+                                      <span>Carga CD:</span>
+                                      <span className="text-zinc-400 font-bold">{pctCD}%</span>
                                     </div>
                                   </div>
                                 )}
@@ -1859,198 +2068,341 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3 col-span-1 md:col-span-2">
-                        <div className="bg-black/30 p-3 rounded-xl border border-white/5">
-                          <p className="text-[0.55rem] text-zinc-500 uppercase font-bold">
-                            Preso D-ALL
-                          </p>
+                      {/* Grade de 4 Indicadores Vitais do Fluxo */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {/* Preso D-ALL */}
+                        <div
+                          id="reapro-kpi-preso"
+                          className="bg-black/35 p-3.5 rounded-xl border border-white/5 flex flex-col justify-between"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider">
+                              Preso D-ALL
+                            </span>
+                            {presoDAllReal > 0 && (
+                              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                            )}
+                          </div>
                           {reaproEdit ? (
                             <input
+                              id="reapro-input-preso-dall"
                               type="number"
-                              value={localReapro.indicadores.totalPresoDAll}
+                              value={localReapro.indicadores?.totalPresoDAll ?? 0}
                               onChange={(e) => {
                                 const copy = { ...localReapro };
-                                copy.indicadores.totalPresoDAll =
-                                  parseInt(e.target.value) || 0;
+                                if (!copy.indicadores) copy.indicadores = {} as any;
+                                copy.indicadores.totalPresoDAll = parseInt(e.target.value) || 0;
                                 setLocalReapro(copy);
                               }}
-                              className="inp py-1 text-xs mt-1"
+                              className="inp py-1 text-xs mt-1 font-mono text-amber-300"
                             />
                           ) : (
-                            <p className="text-lg font-black text-amber-400 font-mono mt-1">
-                              {reaproData.indicadores.totalPresoDAll}
-                            </p>
+                            <div className="mt-1 flex items-baseline gap-1 font-mono">
+                              <span className={`text-xl font-black ${presoDAllReal > 0 ? "text-amber-400" : "text-zinc-400"}`}>
+                                {presoDAllReal.toLocaleString("pt-BR")}
+                              </span>
+                              <span className="text-[10px] text-zinc-500 font-bold">CX</span>
+                            </div>
                           )}
+                          <span className="text-[9px] text-zinc-500 font-mono mt-0.5">
+                            {presoDAllReal > 0 ? "Requer liberação" : "Sem retenções"}
+                          </span>
                         </div>
-                        <div className="bg-black/30 p-3 rounded-xl border border-white/5">
-                          <p className="text-[0.55rem] text-zinc-500 uppercase font-bold">
-                            Em Curso Col.
-                          </p>
+
+                        {/* Em Curso / Coleta */}
+                        <div
+                          id="reapro-kpi-em-curso"
+                          className="bg-black/35 p-3.5 rounded-xl border border-white/5 flex flex-col justify-between"
+                        >
+                          <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider">
+                            Em Curso Coleta
+                          </span>
                           {reaproEdit ? (
                             <input
+                              id="reapro-input-em-curso"
                               type="number"
-                              value={localReapro.indicadores.emCursoColetado}
+                              value={localReapro.indicadores?.emCursoColetado ?? 0}
                               onChange={(e) => {
                                 const copy = { ...localReapro };
-                                copy.indicadores.emCursoColetado =
-                                  parseInt(e.target.value) || 0;
+                                if (!copy.indicadores) copy.indicadores = {} as any;
+                                copy.indicadores.emCursoColetado = parseInt(e.target.value) || 0;
                                 setLocalReapro(copy);
                               }}
-                              className="inp py-1 text-xs mt-1"
+                              className="inp py-1 text-xs mt-1 font-mono text-white"
                             />
                           ) : (
-                            <p className="text-lg font-black text-white font-mono mt-1">
-                              {(reaproData?.indicadores?.emCursoColetado ?? 0).toLocaleString(
-                                "pt-BR"
-                              )}
-                            </p>
+                            <div className="mt-1 flex items-baseline gap-1 font-mono">
+                              <span className="text-xl font-black text-white">
+                                {emCursoReal.toLocaleString("pt-BR")}
+                              </span>
+                              <span className="text-[10px] text-zinc-500 font-bold">CX</span>
+                            </div>
                           )}
+                          <span className="text-[9px] text-zinc-500 font-mono mt-0.5">
+                            Movimentação ativa
+                          </span>
                         </div>
-                        <div className="bg-black/30 p-3 rounded-xl border border-white/5">
-                          <p className="text-[0.55rem] text-zinc-500 uppercase font-bold">
+
+                        {/* Em Máquina */}
+                        <div
+                          id="reapro-kpi-em-maquina"
+                          className="bg-black/35 p-3.5 rounded-xl border border-white/5 flex flex-col justify-between"
+                        >
+                          <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider">
                             Em Máquina
-                          </p>
+                          </span>
                           {reaproEdit ? (
                             <input
+                              id="reapro-input-em-maquina"
                               type="number"
-                              value={localReapro.indicadores.totalEmMaquina}
+                              value={localReapro.indicadores?.totalEmMaquina ?? 0}
                               onChange={(e) => {
                                 const copy = { ...localReapro };
-                                copy.indicadores.totalEmMaquina =
-                                  parseInt(e.target.value) || 0;
+                                if (!copy.indicadores) copy.indicadores = {} as any;
+                                copy.indicadores.totalEmMaquina = parseInt(e.target.value) || 0;
                                 setLocalReapro(copy);
                               }}
-                              className="inp py-1 text-xs mt-1"
+                              className="inp py-1 text-xs mt-1 font-mono text-sky-400"
                             />
                           ) : (
-                            <p className="text-lg font-black text-sky-400 font-mono mt-1">
-                              {(reaproData?.indicadores?.totalEmMaquina ?? 0).toLocaleString(
-                                "pt-BR"
-                              )}
-                            </p>
+                            <div className="mt-1 flex items-baseline gap-1 font-mono">
+                              <span className="text-xl font-black text-sky-400">
+                                {emMaquinaReal.toLocaleString("pt-BR")}
+                              </span>
+                              <span className="text-[10px] text-zinc-500 font-bold">CX</span>
+                            </div>
                           )}
+                          <span className="text-[9px] text-zinc-500 font-mono mt-0.5">
+                            Em trânsito / pallets
+                          </span>
                         </div>
-                        <div className="bg-black/30 p-3 rounded-xl border border-white/5">
-                          <p className="text-[0.55rem] text-zinc-500 uppercase font-bold">
-                            Disponib.
-                          </p>
+
+                        {/* Disponibilidade Operacional */}
+                        <div
+                          id="reapro-kpi-disponibilidade"
+                          className="bg-black/35 p-3.5 rounded-xl border border-white/5 flex flex-col justify-between"
+                        >
+                          <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider">
+                            Disponibilidade
+                          </span>
                           {reaproEdit ? (
                             <input
+                              id="reapro-input-disponibilidade"
                               type="number"
-                              value={localReapro.indicadores.disponibilidade}
+                              value={localReapro.indicadores?.disponibilidade ?? 100}
                               onChange={(e) => {
                                 const copy = { ...localReapro };
-                                copy.indicadores.disponibilidade =
-                                  parseInt(e.target.value) || 0;
+                                if (!copy.indicadores) copy.indicadores = {} as any;
+                                copy.indicadores.disponibilidade = parseInt(e.target.value) || 0;
                                 setLocalReapro(copy);
                               }}
-                              className="inp py-1 text-xs mt-1"
+                              className="inp py-1 text-xs mt-1 font-mono text-emerald-400"
                             />
                           ) : (
-                            <p className="text-lg font-black text-emerald-400 font-mono mt-1">
-                              {reaproData.indicadores.disponibilidade}%
-                            </p>
+                            <div className="mt-1 flex items-baseline gap-1 font-mono">
+                              <span
+                                className={`text-xl font-black ${
+                                  disponibilidadeCalculada >= 90
+                                    ? "text-emerald-400"
+                                    : disponibilidadeCalculada >= 75
+                                    ? "text-amber-400"
+                                    : "text-rose-400"
+                                }`}
+                              >
+                                {reaproData?.indicadores?.disponibilidade !== undefined &&
+                                reaproData.indicadores.disponibilidade !== null
+                                  ? reaproData.indicadores.disponibilidade
+                                  : disponibilidadeCalculada}
+                                %
+                              </span>
+                            </div>
                           )}
+                          <span className="text-[9px] text-zinc-500 font-mono mt-0.5">
+                            Eficiência de fluxo
+                          </span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="lg:col-span-4 space-y-3">
-                      <div className="bg-black/30 p-4 rounded-xl border border-white/5">
-                        <p className="text-[0.55rem] text-zinc-500 uppercase font-bold mb-1">
-                          Término Previsto
-                        </p>
-                        {reaproEdit ? (
-                          <input
-                            type="text"
-                            value={localReapro.terminoPrevisao}
-                            onChange={(e) =>
-                              setLocalReapro({
-                                ...localReapro,
-                                terminoPrevisao: e.target.value,
-                              })
-                            }
-                            className="inp py-1 text-xs font-mono"
-                          />
-                        ) : (
-                          <p className="text-2xl font-black text-emerald-400 font-mono">
-                            {reaproData.terminoPrevisao}
-                          </p>
-                        )}
-                      </div>
-                      <div className="bg-black/30 p-4 rounded-xl border border-white/5">
-                        <p className="text-[0.55rem] text-zinc-500 uppercase font-bold mb-1">
-                          Cap. Fechamento Est.
-                        </p>
-                        {reaproEdit ? (
-                          <input
-                            type="number"
-                            value={localReapro.capacidadeFechamentoEst}
-                            onChange={(e) =>
-                              setLocalReapro({
-                                ...localReapro,
-                                capacidadeFechamentoEst:
-                                  parseInt(e.target.value) || 0,
-                              })
-                            }
-                            className="inp py-1 text-xs font-mono"
-                          />
-                        ) : (
-                          <p className="text-xl font-black text-indigo-400 font-mono">
-                            {reaproData.capacidadeFechamentoEst}
-                          </p>
-                        )}
-                      </div>
-                      <div className="bg-black/30 p-4 rounded-xl border border-white/5 grid grid-cols-2 gap-2">
-                        <div>
-                          <p className="text-[0.55rem] text-zinc-500 uppercase font-bold mb-1">
-                            Artigos
-                          </p>
-                          {reaproEdit ? (
-                            <input
-                              type="number"
-                              value={localReapro.listasFechadas.artigos}
-                              onChange={(e) => {
-                                const copy = { ...localReapro };
-                                copy.listasFechadas.artigos =
-                                  parseInt(e.target.value) || 0;
-                                setLocalReapro(copy);
-                              }}
-                              className="inp py-1 text-xs font-mono"
-                            />
-                          ) : (
-                            <p className="text-lg font-black text-white font-mono">
-                              {reaproData.listasFechadas.artigos}
-                            </p>
-                          )}
+                    {/* Coluna Lateral: Automações, Projeções e Universos */}
+                    <div className="lg:col-span-4 space-y-3.5">
+                      {/* Projeção Inteligente de Término */}
+                      <div
+                        id="reapro-card-termino-previsto"
+                        className="bg-black/35 p-4 rounded-xl border border-white/5 relative overflow-hidden"
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Clock size={12} className="text-emerald-400" />
+                            <span className="text-[10px] text-zinc-400 uppercase font-black tracking-wider">
+                              Término Previsto
+                            </span>
+                          </div>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-bold">
+                            {reaproData?.terminoPrevisao ? "MANUAL" : "AUTO PROJEÇÃO"}
+                          </span>
                         </div>
+
+                        {reaproEdit ? (
+                          <div className="space-y-1 mt-1">
+                            <input
+                              id="reapro-input-termino"
+                              type="text"
+                              value={localReapro.terminoPrevisao || ""}
+                              placeholder="ex: 16:30 (ou deixe em branco para auto)"
+                              onChange={(e) =>
+                                setLocalReapro({
+                                  ...localReapro,
+                                  terminoPrevisao: e.target.value,
+                                })
+                              }
+                              className="inp py-1 text-sm font-mono text-emerald-300 w-full"
+                            />
+                            <span className="text-[9px] text-zinc-500 block">
+                              Deixe vazio para cálculo automático contínuo
+                            </span>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="flex items-baseline gap-2 mt-1">
+                              <span className="text-2xl font-black text-emerald-400 font-mono tracking-tight">
+                                {displayTerminoPrevisao}
+                              </span>
+                              <span className="text-xs text-zinc-400 font-mono">
+                                (~{tempoRestanteStr} restantes)
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-zinc-500 mt-1">
+                              Baseado no volume pendente e ritmo operacional da equipe.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Capacidade / Ritmo Estimado de Fechamento */}
+                      <div
+                        id="reapro-card-capacidade-fechamento"
+                        className="bg-black/35 p-4 rounded-xl border border-white/5"
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <Gauge size={12} className="text-indigo-400" />
+                            <span className="text-[10px] text-zinc-400 uppercase font-black tracking-wider">
+                              Cap. Fechamento Est.
+                            </span>
+                          </div>
+                          <span className="text-[9px] text-zinc-500 font-mono">
+                            {operadoresApoio.length > 0
+                              ? `${operadoresApoio.length} op. apoio`
+                              : "Ritmo Padrão"}
+                          </span>
+                        </div>
+
+                        {reaproEdit ? (
+                          <div className="space-y-1 mt-1">
+                            <input
+                              id="reapro-input-capacidade-est"
+                              type="number"
+                              value={localReapro.capacidadeFechamentoEst || ""}
+                              placeholder={`Auto: ${capFechamentoAuto} cx/h`}
+                              onChange={(e) =>
+                                setLocalReapro({
+                                  ...localReapro,
+                                  capacidadeFechamentoEst: parseInt(e.target.value) || 0,
+                                })
+                              }
+                              className="inp py-1 text-sm font-mono text-indigo-300 w-full"
+                            />
+                            <span className="text-[9px] text-zinc-500 block">
+                              Em caixas por hora (cx/h)
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-baseline justify-between mt-1">
+                            <div className="flex items-baseline gap-1 font-mono">
+                              <span className="text-xl font-black text-indigo-400">
+                                {capFechamentoDisplay.toLocaleString("pt-BR")}
+                              </span>
+                              <span className="text-xs text-indigo-300/80 font-bold">
+                                CX/H
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-zinc-400 font-mono">
+                              ~{Math.round(capFechamentoDisplay / 60)} cx/min
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Artigos e Colis Reabastecidos */}
+                      <div
+                        id="reapro-card-artigos-colis"
+                        className="bg-black/35 p-4 rounded-xl border border-white/5 grid grid-cols-2 gap-3"
+                      >
                         <div>
-                          <p className="text-[0.55rem] text-zinc-500 uppercase font-bold mb-1">
-                            Colis
-                          </p>
+                          <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider block mb-1">
+                            Artigos (SKUs)
+                          </span>
                           {reaproEdit ? (
                             <input
+                              id="reapro-input-artigos"
                               type="number"
-                              value={localReapro.listasFechadas.colis}
+                              value={localReapro.listasFechadas?.artigos ?? 0}
                               onChange={(e) => {
                                 const copy = { ...localReapro };
-                                copy.listasFechadas.colis =
-                                  parseInt(e.target.value) || 0;
+                                if (!copy.listasFechadas) copy.listasFechadas = {} as any;
+                                copy.listasFechadas.artigos = parseInt(e.target.value) || 0;
                                 setLocalReapro(copy);
                               }}
-                              className="inp py-1 text-xs font-mono"
+                              className="inp py-1 text-xs font-mono w-full text-white"
                             />
                           ) : (
-                            <p className="text-lg font-black text-white font-mono">
-                              {reaproData.listasFechadas.colis}
-                            </p>
+                            <div className="flex items-baseline gap-1 font-mono mt-0.5">
+                              <span className="text-lg font-black text-white">
+                                {(reaproData?.listasFechadas?.artigos ?? 0).toLocaleString("pt-BR")}
+                              </span>
+                              <span className="text-[9px] text-zinc-500 font-bold">UN</span>
+                            </div>
                           )}
+                          <span className="text-[8px] text-zinc-500 mt-0.5 block">
+                            Peças alimentadas
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider block mb-1">
+                            Colis Reabast.
+                          </span>
+                          {reaproEdit ? (
+                            <input
+                              id="reapro-input-colis"
+                              type="number"
+                              value={localReapro.listasFechadas?.colis ?? 0}
+                              onChange={(e) => {
+                                const copy = { ...localReapro };
+                                if (!copy.listasFechadas) copy.listasFechadas = {} as any;
+                                copy.listasFechadas.colis = parseInt(e.target.value) || 0;
+                                setLocalReapro(copy);
+                              }}
+                              className="inp py-1 text-xs font-mono w-full text-white"
+                            />
+                          ) : (
+                            <div className="flex items-baseline gap-1 font-mono mt-0.5">
+                              <span className="text-lg font-black text-white">
+                                {(reaproData?.listasFechadas?.colis ?? 0).toLocaleString("pt-BR")}
+                              </span>
+                              <span className="text-[9px] text-zinc-500 font-bold">VOL</span>
+                            </div>
+                          )}
+                          <span className="text-[8px] text-zinc-500 mt-0.5 block">
+                            Volumes gerados
+                          </span>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>,
-                "border-l-2 border-sky-500/50 bg-sky-950/5"
+                "border-l-2 border-amber-500/60 bg-amber-950/5"
               );
 
             case "trend":

@@ -67,7 +67,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
 }) => {
   const { currentUser, currentUserUid } = useUserStore();
   const { registros, upsertRegistro, fetchRegistrosHoje } = usePainelProducaoStore();
-  const { activityEntries, capacidade, updateActivityUniversosBatch, setSetores } = useSectorStore();
+  const { activityEntries, capacidade, updateActivityUniversosBatch, updateSectorOverride, setSetores } = useSectorStore();
   const { metrics: copilData, summaryStats: copilSummary } = useCopilMetrics();
 
   const [visaoAtual, setVisaoAtual] = useState<string>('TODOS');
@@ -265,7 +265,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
       const alim = entry.alimento || 0;
       const mont = entry.montanha || 0;
       const reproVal = sectorObj?.reproTotal ?? (parseInt(entry.reapro?.replace(" CX", "") || "0") || 151);
-      const colisVal = entry.colis || (sectorId === '87' ? 1500 : 0);
+      const colisVal = sectorObj?.colis ?? entry.colis ?? (sectorId === '87' ? 1500 : 0);
       const customSum = customListRaw.reduce((acc, c) => acc + c.value, 0);
       const sumUni = alim + mont + customSum;
       const totalUni = sumUni > 0 ? sumUni : totalAtiv;
@@ -285,7 +285,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
         alimento: alim,
         montanha: mont,
         colis: colisVal,
-        atividade: entry?.atividade || 0,
+        atividade: sectorObj?.ativ ?? entry?.atividade ?? 0,
         elog: entry.elog || '2J RA FALC (174)',
         reapro: `${reproVal} CX`,
         alimentoPct: totalUni > 0 ? Math.round((alim / totalUni) * 100) : 0,
@@ -300,14 +300,14 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     const alim = Math.round((totalAtiv * (mix.alimentoPct || 65)) / 100);
     const mont = Math.max(0, totalAtiv - alim);
     const reproVal = sectorObj?.reproTotal ?? 151;
-    const colisVal = sectorId === '87' ? 1500 : 0;
+    const colisVal = sectorObj?.colis ?? (sectorId === '87' ? 1500 : 0);
 
     return {
       total: totalAtiv,
       alimento: alim,
       montanha: mont,
       colis: colisVal,
-        atividade: entry?.atividade || 0,
+      atividade: sectorObj?.ativ ?? entry?.atividade ?? 0,
       elog: '2J RA FALC (174)',
       reapro: `${reproVal} CX`,
       alimentoPct: mix.alimentoPct || 65,
@@ -358,8 +358,8 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     setEditAlimento(u.alimento);
     setEditMontanha(u.montanha);
     setEditReproTotal(sectorObj?.reproTotal ?? (parseInt(u.reapro?.replace(" CX", "") || "0") || 151));
-    setEditColis(u.colis || 0);
-    setEditAtividade(u.atividade || 0);
+    setEditColis(sectorObj?.colis ?? u.colis ?? 0);
+    setEditAtividade(sectorObj?.ativ ?? u.atividade ?? 0);
     setEditElog(u.elog || '');
     setEditCustomUniversos(
       (u.customUniversos || []).map((c, i) => ({
@@ -382,6 +382,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
         }
       });
 
+      // 1. Atualizar atividade/universos
       await updateActivityUniversosBatch(editingSectorUniversos, todayStr, uId, {
         alimento: editAlimento,
         montanha: editMontanha,
@@ -393,7 +394,19 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
         adhocCategories: adhocRecord
       });
 
-      setSetores(prev => prev.map(s => String(s.id) === String(editingSectorUniversos) || String(s.numero) === String(editingSectorUniversos) ? { ...s, reproTotal: editReproTotal } : s));
+      // 2. Atualizar overrides na Store centralizada
+      await updateSectorOverride(editingSectorUniversos, {
+        ...(editAtividade > 0 ? { ativ: editAtividade } : {}),
+        reproTotal: editReproTotal,
+        colis: editColis,
+      }, uId);
+
+      setSetores(prev => prev.map(s => String(s.id) === String(editingSectorUniversos) || String(s.numero) === String(editingSectorUniversos) ? { 
+        ...s, 
+        reproTotal: editReproTotal,
+        colis: editColis,
+        ...(editAtividade > 0 ? { ativ: editAtividade } : {})
+      } : s));
 
       setEditingSectorUniversos(null);
     } catch (err) {
@@ -1160,8 +1173,8 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                     </div>
                   </div>
 
-                  {/* 2. CARD DEDICADO DE CAIXAS PARA COLETA & SUPORTE */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+                  {/* 2. CARDS OPERACIONAIS: REABASTECIMENTO, COLIS COLETA & E-LOG */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                     {/* CARD OPERACIONAL: REABASTECIMENTO */}
                     <div 
                       onClick={(e) => handleOpenEditUniversos(id, e)}
@@ -1177,6 +1190,9 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                             Caixas para reabastecimento
                           </p>
                         </div>
+                        <span className="text-[10px] text-amber-400 group-hover:text-white font-semibold">
+                          Editar ✎
+                        </span>
                       </div>
 
                       <div className="mt-3 flex items-baseline justify-between bg-black/40 p-3 rounded-lg border border-amber-500/20">
@@ -1184,6 +1200,43 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                           <span className="text-[10px] uppercase text-slate-400 font-bold block">Qtd Reabastecimento</span>
                           <div className="text-3xl sm:text-4xl font-black font-mono text-amber-300 leading-tight">
                             {(setores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.reproTotal || parseInt(u.reapro?.replace(" CX", "") || "0") || 0).toLocaleString('pt-BR')} <span className="text-lg font-bold text-amber-400/80">CX</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CARD OPERACIONAL: COLIS COLETA */}
+                    <div 
+                      onClick={(e) => handleOpenEditUniversos(id, e)}
+                      className="bg-[#041a12] border-2 border-emerald-500/60 hover:border-emerald-400 p-4 rounded-xl relative overflow-hidden cursor-pointer transition-all shadow-[0_0_20px_rgba(16,185,129,0.15)] group flex flex-col justify-between"
+                    >
+                      <div className="flex flex-wrap justify-between items-start gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-base font-black text-white flex items-center gap-2">
+                              <Package size={18} className="text-emerald-400" />
+                              COLIS COLETA
+                            </h4>
+                            {setores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.overrides?.colis !== undefined && (
+                              <span className="text-[9px] font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
+                                MANUAL
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-300 mt-0.5 leading-tight">
+                            Volume total de colis
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-emerald-400 group-hover:text-white font-semibold">
+                          Editar ✎
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex items-baseline justify-between bg-black/40 p-3 rounded-lg border border-emerald-500/20">
+                        <div>
+                          <span className="text-[10px] uppercase text-slate-400 font-bold block">Total Colis</span>
+                          <div className="text-3xl sm:text-4xl font-black font-mono text-emerald-300 leading-tight">
+                            {(setores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.colis ?? u.colis ?? 0).toLocaleString('pt-BR')} <span className="text-lg font-bold text-emerald-400/80">COLIS</span>
                           </div>
                         </div>
                       </div>

@@ -1093,10 +1093,12 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
 interface RelatoriosTabProps {
   setores: Setor[];
   coordenador: string;
+  historico?: HistoricoRegistro[];
 }
 
-export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({ setores, coordenador }) => {
+export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({ setores, coordenador, historico = [] }) => {
   const [relatorioText, setRelatorioText] = useState("");
+  const [dataFiltro, setDataFiltro] = useState(new Date().toLocaleDateString("pt-BR"));
 
   const handleGenerate = (tipo: "abertura" | "fechamento") => {
     const header = tipo === "abertura" ? "== ABERTURA DE TURNO LOGÍSTICO ==" : "== FECHAMENTO DE TURNO LOGÍSTICO ==";
@@ -1118,41 +1120,139 @@ export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({ setores, coordenad
     }
   };
 
+  const historicoFiltrado = historico.filter((h) => h.data === dataFiltro);
+
+  const handleDownloadCSV = () => {
+    if (historicoFiltrado.length === 0) {
+      alert("Nenhum registro encontrado para a data filtrada.");
+      return;
+    }
+    const header = ["Data", "Hora", "Setor", "Volume (ATIV)", "UPH", "SLA (Promessa %)", "Coordenador"];
+    const rows = historicoFiltrado.map(h => [
+      h.data,
+      h.hora,
+      h.setor,
+      h.ativ,
+      h.uph,
+      h.promessa,
+      coordenador
+    ]);
+    const csvContent = [
+      header.join(","),
+      ...rows.map(e => e.join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `historico_consolidado_${dataFiltro.replace(/\//g, '-')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="glass-card p-6 border-l-2 border-sky-500/50">
-      <h3 className="font-bold text-white mb-4 text-sm uppercase tracking-widest flex items-center gap-2">
-        <FileText size={16} className="text-sky-400" />
-        Gerador de Relatórios e Handovers (WhatsApp/E-mail)
-      </h3>
-      <div className="flex flex-wrap gap-2 mb-4">
-        <button
-          onClick={() => handleGenerate("abertura")}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition cursor-pointer"
-        >
-          Relatório de Abertura
-        </button>
-        <button
-          onClick={() => handleGenerate("fechamento")}
-          className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition cursor-pointer"
-        >
-          Relatório de Fechamento
-        </button>
-        {relatorioText && (
+    <div className="space-y-6">
+      <div className="glass-card p-6 border-l-2 border-sky-500/50">
+        <h3 className="font-bold text-white mb-4 text-sm uppercase tracking-widest flex items-center gap-2">
+          <FileText size={16} className="text-sky-400" />
+          Gerador de Relatórios e Handovers (WhatsApp/E-mail)
+        </h3>
+        <div className="flex flex-wrap gap-2 mb-4">
           <button
-            onClick={handleCopy}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition ml-auto flex items-center gap-1.5 cursor-pointer"
+            onClick={() => handleGenerate("abertura")}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition cursor-pointer"
           >
-            <Copy size={14} />
-            Copiar Texto
+            Relatório de Abertura
           </button>
-        )}
+          <button
+            onClick={() => handleGenerate("fechamento")}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition cursor-pointer"
+          >
+            Relatório de Fechamento
+          </button>
+          {relatorioText && (
+            <button
+              onClick={handleCopy}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition ml-auto flex items-center gap-1.5 cursor-pointer"
+            >
+              <Copy size={14} />
+              Copiar Texto
+            </button>
+          )}
+        </div>
+        <textarea
+          value={relatorioText}
+          readOnly
+          className="inp font-mono text-xs h-64 leading-relaxed whitespace-pre overflow-x-auto bg-black/60 focus:outline-none p-3 border border-white/5 rounded-lg w-full"
+          placeholder="Selecione um dos relatórios acima para gerar..."
+        />
       </div>
-      <textarea
-        value={relatorioText}
-        readOnly
-        className="inp font-mono text-xs h-64 leading-relaxed whitespace-pre overflow-x-auto bg-black/60 focus:outline-none p-3 border border-white/5 rounded-lg w-full"
-        placeholder="Selecione um dos relatórios acima para gerar..."
-      />
+
+      <div className="glass-card p-6 border-l-2 border-emerald-500/50">
+        <h3 className="font-bold text-white mb-4 text-sm uppercase tracking-widest flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Download size={16} className="text-emerald-400" />
+            Extração de Histórico Consolidado (CSV)
+          </div>
+        </h3>
+        
+        <div className="flex flex-wrap items-end gap-4 mb-6">
+          <div>
+            <label className="block text-[10px] text-zinc-500 uppercase font-black mb-1">
+              Data de Filtro (DD/MM/AAAA)
+            </label>
+            <input
+              type="text"
+              value={dataFiltro}
+              onChange={(e) => setDataFiltro(e.target.value)}
+              className="inp text-sm font-mono w-40"
+              placeholder="Ex: 20/06/2026"
+            />
+          </div>
+          <button
+            onClick={handleDownloadCSV}
+            className="bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Download size={14} />
+            Baixar CSV do Dia
+          </button>
+        </div>
+
+        <div className="overflow-x-auto custom-scrollbar max-h-[300px]">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="text-[0.55rem] uppercase tracking-widest text-zinc-500 border-b border-white/10 sticky top-0 bg-[#0c0c0e] z-10">
+                <th className="p-3 font-bold">Hora</th>
+                <th className="p-3 font-bold text-center">Setor</th>
+                <th className="p-3 font-bold text-right">Volume</th>
+                <th className="p-3 font-bold text-right">UPH</th>
+                <th className="p-3 font-bold text-right">SLA</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5 font-mono">
+              {historicoFiltrado.length > 0 ? (
+                historicoFiltrado.map((h, i) => (
+                  <tr key={i} className="hover:bg-white/[0.01]">
+                    <td className="p-3 text-zinc-400">{h.hora}</td>
+                    <td className="p-3 text-center text-white font-black">S{h.setor}</td>
+                    <td className="p-3 text-right font-bold text-sky-400">{(h.ativ ?? 0).toLocaleString("pt-BR")}</td>
+                    <td className="p-3 text-right text-indigo-400">{h.uph}</td>
+                    <td className="p-3 text-right text-emerald-400">{h.promessa}%</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="text-center py-12 text-zinc-500 italic">
+                    Nenhum registro no histórico para a data {dataFiltro}.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };

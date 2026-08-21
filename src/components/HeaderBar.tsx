@@ -99,6 +99,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             Setor:
           </span>
           <select
+            id="header-select-active-sector"
             value={activeSectorId}
             onChange={(e) => {
               const sector = e.target.value;
@@ -119,6 +120,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         {/* Real-time Notifications Bell */}
         <div className="relative">
           <button
+            id="header-btn-notifications-toggle"
             onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
             className={`p-2 rounded-xl border transition-all duration-200 relative flex items-center justify-center cursor-pointer ${
               showNotificationDropdown
@@ -136,7 +138,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </button>
 
           {showNotificationDropdown && (
-            <div className="absolute right-0 mt-3 w-80 bg-[#0d0d11]/98 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-xl z-[999999] overflow-hidden">
+            <div id="header-dropdown-notifications" className="absolute right-0 mt-3 w-80 bg-[#0d0d11]/98 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-xl z-[999999] overflow-hidden">
               <div className="p-3 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
                 <span className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
@@ -144,6 +146,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 </span>
                 <div className="flex gap-2">
                   <button
+                    id="header-btn-notifications-mark-read"
                     onClick={() => {
                       setNotifications((prev) => {
                         const updated = prev.map((n) => ({ ...n, read: true }));
@@ -157,6 +160,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                   </button>
                   <span className="text-zinc-700 text-[8px]">•</span>
                   <button
+                    id="header-btn-notifications-clear"
                     onClick={() => {
                       setNotifications([]);
                       localStorage.removeItem("tower_notifications");
@@ -189,6 +193,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
                     return (
                       <div
+                        id={`notification-item-${n.id}`}
                         key={n.id}
                         onClick={() => {
                           setNotifications((prev) => {
@@ -245,6 +250,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               </>
             ) : supabaseOnline === false ? (
               <button
+                id="header-btn-supabase-reconnect"
                 onClick={verifySupabaseConnection}
                 title="Clique para tentar reconectar ao Supabase"
                 className="flex items-center gap-1.5 text-rose-400 hover:text-rose-300 transition-all uppercase bg-rose-950/20 px-1.5 py-0.5 rounded border border-rose-500/30 cursor-pointer"
@@ -270,6 +276,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             </p>
           </div>
           <select
+            id="header-select-role"
             value={currentRole}
             onChange={(e) => handleRoleChange(e.target.value as UserRole)}
             className="bg-[#0b0b0d] border border-white/10 rounded px-2 py-0.5 text-[10px] text-zinc-300 font-bold focus:outline-none cursor-pointer"
@@ -281,6 +288,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </select>
           {Boolean(fbUser) && (
             <button
+              id="header-btn-logout"
               onClick={onLogout}
               className="bg-red-950/40 hover:bg-red-900/50 border border-red-500/30 rounded px-2.5 py-1 text-[10px] text-red-400 font-black hover:text-red-300 transition-all flex items-center gap-1 cursor-pointer"
             >

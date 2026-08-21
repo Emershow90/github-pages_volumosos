@@ -100,6 +100,10 @@ function resolveSectorMetrics(sector: Setor): Setor {
     ? overrides.reproTotal
     : (suggested.reproTotal !== undefined && suggested.reproTotal !== null ? suggested.reproTotal : sector.reproTotal);
 
+  const colisFinal = overrides.colis !== undefined && overrides.colis !== null
+    ? overrides.colis
+    : (suggested.colis !== undefined && suggested.colis !== null ? suggested.colis : (sector.colis ?? 0));
+
   const promessaFinal = overrides.promessa !== undefined && overrides.promessa !== null
     ? overrides.promessa
     : (suggested.promessa !== undefined && suggested.promessa !== null ? suggested.promessa : sector.promessa);
@@ -121,6 +125,7 @@ function resolveSectorMetrics(sector: Setor): Setor {
     ativ: ativFinal,
     uph: uphFinal,
     reproTotal: reproFinal,
+    colis: colisFinal,
     promessa: promessaFinal,
     nota5s: nota5sFinal,
     bsi: bsiFinal,

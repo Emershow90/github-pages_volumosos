@@ -2,6 +2,7 @@ export interface SectorOverrideValues {
   ativ?: number | null;
   uph?: number | null;
   reproTotal?: number | null;
+  colis?: number | null;
   promessa?: number | null;
   nota5s?: number | null;
   bsi?: number | null;
@@ -32,6 +33,7 @@ export interface Setor {
 
   // Realtime computed or loaded metrics (Valores Finais Resolvidos)
   ativ: number;
+  colis?: number;
   promessa: number;
   varFin: number;
   bsi: number;

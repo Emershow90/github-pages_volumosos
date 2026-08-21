@@ -48,6 +48,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
         </div>
         <div className="grid grid-cols-3 gap-1">
           <button
+            id="nav-tab-dashboard"
             onClick={() => setActiveTab("dashboard")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "dashboard" ? "active" : ""}`}
             title="Dashboard Principal do CD"
@@ -56,6 +57,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate">Painel</span>
           </button>
           <button
+            id="nav-tab-executivo"
             onClick={() => setActiveTab("executivo")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "executivo" ? "active" : ""}`}
             title="Visão Executiva & Diretoria"
@@ -64,6 +66,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate">Executivo</span>
           </button>
           <button
+            id="nav-tab-analytics"
             onClick={() => setActiveTab("analytics")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "analytics" ? "active" : ""}`}
             title="Analytics, SLAs e Histórico"
@@ -87,6 +90,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
         </div>
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
           <button
+            id="nav-tab-capacidade"
             onClick={() => setActiveTab("capacidade")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "capacidade" ? "active border-cyan-500/50 text-cyan-300" : "hover:border-cyan-500/30"}`}
             title="Escala de Capacidade & Colaboradores"
@@ -95,6 +99,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate font-semibold">Escala</span>
           </button>
           <button
+            id="nav-tab-produtividade"
             onClick={() => setActiveTab("produtividade")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "produtividade" ? "active border-emerald-500/50 text-emerald-300" : "hover:border-emerald-500/30"}`}
             title="Cálculo e Metas de Produtividade UPH"
@@ -103,6 +108,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate font-semibold">Produtiv.</span>
           </button>
           <button
+            id="nav-tab-apresentacao"
             onClick={() => setActiveTab("apresentacao")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "apresentacao" ? "active border-indigo-500/50 text-indigo-300" : "hover:border-indigo-500/30"}`}
             title="Console Operacional TV & Telão"
@@ -111,6 +117,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate font-semibold">Console TV</span>
           </button>
           <button
+            id="nav-tab-override"
             onClick={() => setActiveTab("override")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "override" ? "active border-amber-500/50 text-amber-300" : "hover:border-amber-500/30"}`}
             title="Override Operacional & Calibração"
@@ -119,6 +126,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate font-bold text-amber-300">Override</span>
           </button>
           <button
+            id="nav-tab-copil"
             onClick={() => setActiveTab("copil")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "copil" ? "active border-purple-500/50 text-purple-300" : "hover:border-purple-500/30"}`}
             title="Matriz de Pilotagem COPIL"
@@ -127,6 +135,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate font-semibold">COPIL</span>
           </button>
           <button
+            id="nav-tab-radar-live"
             onClick={() => setActiveTab("radar_lojas_live")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "radar_lojas_live" ? "active border-rose-500/50 text-rose-300 bg-rose-950/30" : "hover:border-rose-500/30"}`}
             title="Radar de Lojas Live (Sincronizado em Tempo Real)"
@@ -145,6 +154,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
         </div>
         <div className="grid grid-cols-3 gap-1">
           <button
+            id="nav-tab-equipa"
             onClick={() => setActiveTab("equipa")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "equipa" ? "active" : ""}`}
             title="Equipe & Volumosos"
@@ -153,6 +163,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate">Equipe</span>
           </button>
           <button
+            id="nav-tab-historico"
             onClick={() => setActiveTab("historico")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "historico" ? "active" : ""}`}
             title="Histórico de Consolidados"
@@ -161,6 +172,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate">Logs</span>
           </button>
           <button
+            id="nav-tab-alerts"
             onClick={() => setActiveTab("alerts")}
             className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "alerts" ? "active" : ""}`}
             title="Central de Alertas Operacionais"
@@ -179,6 +191,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
         </div>
         <div className="grid grid-cols-4 gap-1">
           <button
+            id="nav-tab-audit"
             onClick={() => setActiveTab("audit")}
             className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "audit" ? "active" : ""}`}
             title="Auditoria & Aprovações"
@@ -192,6 +205,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             )}
           </button>
           <button
+            id="nav-tab-relatorios"
             onClick={() => setActiveTab("relatorios")}
             className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "relatorios" ? "active" : ""}`}
             title="Relatórios & Handovers"
@@ -200,6 +214,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate">Relatos</span>
           </button>
           <button
+            id="nav-tab-config"
             onClick={() => setActiveTab("config")}
             className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "config" ? "active" : ""}`}
             title="Ajustes do Sistema"
@@ -208,6 +223,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <span className="truncate">Ajustes</span>
           </button>
           <button
+            id="nav-tab-conexoes"
             onClick={() => setActiveTab("conexoes")}
             className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "conexoes" ? "active border-purple-500/50 text-purple-300" : ""}`}
             title="Conexões & Integrações Externas"

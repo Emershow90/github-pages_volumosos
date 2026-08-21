@@ -308,6 +308,44 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ setores, historico }
 
       <SupabaseHealthPanel />
 
+      {/* PLANILHAS GOOGLE SHEETS */}
+      <div className="glass-card p-6 border-l-2 border-emerald-500/50">
+        <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-3">
+          <div>
+            <h3 className="text-sm font-black text-white uppercase tracking-widest">
+              Planilhas Google Sheets Conectadas
+            </h3>
+            <p className="text-[10px] text-zinc-400 mt-1">
+              Exportação automatizada de relatórios (23:59)
+            </p>
+          </div>
+          <span className="bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-md text-[10px] font-black border border-emerald-500/30 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            Automação Ativa
+          </span>
+        </div>
+        
+        <div className="space-y-3">
+          <div className="bg-black/40 border border-white/10 rounded-lg p-4 flex justify-between items-center hover:border-emerald-500/30 transition-colors">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded bg-emerald-600/20 flex items-center justify-center border border-emerald-500/30">
+                <span className="text-emerald-400 text-xl">📊</span>
+              </div>
+              <div>
+                <h4 className="text-zinc-200 text-xs font-bold font-sans">Relatório Consolidado Diário</h4>
+                <div className="text-[10px] text-zinc-500 font-mono mt-1">
+                  Exportação via VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL
+                </div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] text-zinc-400 font-bold uppercase mb-1">Última Sincronização</div>
+              <div className="text-emerald-400 text-xs font-mono font-bold">Hoje, 23:59 (Agendado)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="glass-card p-6">
         <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4 border-b border-white/5 pb-3">
           Registros Históricos Recentes

@@ -25,6 +25,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
     ativ: '',
     uph: '',
     reproTotal: '',
+    colis: '',
     promessa: '',
     nota5s: '',
     bsi: '',
@@ -36,6 +37,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
   const [suggestedAtiv, setSuggestedAtiv] = useState<string>('');
   const [suggestedUph, setSuggestedUph] = useState<string>('');
   const [suggestedRepro, setSuggestedRepro] = useState<string>('');
+  const [suggestedColis, setSuggestedColis] = useState<string>('');
   const [suggestedPromessa, setSuggestedPromessa] = useState<string>('');
   const [suggestedBsi, setSuggestedBsi] = useState<string>('');
   const [suggestedErros, setSuggestedErros] = useState<string>('');
@@ -50,6 +52,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
       ativ: '',
       uph: '',
       reproTotal: '',
+      colis: '',
       promessa: '',
       nota5s: '',
       bsi: '',
@@ -88,6 +91,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
       setSuggestedAtiv('');
       setSuggestedUph('');
       setSuggestedRepro('');
+      setSuggestedColis('');
       setSuggestedPromessa('');
       setSuggestedBsi('');
       setSuggestedErros('');
@@ -95,6 +99,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
         ativ: '',
         uph: '',
         reproTotal: '',
+        colis: '',
         promessa: '',
         nota5s: '',
         bsi: '',
@@ -109,6 +114,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
     const sugAtiv = pub?.atividadeTotal?.toString() || currentSec?.suggestedMetrics?.ativ?.toString() || '';
     const sugUph = (pub?.uph && pub.uph > 0) ? pub.uph.toString() : currentSec?.suggestedMetrics?.uph?.toString() || '';
     const sugRepro = pub?.caixasDisponiveis?.toString() || currentSec?.suggestedMetrics?.reproTotal?.toString() || '';
+    const sugColis = currentSec?.suggestedMetrics?.colis?.toString() || (selectedSector === '87' ? '1500' : '0');
     const sugProm = pub?.promessa != null ? pub.promessa.toString() : '100';
     const sugBsi = pub?.bsi != null ? pub.bsi.toString() : '100';
     const sugErr = pub?.errosPicking != null ? pub.errosPicking.toString() : '0';
@@ -116,6 +122,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
     setSuggestedAtiv(sugAtiv);
     setSuggestedUph(sugUph);
     setSuggestedRepro(sugRepro);
+    setSuggestedColis(sugColis);
     setSuggestedPromessa(sugProm);
     setSuggestedBsi(sugBsi);
     setSuggestedErros(sugErr);
@@ -126,6 +133,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
       ativ: ov.ativ !== undefined && ov.ativ !== null ? ov.ativ.toString() : '',
       uph: ov.uph !== undefined && ov.uph !== null ? ov.uph.toString() : '',
       reproTotal: ov.reproTotal !== undefined && ov.reproTotal !== null ? ov.reproTotal.toString() : '',
+      colis: ov.colis !== undefined && ov.colis !== null ? ov.colis.toString() : '',
       promessa: ov.promessa !== undefined && ov.promessa !== null ? ov.promessa.toString() : '',
       nota5s: ov.nota5s !== undefined && ov.nota5s !== null ? ov.nota5s.toString() : '',
       bsi: ov.bsi !== undefined && ov.bsi !== null ? ov.bsi.toString() : '',
@@ -240,6 +248,14 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
                     onClear={() => handleClearOverride('reproTotal')}
                   />
                   <FieldInput 
+                    label="Colis Coleta (Volume)" 
+                    field="colis" 
+                    value={formData.colis} 
+                    suggestedValue={suggestedColis}
+                    onChange={handleInputChange} 
+                    onClear={() => handleClearOverride('colis')}
+                  />
+                  <FieldInput 
                     label="Promessa (%)" 
                     field="promessa" 
                     value={formData.promessa} 
@@ -291,6 +307,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
                   if (field === 'ativ') sugVal = suggestedAtiv;
                   if (field === 'uph') sugVal = suggestedUph;
                   if (field === 'reproTotal') sugVal = suggestedRepro;
+                  if (field === 'colis') sugVal = suggestedColis;
                   if (field === 'promessa') sugVal = suggestedPromessa;
                   if (field === 'bsi') sugVal = suggestedBsi;
                   if (field === 'errosPicking') sugVal = suggestedErros;

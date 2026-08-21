@@ -53,6 +53,7 @@ import { useUIStore } from "./stores/useUIStore";
 import { realtimeSync } from "./services/realtimeSyncService";
 import { SupabaseService as FirebaseService } from "./lib/supabaseService";
 import { StoreService } from "./services/storeService";
+import { googleSheetsService } from "./services/googleSheetsService";
 
 // Layout & Modular UI Components
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -207,6 +208,67 @@ function App() {
       loadPendingUsers();
     }
   }, [currentRole, loadPendingUsers]);
+
+  // Daily Automations: 23:59 Google Sheets Export
+  useEffect(() => {
+    // Only run automation if user is authenticated (assuming the UI is kept open in a dispatch terminal)
+    if (!fbUser?.uid) return;
+
+    let timeoutId: NodeJS.Timeout;
+
+    const setupMidnightTimer = () => {
+      const now = new Date();
+      const target = new Date(now);
+      target.setHours(23, 59, 0, 0);
+
+      // If it's already past 23:59, schedule for tomorrow
+      if (now.getTime() > target.getTime()) {
+        target.setDate(target.getDate() + 1);
+      }
+
+      const msUntilMidnight = target.getTime() - now.getTime();
+      
+      console.log(`[Automação Diária] Próxima exportação agendada para daqui a ${Math.round(msUntilMidnight / 1000 / 60)} minutos.`);
+
+      timeoutId = setTimeout(async () => {
+        console.log("[Automação Diária] Executando exportação programada das 23:59...");
+        
+        // Exemplo: ID da planilha fictícia
+        const SPREADSHEET_ID = "YOUR_SPREADSHEET_ID_HERE";
+        
+        const success = await googleSheetsService.exportarHistoricoDiario(SPREADSHEET_ID, useHistoryStore.getState().historico);
+        
+        if (success) {
+          useUIStore.getState().setNotifications([...useUIStore.getState().notifications, {
+            id: Date.now().toString(),
+            title: "Exportação Automática",
+            desc: "Relatório Diário exportado com sucesso (Automação 23:59)",
+            time: new Date().toLocaleTimeString('pt-BR').slice(0, 5),
+            type: "info",
+            read: false
+          }]);
+        } else {
+          useUIStore.getState().setNotifications([...useUIStore.getState().notifications, {
+            id: Date.now().toString(),
+            title: "Exportação Falhou",
+            desc: "Falha na exportação automática do relatório. Verifique o console.",
+            time: new Date().toLocaleTimeString('pt-BR').slice(0, 5),
+            type: "danger",
+            read: false
+          }]);
+        }
+
+        // Setup the next day's timer
+        setupMidnightTimer();
+      }, msUntilMidnight);
+    };
+
+    setupMidnightTimer();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [fbUser?.uid]); // No longer depends on historico directly
 
   // Zustand Stores
   const {
@@ -1369,7 +1431,7 @@ function App() {
 
           {activeTab === "relatorios" && (
             <ProtectedRoute userRole={currentRole} allowedRoles={[UserRole.Admin]}>
-              <RelatoriosTab setores={setores} coordenador={currentUser} />
+              <RelatoriosTab setores={setores} coordenador={currentUser} historico={historico} />
             </ProtectedRoute>
           )}
 
