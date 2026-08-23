@@ -31,18 +31,51 @@ export function initGoogleIdentity() {
   }
 }
 
+// Helper to ensure gsi script is loaded
+async function ensureGoogleIdentityLoaded(): Promise<void> {
+  if (typeof google !== 'undefined' && google?.accounts?.oauth2) {
+    return;
+  }
+
+  return new Promise((resolve, reject) => {
+    // Check if script element already exists
+    let script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]') as HTMLScriptElement;
+    if (!script) {
+      script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      if (typeof google !== 'undefined' && google?.accounts?.oauth2) {
+        clearInterval(interval);
+        resolve();
+      } else if (attempts > 30) { // 3 seconds timeout
+        clearInterval(interval);
+        reject(new Error('Tempo esgotado ao carregar a biblioteca de autenticação do Google (GSI).'));
+      }
+    }, 100);
+  });
+}
+
 // Request an access token
 async function getAccessToken(): Promise<string> {
   if (cachedAccessToken && Date.now() < tokenExpiresAt) {
     return cachedAccessToken;
   }
 
+  await ensureGoogleIdentityLoaded();
+
   if (!tokenClient) {
     initGoogleIdentity();
   }
 
   if (!tokenClient) {
-    throw new Error('Google Identity Services não foi inicializado. Recarregue a página ou verifique a conexão com a internet.');
+    throw new Error('Google Identity Services não foi inicializado. Verifique se o Client ID está configurado.');
   }
 
   return new Promise((resolve, reject) => {

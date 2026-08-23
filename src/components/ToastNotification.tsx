@@ -32,11 +32,16 @@ export const ToastItem: React.FC<{ toast: ToastType }> = React.memo(({ toast }) 
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, x: 50, scale: 0.95 }}
+      initial={{ opacity: 0, x: 80, scale: 0.92 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={{ opacity: 0, x: 50, scale: 0.95 }}
-      transition={{ duration: 0.25, ease: 'easeOut' }}
-      className={`relative w-full max-w-sm rounded-xl border shadow-lg shadow-slate-950/50 overflow-hidden ${colorMap[toast.type]}`}
+      exit={{ opacity: 0, x: 80, scale: 0.92, transition: { duration: 0.2, ease: 'easeIn' } }}
+      transition={{ 
+        type: 'spring', 
+        damping: 24, 
+        stiffness: 280, 
+        mass: 0.8 
+      }}
+      className={`relative w-full max-w-sm rounded-xl border backdrop-blur-md shadow-xl shadow-slate-950/60 overflow-hidden ${colorMap[toast.type]}`}
     >
       <div className="p-4 flex items-start gap-3">
         <div className="mt-0.5 shrink-0">
