@@ -22,7 +22,9 @@ import {
   Search, 
   AlertTriangle,
   RotateCcw,
-  Check
+  Check,
+  Calendar,
+  CloudDownload
 } from 'lucide-react';
 import { ConexoesService, SyncResult, ConnectionDetail } from '../services/conexoesService';
 import { useToast } from '../hooks/useToast';
@@ -30,6 +32,10 @@ import { SupabaseService } from '../lib/supabaseService';
 import { formatToBrasiliaTime } from '../utils/time';
 import { useStoreMaster } from '../stores/useStoreMaster';
 import { useStoreOperations } from '../stores/useStoreOperations';
+import { useSectorStore } from '../stores/useSectorStore';
+import { useCollaboratorStore } from '../stores/useCollaboratorStore';
+import { useDailyActivityHealth } from '../hooks/useDailyActivityHealth';
+import { exportToGoogleSheets, initGoogleIdentity } from '../services/googleSheetsExportService';
 
 export const ConexoesTab: React.FC = () => {
   const toast = useToast();
@@ -59,6 +65,52 @@ export const ConexoesTab: React.FC = () => {
   const { stores, loadStores } = useStoreMaster();
   const operations = useStoreOperations((s) => s.operations);
   const [searchStore, setSearchStore] = useState('');
+
+  // Daily Activity Health State
+  const { setores, reaproData, capacidade } = useSectorStore();
+  const { colaboradores } = useCollaboratorStore();
+  const {
+    dataHoje,
+    setoresPendentes,
+    hasPendingDailyRecord,
+    registrosHojeCount,
+    ultimoRegistroHora,
+    consolidarRegistrosDoDia,
+  } = useDailyActivityHealth(setores, colaboradores);
+  const [isConsolidatingDaily, setIsConsolidatingDaily] = useState(false);
+  const [isExportingSheets, setIsExportingSheets] = useState(false);
+
+  const handleConsolidarDaily = async () => {
+    setIsConsolidatingDaily(true);
+    try {
+      await consolidarRegistrosDoDia(setores, colaboradores);
+      toast.success('Registros de atividade do dia consolidados com sucesso!');
+    } catch (err) {
+      toast.error('Erro ao consolidar atividade do dia.');
+    } finally {
+      setIsConsolidatingDaily(false);
+    }
+  };
+
+  const handleExportSheets = async () => {
+    setIsExportingSheets(true);
+    try {
+      initGoogleIdentity();
+      const url = await exportToGoogleSheets({
+        setores,
+        colaboradores,
+        reapro: reaproData,
+        capacidade,
+      });
+      window.open(url, '_blank');
+      toast.success('Planilha mestre consolidada e atualizada no Google Drive!');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao salvar no Google Sheets';
+      toast.error(msg);
+    } finally {
+      setIsExportingSheets(false);
+    }
+  };
 
   const ATIVIDADE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=0&single=true&output=csv';
   const PLANO_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv';
@@ -381,6 +433,64 @@ export const ConexoesTab: React.FC = () => {
           >
             <RefreshCw className={`w-4 h-4 ${isSyncingSheets ? 'animate-spin' : ''}`} />
             {isSyncingSheets ? 'Sincronizando Lojas & Planilhas...' : 'Sincronizar Lojas & Planilhas'}
+          </button>
+        </div>
+      </div>
+
+      {/* Aviso de Atividade do Dia (Clean & Minimalista) */}
+      <div
+        id="conexoes-aviso-atividade-dia"
+        className="px-4 py-3 rounded-xl bg-zinc-900/40 border border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className={`w-2 h-2 rounded-full shrink-0 ${
+              hasPendingDailyRecord ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+            }`}
+          />
+          <p className="text-xs text-zinc-300">
+            <span className="font-semibold text-white">Aviso de Atividade do Dia ({dataHoje}):</span>{' '}
+            {hasPendingDailyRecord ? (
+              <span className="text-amber-300">
+                {registrosHojeCount === 0
+                  ? 'Pendente de consolidação.'
+                  : `${setoresPendentes.length} setor(es) pendente(s): ${setoresPendentes.map((s) => `S${s.id}`).join(', ')}`}
+              </span>
+            ) : (
+              <span className="text-emerald-400">
+                Todos os setores consolidados.{ultimoRegistroHora && ` (Atualizado às ${ultimoRegistroHora})`}
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleConsolidarDaily}
+            disabled={isConsolidatingDaily}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+              hasPendingDailyRecord
+                ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30'
+                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/60'
+            } disabled:opacity-50`}
+            title="Consolidar atividade do dia"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isConsolidatingDaily ? 'animate-spin' : ''}`} />
+            {isConsolidatingDaily
+              ? 'Salvando...'
+              : hasPendingDailyRecord
+              ? 'Consolidar Dia'
+              : 'Atualizar'}
+          </button>
+
+          <button
+            onClick={handleExportSheets}
+            disabled={isExportingSheets}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 cursor-pointer disabled:opacity-50"
+            title="Salvar no Google Sheets"
+          >
+            <CloudDownload className={`w-3.5 h-3.5 ${isExportingSheets ? 'animate-bounce' : ''}`} />
+            {isExportingSheets ? 'Salvando...' : 'Google Sheets'}
           </button>
         </div>
       </div>

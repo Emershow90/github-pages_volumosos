@@ -50,6 +50,7 @@ import { useSectorStore } from "./stores/useSectorStore";
 import { useHistoryStore } from "./stores/useHistoryStore";
 import { useCollaboratorStore } from "./stores/useCollaboratorStore";
 import { useUIStore } from "./stores/useUIStore";
+import { useNotificationStore } from "./stores/useNotificationStore";
 import { realtimeSync } from "./services/realtimeSyncService";
 import { SupabaseService as FirebaseService } from "./lib/supabaseService";
 import { StoreService } from "./services/storeService";
@@ -607,6 +608,45 @@ function App() {
       clearInterval(checkInterval);
     };
   }, [screensaver, isScreensaverActive]);
+
+  // AVISO ORGÂNICO DE ATIVIDADE DO DIA (Registros Diários)
+  useEffect(() => {
+    const checkDailyActivity = () => {
+      const hoje = new Date().toLocaleDateString("pt-BR");
+      const registrosHoje = historico.filter((h) => h.data === hoje);
+      const sessionKey = `daily_alert_triggered_${hoje}`;
+
+      // Se não há registros para hoje e ainda não notificou nesta sessão/dia
+      if (registrosHoje.length === 0 && !sessionStorage.getItem(sessionKey)) {
+        sessionStorage.setItem(sessionKey, "true");
+
+        // Notificação na Central de Avisos
+        const nowHora = new Date().toLocaleTimeString("pt-BR").slice(0, 5);
+        setNotifications((prev) => [
+          {
+            id: `notif_daily_pending_${Date.now()}`,
+            title: "Aviso de Atividade do Dia",
+            desc: `Atenção: Não há registros de atividade consolidados para o dia de hoje (${hoje}). Acesse a aba Dashboard ou Relatórios para atualizar.`,
+            time: nowHora,
+            type: "warning",
+            read: false,
+          },
+          ...prev,
+        ]);
+
+        // Toast visual não intrusivo
+        useNotificationStore.getState().addToast({
+          title: "Aviso de Atividade do Dia",
+          message: `Nenhum registro consolidado para hoje (${hoje}). Utilize a opção de consolidar registros no Dashboard para registrar as atividades.`,
+          type: "warning",
+          duration: 8000,
+        });
+      }
+    };
+
+    const timer = setTimeout(checkDailyActivity, 2500);
+    return () => clearTimeout(timer);
+  }, [historico, setNotifications]);
 
   // AUTO PERSISTENCE SYNC EFFECTS
   useEffect(() => {
@@ -1431,7 +1471,14 @@ function App() {
 
           {activeTab === "relatorios" && (
             <ProtectedRoute userRole={currentRole} allowedRoles={[UserRole.Admin]}>
-              <RelatoriosTab setores={setores} coordenador={currentUser} historico={historico} />
+              <RelatoriosTab
+                setores={setores}
+                coordenador={currentUser}
+                historico={historico}
+                colaboradores={colaboradores}
+                reaproData={reaproData}
+                capacidade={capacidade}
+              />
             </ProtectedRoute>
           )}
 

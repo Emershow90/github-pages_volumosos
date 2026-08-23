@@ -85,6 +85,7 @@ interface DashboardTabProps {
 }
 
 import { exportToGoogleSheets, initGoogleIdentity } from '../services/googleSheetsExportService';
+import { DailyActivityAlertBanner } from './DailyActivityAlertBanner';
 
 export const DashboardTab: React.FC<DashboardTabProps> = ({
   setores,
@@ -124,10 +125,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       const url = await exportToGoogleSheets({
         setores,
         colaboradores,
-        reapro: reaproData
+        reapro: reaproData,
+        historico,
+        capacidade,
       });
       window.open(url, '_blank');
-      alert('Relatório exportado com sucesso no Google Sheets!');
+      alert('Relatório consolidado exportado com sucesso no Google Sheets!');
     } catch (err: any) {
       console.error(err);
       alert('Erro ao exportar: ' + (err.message || 'Erro desconhecido'));

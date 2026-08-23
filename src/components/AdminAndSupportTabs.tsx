@@ -62,6 +62,9 @@ import { IndexedDBService } from "../lib/indexedDb";
 import { ListaColetaItem, RadarLojaStatus, UniversoMix } from "../types";
 import { ModalConfirmacao } from "./ModalConfirmacao";
 import { useSectorStore } from "../stores/useSectorStore";
+import { DailyActivityAlertBanner } from "./DailyActivityAlertBanner";
+import { exportToGoogleSheets, initGoogleIdentity } from "../services/googleSheetsExportService";
+import { ReaproData, CapacidadeSetor } from "../types";
 
 // ==========================================
 // EQUIPA TAB
@@ -1094,11 +1097,28 @@ interface RelatoriosTabProps {
   setores: Setor[];
   coordenador: string;
   historico?: HistoricoRegistro[];
+  colaboradores?: Colaborador[];
+  reaproData?: ReaproData;
+  capacidade?: CapacidadeSetor[];
 }
 
-export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({ setores, coordenador, historico = [] }) => {
+export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({
+  setores,
+  coordenador,
+  historico = [],
+  colaboradores = [],
+  reaproData = {
+    setores: {},
+    indicadores: { totalPresoDAll: 0, emCursoColetado: 0, totalEmMaquina: 0, disponibilidade: 0 },
+    terminoPrevisao: '',
+    capacidadeFechamentoEst: 0,
+    listasFechadas: { artigos: 0, colis: 0 }
+  },
+  capacidade = []
+}) => {
   const [relatorioText, setRelatorioText] = useState("");
   const [dataFiltro, setDataFiltro] = useState(new Date().toLocaleDateString("pt-BR"));
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleGenerate = (tipo: "abertura" | "fechamento") => {
     const header = tipo === "abertura" ? "== ABERTURA DE TURNO LOGÍSTICO ==" : "== FECHAMENTO DE TURNO LOGÍSTICO ==";
@@ -1127,15 +1147,20 @@ export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({ setores, coordenad
       alert("Nenhum registro encontrado para a data filtrada.");
       return;
     }
-    const header = ["Data", "Hora", "Setor", "Volume (ATIV)", "UPH", "SLA (Promessa %)", "Coordenador"];
+    const header = ["Data", "Hora", "Setor", "Volume (ATIV)", "Repro (Caixas)", "Colis", "Pessoas", "UPH", "SLA (Promessa %)", "Nota 5S", "Erros", "Coordenador"];
     const rows = historicoFiltrado.map(h => [
       h.data,
       h.hora,
       h.setor,
       h.ativ,
+      h.repro || 0,
+      h.colis || 0,
+      h.pessoas || 0,
       h.uph,
       h.promessa,
-      coordenador
+      h.nota5s || 0,
+      h.erros || 0,
+      h.coordenador || coordenador
     ]);
     const csvContent = [
       header.join(","),
@@ -1150,6 +1175,28 @@ export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({ setores, coordenad
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleExportSheets = async () => {
+    setIsExporting(true);
+    try {
+      initGoogleIdentity();
+      const url = await exportToGoogleSheets({
+        setores,
+        colaboradores,
+        reapro: reaproData,
+        historico,
+        coordenador,
+        capacidade,
+      });
+      window.open(url, '_blank');
+      alert('Relatório consolidado exportado com sucesso no Google Sheets!');
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao exportar para o Google Sheets: ' + (err.message || 'Erro desconhecido'));
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -1191,12 +1238,25 @@ export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({ setores, coordenad
       </div>
 
       <div className="glass-card p-6 border-l-2 border-emerald-500/50">
-        <h3 className="font-bold text-white mb-4 text-sm uppercase tracking-widest flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <h3 className="font-bold text-white text-sm uppercase tracking-widest flex items-center gap-2">
             <Download size={16} className="text-emerald-400" />
-            Extração de Histórico Consolidado (CSV)
-          </div>
-        </h3>
+            Extração de Histórico Consolidado por Setor & Dia
+          </h3>
+
+          <button
+            onClick={handleExportSheets}
+            disabled={isExporting}
+            className="bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            {isExporting ? (
+              <span className="w-3 h-3 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+            ) : (
+              <span>☁️</span>
+            )}
+            {isExporting ? "Exportando..." : "Salvar no Google Sheets"}
+          </button>
+        </div>
         
         <div className="flex flex-wrap items-end gap-4 mb-6">
           <div>
@@ -1220,15 +1280,19 @@ export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({ setores, coordenad
           </button>
         </div>
 
-        <div className="overflow-x-auto custom-scrollbar max-h-[300px]">
+        <div className="overflow-x-auto custom-scrollbar max-h-[360px]">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="text-[0.55rem] uppercase tracking-widest text-zinc-500 border-b border-white/10 sticky top-0 bg-[#0c0c0e] z-10">
                 <th className="p-3 font-bold">Hora</th>
                 <th className="p-3 font-bold text-center">Setor</th>
-                <th className="p-3 font-bold text-right">Volume</th>
+                <th className="p-3 font-bold text-right">Volume (ATIV)</th>
+                <th className="p-3 font-bold text-right">Repro (CX)</th>
+                <th className="p-3 font-bold text-right">Colis</th>
+                <th className="p-3 font-bold text-center">Pessoas</th>
                 <th className="p-3 font-bold text-right">UPH</th>
                 <th className="p-3 font-bold text-right">SLA</th>
+                <th className="p-3 font-bold text-right">5S</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 font-mono">
@@ -1238,13 +1302,17 @@ export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({ setores, coordenad
                     <td className="p-3 text-zinc-400">{h.hora}</td>
                     <td className="p-3 text-center text-white font-black">S{h.setor}</td>
                     <td className="p-3 text-right font-bold text-sky-400">{(h.ativ ?? 0).toLocaleString("pt-BR")}</td>
+                    <td className="p-3 text-right text-amber-400">{(h.repro ?? 0).toLocaleString("pt-BR")}</td>
+                    <td className="p-3 text-right text-purple-400">{(h.colis ?? 0).toLocaleString("pt-BR")}</td>
+                    <td className="p-3 text-center text-zinc-300 font-bold">{h.pessoas ?? '-'}</td>
                     <td className="p-3 text-right text-indigo-400">{h.uph}</td>
                     <td className="p-3 text-right text-emerald-400">{h.promessa}%</td>
+                    <td className="p-3 text-right text-zinc-400">{h.nota5s ?? 0}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="text-center py-12 text-zinc-500 italic">
+                  <td colSpan={9} className="text-center py-12 text-zinc-500 italic">
                     Nenhum registro no histórico para a data {dataFiltro}.
                   </td>
                 </tr>

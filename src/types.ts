@@ -153,6 +153,7 @@ export interface CopilSetor {
 }
 
 export interface HistoricoRegistro {
+  id?: string;
   data: string;
   hora: string;
   semana: string;
@@ -161,9 +162,13 @@ export interface HistoricoRegistro {
   ativ: number;
   uph: number;
   repro: number;
+  colis?: number;
+  pessoas?: number;
   promessa: number;
   nota5s: number;
   erros: number;
+  coordenador?: string;
+  obs?: string;
 }
 
 export interface AlertLog {

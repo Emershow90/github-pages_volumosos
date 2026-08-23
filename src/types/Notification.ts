@@ -1,4 +1,4 @@
-export type ToastType = 'critical' | 'warning' | 'success' | 'info';
+export type ToastType = 'critical' | 'warning' | 'success' | 'info' | 'danger';
 
 export interface ToastNotification {
   id: string;
@@ -8,7 +8,7 @@ export interface ToastNotification {
   lojaId?: string;
   setor?: string;
   timestamp: number;
-  duration: number; // ms
+  duration?: number; // ms
 }
 
 export interface NotificationStore {

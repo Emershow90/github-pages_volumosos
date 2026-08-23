@@ -1,4 +1,4 @@
-import { Setor, Colaborador, ReaproData, HistoricoRegistro } from '../types';
+import { Setor, Colaborador, ReaproData, HistoricoRegistro, CapacidadeSetor } from '../types';
 
 const CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || '75894189562-7moh2aqmsh8e6s42ukpvh895ag82jkn0.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
@@ -125,107 +125,248 @@ export interface ExportDataPayload {
   setores: Setor[];
   colaboradores: Colaborador[];
   reapro: ReaproData;
+  historico?: HistoricoRegistro[];
+  coordenador?: string;
+  capacidade?: CapacidadeSetor[];
 }
+
+const STORAGE_KEY_SPREADSHEET_ID = 'google_sheets_master_id';
 
 export async function exportToGoogleSheets(data: ExportDataPayload): Promise<string> {
   const token = await getAccessToken();
   const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-  const title = `Relatório Consolidado Torre - ${dateStr}`;
+  const title = `Torre de Comando - Painel Consolidado Oficial`;
 
-  // 1. Create a new Spreadsheet
-  const createSpreadsheetBody = {
-    properties: {
-      title,
-    },
-    sheets: [
-      { properties: { title: 'Resumo Geral' } },
-      { properties: { title: 'Setores (D-ALL / Peças)' } },
-      { properties: { title: 'Colaboradores' } },
-      { properties: { title: 'Indicadores Reapro' } },
-      { properties: { title: 'Atividade Total e UPH (Controladoria)' } }
-    ]
-  };
+  let spreadsheetId = localStorage.getItem(STORAGE_KEY_SPREADSHEET_ID);
+  let existingSpreadsheet: any = null;
 
-  const spreadsheet = await fetchGoogleAPI(
-    'https://sheets.googleapis.com/v4/spreadsheets',
-    'POST',
-    token,
-    createSpreadsheetBody
-  );
+  if (spreadsheetId) {
+    try {
+      existingSpreadsheet = await fetchGoogleAPI(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`,
+        'GET',
+        token
+      );
+    } catch (err) {
+      console.warn('Planilha existente não encontrada ou sem acesso. Criando uma nova...', err);
+      spreadsheetId = null;
+      localStorage.removeItem(STORAGE_KEY_SPREADSHEET_ID);
+    }
+  }
 
-  const spreadsheetId = spreadsheet.spreadsheetId;
+  // 1. Create a new Spreadsheet with all tabs only if not exists
+  if (!spreadsheetId || !existingSpreadsheet) {
+    const createSpreadsheetBody = {
+      properties: {
+        title,
+      },
+      sheets: [
+        { properties: { title: 'Resumo Geral' } },
+        { properties: { title: 'Setores (Consolidado & Efetivo)' } },
+        { properties: { title: 'Consolidado Diário por Setor' } },
+        { properties: { title: 'Colaboradores por Setor' } },
+        { properties: { title: 'Atividade e UPH (Controladoria)' } },
+        { properties: { title: 'Indicadores Reapro' } }
+      ]
+    };
+
+    const spreadsheet = await fetchGoogleAPI(
+      'https://sheets.googleapis.com/v4/spreadsheets',
+      'POST',
+      token,
+      createSpreadsheetBody
+    );
+
+    spreadsheetId = spreadsheet.spreadsheetId;
+    if (spreadsheetId) {
+      localStorage.setItem(STORAGE_KEY_SPREADSHEET_ID, spreadsheetId);
+    }
+  } else {
+    // If spreadsheet exists, verify if required sheets exist, add missing ones
+    const existingTitles: string[] = (existingSpreadsheet.sheets || []).map(
+      (s: any) => s.properties?.title
+    );
+    const requiredSheets = [
+      'Resumo Geral',
+      'Setores (Consolidado & Efetivo)',
+      'Consolidado Diário por Setor',
+      'Colaboradores por Setor',
+      'Atividade e UPH (Controladoria)',
+      'Indicadores Reapro'
+    ];
+
+    const requestsToAdd: any[] = [];
+    for (const reqTitle of requiredSheets) {
+      if (!existingTitles.includes(reqTitle)) {
+        requestsToAdd.push({
+          addSheet: {
+            properties: { title: reqTitle }
+          }
+        });
+      }
+    }
+
+    if (requestsToAdd.length > 0) {
+      try {
+        await fetchGoogleAPI(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+          'POST',
+          token,
+          { requests: requestsToAdd }
+        );
+      } catch (err) {
+        console.warn('Erro ao adicionar abas faltantes:', err);
+      }
+    }
+  }
 
   // 2. Prepare Data Uploads (Batch Update Values)
-  
-  // Sheet 1: Resumo
+  const totalVolume = data.setores.reduce((sum, s) => sum + (s.ativ || 0), 0);
+  const totalColis = data.setores.reduce((sum, s) => sum + (s.colis || 0), 0);
+  const totalRepro = data.setores.reduce((sum, s) => sum + (s.reproTotal || 0), 0);
+  const mediaUPH = data.setores.length ? Math.round(data.setores.reduce((sum, s) => sum + (s.uph || 0), 0) / data.setores.length) : 0;
+  const mediaSLA = data.setores.length ? (data.setores.reduce((sum, s) => sum + (s.promessa || 0), 0) / data.setores.length).toFixed(1) : '0';
+  const totalPessoasOp = data.colaboradores.filter(c => c.status === 'Operacao' || (c.status as string) === 'Operação').length;
+
+  // Sheet 1: Resumo Geral
   const resumoData = [
-    ['Métrica', 'Valor'],
+    ['Métrica / Indicador', 'Valor Consolidado'],
     ['Data do Relatório', new Date().toLocaleString('pt-BR')],
-    ['Total Setores Ativos', data.setores.filter(s => s.situacao !== 'Inativo').length],
-    ['Total Colaboradores Escalados', data.colaboradores.length],
-    ['D-ALL REAPRO Total (CX)', data.reapro.listasFechadas.colis],
+    ['Coordenador Responsável', data.coordenador || 'Geral / Coordenadoria'],
+    ['Total Setores Ativos', data.setores.filter(s => s.situacao !== 'Inativo').length.toString()],
+    ['Volume Total Atividade (ATIV)', totalVolume.toLocaleString('pt-BR')],
+    ['Total Colis', totalColis.toLocaleString('pt-BR')],
+    ['Total Repro (Caixas)', totalRepro.toLocaleString('pt-BR')],
+    ['Produtividade Média (UPH)', mediaUPH.toString()],
+    ['Eficiência Média (SLA %)', `${mediaSLA}%`],
+    ['Total Colaboradores Escalados', data.colaboradores.length.toString()],
+    ['Colaboradores em Operação Ativa', totalPessoasOp.toString()],
+    ['D-ALL REAPRO Total (CX)', (data.reapro.listasFechadas?.colis || 0).toString()],
     ['Término Previsto REAPRO', data.reapro.terminoPrevisao || 'Auto'],
   ];
 
-  // Sheet 2: Setores
+  // Sheet 2: Setores (Consolidado & Efetivo)
   const setoresData = [
-    ['Setor', 'Situação', 'Atividade (ATIV)', 'Colis', 'Repro (Caixas)', 'SLA (Promessa) %']
+    ['Setor', 'Nome / Tipo', 'Situação', 'Atividade (ATIV)', 'Colis', 'Repro (Caixas)', 'Pessoas Escaladas', 'Pessoas em Operação', 'UPH', 'SLA (Promessa %)', 'Líder / Responsável']
   ];
   data.setores.forEach(s => {
+    const pessoasEscaladas = data.colaboradores.filter(c => c.setor === `Setor ${s.id}` || c.setor === s.id).length;
+    const pessoasOperando = data.colaboradores.filter(c => (c.setor === `Setor ${s.id}` || c.setor === s.id) && (c.status === 'Operacao' || (c.status as string) === 'Operação')).length;
+
     setoresData.push([
-      s.id,
+      `S${s.id}`,
+      s.nome || `Setor ${s.id}`,
       s.situacao || 'Ativo',
-      s.ativ?.toString() || '0',
-      s.colis?.toString() || '0',
-      s.reproTotal?.toString() || '0',
-      s.promessa?.toString() || '0'
+      (s.ativ ?? 0).toString(),
+      (s.colis ?? 0).toString(),
+      (s.reproTotal ?? 0).toString(),
+      pessoasEscaladas.toString(),
+      pessoasOperando.toString(),
+      (s.uph ?? 0).toString(),
+      `${s.promessa ?? 0}%`,
+      s.resp || '-'
     ]);
   });
 
-  // Sheet 3: Colaboradores
+  // Sheet 3: Consolidado Diário por Setor (Registro por Dia)
+  const historicoData = [
+    ['Data', 'Hora', 'Setor', 'Atividade (ATIV)', 'Repro (Caixas)', 'Colis', 'Pessoas / Efetivo', 'UPH', 'SLA (Promessa %)', 'Nota 5S', 'Erros Picking', 'Coordenador / Obs']
+  ];
+  
+  if (data.historico && data.historico.length > 0) {
+    data.historico.forEach(h => {
+      historicoData.push([
+        h.data || '-',
+        h.hora || '-',
+        h.setor?.startsWith('S') ? h.setor : `S${h.setor}`,
+        (h.ativ ?? 0).toString(),
+        (h.repro ?? 0).toString(),
+        (h.colis ?? 0).toString(),
+        (h.pessoas ?? 0).toString(),
+        (h.uph ?? 0).toString(),
+        `${h.promessa ?? 0}%`,
+        (h.nota5s ?? 0).toString(),
+        (h.erros ?? 0).toString(),
+        h.coordenador || h.obs || '-'
+      ]);
+    });
+  } else {
+    // Snapshot instantâneo do dia caso o histórico esteja vazio
+    const hojeStr = new Date().toLocaleDateString('pt-BR');
+    const agoraHora = new Date().toLocaleTimeString('pt-BR').slice(0, 5);
+    data.setores.forEach(s => {
+      const pessoasSetor = data.colaboradores.filter(c => c.setor === `Setor ${s.id}` || c.setor === s.id).length;
+      historicoData.push([
+        hojeStr,
+        agoraHora,
+        `S${s.id}`,
+        (s.ativ ?? 0).toString(),
+        (s.reproTotal ?? 0).toString(),
+        (s.colis ?? 0).toString(),
+        pessoasSetor.toString(),
+        (s.uph ?? 0).toString(),
+        `${s.promessa ?? 0}%`,
+        (s.nota5s ?? 0).toString(),
+        (s.errosPicking ?? 0).toString(),
+        data.coordenador || 'Fechamento do Dia'
+      ]);
+    });
+  }
+
+  // Sheet 4: Colaboradores por Setor
   const colabData = [
-    ['Nome', 'Matrícula', 'Função', 'Status Atual', 'Setor Vinculado']
+    ['Nome', 'Matrícula', 'Função / Cargo', 'Status Atual', 'Setor Vinculado', 'Turno', 'Horas']
   ];
   data.colaboradores.forEach(c => {
     colabData.push([
       c.nome,
       c.matricula || '-',
-      c.funcao || '-',
+      c.funcao || c.cargo || 'Operador',
       c.status,
-      c.setor || '-'
+      c.setor || '-',
+      c.turno || '1º Turno',
+      (c.horas ?? 7.2).toString()
     ]);
   });
 
-  // Sheet 4: Reapro KPIs
-  const reaproData = [
-    ['Indicador', 'Valor'],
-    ['Preso D-ALL', data.reapro.indicadores.totalPresoDAll.toString()],
-    ['Em Curso Coleta', data.reapro.indicadores.emCursoColetado.toString()],
-    ['Em Máquina', data.reapro.indicadores.totalEmMaquina.toString()],
-    ['Disponibilidade %', data.reapro.indicadores.disponibilidade.toString()],
-    ['Capacidade Est. Fechamento', data.reapro.capacidadeFechamentoEst.toString()]
-  ];
-
-  // Sheet 5: Atividade Total e UPH
+  // Sheet 5: Atividade Total e UPH (Controladoria)
   const ativUphData = [
-    ['Setor', 'Atividade (ATIV)', 'UPH']
+    ['Setor', 'Nome', 'Atividade (ATIV)', 'UPH', 'Repro (Caixas)', 'Colis', 'Pessoas Ativas', 'Meta Abertura']
   ];
   data.setores.forEach(s => {
+    const cap = data.capacidade?.find(c => c.id === s.id);
+    const pessoasOp = data.colaboradores.filter(c => (c.setor === `Setor ${s.id}` || c.setor === s.id) && (c.status === 'Operacao' || (c.status as string) === 'Operação')).length;
     ativUphData.push([
-      s.id,
-      s.ativ?.toString() || '0',
-      s.uph?.toString() || '0'
+      `S${s.id}`,
+      s.nome || `Setor ${s.id}`,
+      (s.ativ ?? 0).toString(),
+      (s.uph ?? 0).toString(),
+      (s.reproTotal ?? 0).toString(),
+      (s.colis ?? 0).toString(),
+      pessoasOp.toString(),
+      (cap?.abertura ?? s.meta ?? 0).toString()
     ]);
   });
+
+  // Sheet 6: Indicadores Reapro
+  const reaproData = [
+    ['Indicador Reapro', 'Valor'],
+    ['Preso D-ALL', (data.reapro.indicadores?.totalPresoDAll ?? 0).toString()],
+    ['Em Curso Coleta', (data.reapro.indicadores?.emCursoColetado ?? 0).toString()],
+    ['Em Máquina', (data.reapro.indicadores?.totalEmMaquina ?? 0).toString()],
+    ['Disponibilidade %', `${data.reapro.indicadores?.disponibilidade ?? 0}%`],
+    ['Capacidade Est. Fechamento', (data.reapro.capacidadeFechamentoEst ?? 0).toString()]
+  ];
 
   const updateValuesBody = {
     valueInputOption: 'USER_ENTERED',
     data: [
       { range: 'Resumo Geral!A1', values: resumoData },
-      { range: 'Setores (D-ALL / Peças)!A1', values: setoresData },
-      { range: 'Colaboradores!A1', values: colabData },
+      { range: 'Setores (Consolidado & Efetivo)!A1', values: setoresData },
+      { range: 'Consolidado Diário por Setor!A1', values: historicoData },
+      { range: 'Colaboradores por Setor!A1', values: colabData },
+      { range: 'Atividade e UPH (Controladoria)!A1', values: ativUphData },
       { range: 'Indicadores Reapro!A1', values: reaproData },
-      { range: 'Atividade Total e UPH (Controladoria)!A1', values: ativUphData },
     ]
   };
 
