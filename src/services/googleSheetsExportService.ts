@@ -1,15 +1,17 @@
 import { Setor, Colaborador, ReaproData, HistoricoRegistro } from '../types';
 
-const CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
+const CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || '75894189562-7moh2aqmsh8e6s42ukpvh895ag82jkn0.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
 
-let tokenClient: google.accounts.oauth2.TokenClient;
+let tokenClient: google.accounts.oauth2.TokenClient | null = null;
+let cachedAccessToken: string | null = null;
+let tokenExpiresAt = 0;
 
 // Initialize the Google Identity Services token client
 export function initGoogleIdentity() {
-  if (typeof google === 'undefined') {
-    console.error('Google Identity Services script not loaded');
+  if (typeof google === 'undefined' || !google?.accounts?.oauth2) {
+    console.warn('Google Identity Services script not loaded yet');
     return;
   }
   
@@ -18,35 +20,49 @@ export function initGoogleIdentity() {
     return;
   }
 
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: SCOPES,
-    callback: () => {}, // Defined dynamically during request
-  });
+  try {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: () => {}, // Defined dynamically during request
+    });
+  } catch (err) {
+    console.error('Error initializing Google Token Client:', err);
+  }
 }
 
 // Request an access token
 async function getAccessToken(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (!tokenClient) {
-      reject(new Error('Token client not initialized'));
-      return;
-    }
+  if (cachedAccessToken && Date.now() < tokenExpiresAt) {
+    return cachedAccessToken;
+  }
 
+  if (!tokenClient) {
+    initGoogleIdentity();
+  }
+
+  if (!tokenClient) {
+    throw new Error('Google Identity Services não foi inicializado. Recarregue a página ou verifique a conexão com a internet.');
+  }
+
+  return new Promise((resolve, reject) => {
     try {
-      tokenClient.callback = (resp) => {
+      tokenClient!.callback = (resp: google.accounts.oauth2.TokenResponse & { error_description?: string }) => {
         if (resp.error) {
-          reject(resp);
+          reject(new Error(resp.error_description || resp.error || 'Erro na autenticação do Google'));
+          return;
         }
+        if (!resp.access_token) {
+          reject(new Error('Nenhum token de acesso retornado pelo Google.'));
+          return;
+        }
+        cachedAccessToken = resp.access_token;
+        const expiresInSec = resp.expires_in ? Number(resp.expires_in) : 3500;
+        tokenExpiresAt = Date.now() + (expiresInSec - 60) * 1000;
         resolve(resp.access_token);
       };
       
-      // Request the token, prompting the user if necessary
-      if (gapi?.client?.getToken()?.access_token) {
-        tokenClient.requestAccessToken({ prompt: '' }); // use existing
-      } else {
-        tokenClient.requestAccessToken({ prompt: 'consent' }); // force consent on first run
-      }
+      tokenClient!.requestAccessToken({ prompt: cachedAccessToken ? '' : 'consent' });
     } catch (err) {
       reject(err);
     }
