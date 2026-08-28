@@ -8,3 +8,5 @@ export * from './COPIL';
 export * from './Conexao';
 export * from './ActivityEntry';
 export * from './PainelProducao';
+export * from './AIStrategy';
+export * from './AIForecast';

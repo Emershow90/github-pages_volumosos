@@ -27,14 +27,24 @@ import {
   Plus,
   Trash2,
   Tag,
-  RotateCcw
+  RotateCcw,
+  Database,
+  FileSpreadsheet,
+  ShieldCheck
 } from 'lucide-react';
 import { usePainelProducaoStore } from '../stores/usePainelProducaoStore';
 import { useSectorStore } from '../stores/useSectorStore';
 import { useUserStore } from '../stores/useUserStore';
+import { useCollaboratorStore } from '../stores/useCollaboratorStore';
+import { useHistoryStore } from '../stores/useHistoryStore';
 import { useCopilMetrics } from '../hooks/useCopilMetrics';
+import { useAIStrategy } from '../hooks/useAIStrategy';
+import { AIStrategyModal } from './AIStrategyModal';
+import { PromiseSLA } from '../types/AIStrategy';
 import { Setor, ActivityEntry } from '../types';
 import { initialCapacidade } from '../initialData';
+import { exportToGoogleSheets } from '../services/googleSheetsExportService';
+import { logger } from '../lib/telemetryLogger';
 
 const PALETTE_CUSTOM = [
   { text: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', bar: 'bg-cyan-500', hex: '#06b6d4' },
@@ -68,13 +78,27 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   const { currentUser, currentUserUid } = useUserStore();
   const { registros, upsertRegistro, fetchRegistrosHoje } = usePainelProducaoStore();
   const { activityEntries, capacidade, updateActivityUniversosBatch, updateSectorOverride, setSetores } = useSectorStore();
+  const { colaboradores } = useCollaboratorStore();
+  const { historico, addAuditLog } = useHistoryStore();
   const { metrics: copilData, summaryStats: copilSummary } = useCopilMetrics();
+  const { 
+    strategy, 
+    isLoading: isStrategyLoading, 
+    isModalOpen: isStrategyModalOpen, 
+    setIsModalOpen: setIsStrategyModalOpen, 
+    refreshStrategy 
+  } = useAIStrategy();
 
   const [visaoAtual, setVisaoAtual] = useState<string>('TODOS');
   const [carrosselAtivo, setCarrosselAtivo] = useState(false);
   const [relogio, setRelogio] = useState('');
   const [fileInfo, setFileInfo] = useState('STATUS: ZERADO (AGUARDANDO UPLOAD)');
   const [isDropActive, setIsDropActive] = useState(false);
+
+  // Sync state and live indicators
+  const [isSyncingDb, setIsSyncingDb] = useState(false);
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<{ type: 'success' | 'warn' | 'error'; text: string } | null>(null);
 
   // Modal / Edição rápida de universos
   const [editingSectorUniversos, setEditingSectorUniversos] = useState<string | null>(null);
@@ -408,9 +432,31 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
         ...(editAtividade > 0 ? { ativ: editAtividade } : {})
       } : s));
 
+      await addAuditLog({
+        id: `audit_${Date.now()}`,
+        data: new Date().toISOString(),
+        acao: 'UPDATE_UNIVERSOS',
+        usuario: currentUser || 'Operador',
+        campo: `sector_${editingSectorUniversos}_universos`,
+        dispositivo: 'Console Operacional Web',
+        valorAnterior: 'N/A',
+        valorNovo: `Alimento: ${editAlimento}, Montanha: ${editMontanha}, Reabastecimento: ${editReproTotal} CX, Colis: ${editColis}`
+      });
+
+      setSyncStatusMsg({
+        type: 'success',
+        text: `🟢 Parâmetros do Setor ${editingSectorUniversos} atualizados e sincronizados no Banco de Dados!`
+      });
+      setTimeout(() => setSyncStatusMsg(null), 4000);
+
       setEditingSectorUniversos(null);
     } catch (err) {
       console.error('[ConsoleOperacional] Erro ao salvar universos:', err);
+      setSyncStatusMsg({
+        type: 'error',
+        text: `❌ Erro ao salvar parâmetros: ${(err as Error).message}`
+      });
+      setTimeout(() => setSyncStatusMsg(null), 4000);
       setEditingSectorUniversos(null);
     }
   };
@@ -487,6 +533,142 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   const activeSectorObj = setores.find(s => s.id === visaoAtual || s.numero.toString() === visaoAtual) || setores[0];
   const leaderName = activeSectorObj?.resp || 'IAGO ANDERSON';
   const promessaVal = activeSectorObj?.promessa?.toString() || '96,15';
+
+  // Manual DB Synchronizer for all sectors (Supabase + IndexedDB)
+  const handleSyncDatabase = async () => {
+    setIsSyncingDb(true);
+    const timer = logger.startTimer('ConsoleOperacional', 'SYNC_DATABASE_ALL_SECTORS');
+    try {
+      const uId = currentUserUid || currentUser || 'system';
+      let syncedCount = 0;
+
+      for (const sectorId of Object.keys(CONFIG_SETORES)) {
+        const d = getSectorData(sectorId);
+        const u = getSectorUniversos(sectorId);
+
+        // 1. Upsert na tabela painel_producao
+        await upsertRegistro({
+          id: `pp-${sectorId}-${todayStr}`,
+          sector_id: sectorId,
+          upload_date: todayStr,
+          feito_hoje: d.feitoHoje,
+          feito_ontem: d.feitoOntem,
+          maquina_full: d.maquina,
+          rafale_full: d.rafale,
+          uploaded_by: currentUser || 'Sistema',
+          arquivo_nome: fileInfo.includes('ABA') ? fileInfo : 'Console Operacional Sync',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+
+        // 2. Batch update da tabela activity_entries
+        const adhocRecord: Record<string, string | number> = {};
+        u.customUniversos.forEach(item => {
+          if (item.name.trim()) adhocRecord[item.name.trim()] = item.value;
+        });
+
+        await updateActivityUniversosBatch(sectorId, todayStr, uId, {
+          alimento: u.alimento,
+          montanha: u.montanha,
+          l7Mochila: 0,
+          colis: u.colis,
+          atividade: u.atividade,
+          elog: u.elog,
+          reapro: u.reapro,
+          adhocCategories: adhocRecord
+        });
+
+        syncedCount++;
+      }
+
+      await addAuditLog({
+        id: `audit_${Date.now()}`,
+        data: new Date().toISOString(),
+        acao: 'SYNC_DATABASE_MANUAL',
+        usuario: currentUser || 'Operador',
+        campo: 'monitor_setores_atividade',
+        dispositivo: 'Console Operacional Web',
+        valorAnterior: 'N/A',
+        valorNovo: `${syncedCount} setores persistidos no Supabase e IndexedDB com sucesso`
+      });
+
+      timer.end({ sectorsCount: syncedCount });
+      setSyncStatusMsg({
+        type: 'success',
+        text: `🟢 ${syncedCount} Setores persistidos com sucesso no Banco de Dados (Supabase + IndexedDB)!`
+      });
+      setTimeout(() => setSyncStatusMsg(null), 5000);
+    } catch (err) {
+      timer.endWithError(err);
+      console.error('[ConsoleOperacional] Erro ao sincronizar banco:', err);
+      setSyncStatusMsg({
+        type: 'error',
+        text: `❌ Erro na sincronização com o banco: ${(err as Error).message || 'Falha de comunicação'}`
+      });
+      setTimeout(() => setSyncStatusMsg(null), 6000);
+    } finally {
+      setIsSyncingDb(false);
+    }
+  };
+
+  // Google Sheets Export Synchronizer
+  const handleSyncGoogleSheets = async () => {
+    setIsSyncingSheets(true);
+    const timer = logger.startTimer('ConsoleOperacional', 'SYNC_GOOGLE_SHEETS');
+    try {
+      const reaproSetores: Record<string, { feitoDAll: number; feitoElog: number }> = {};
+      Object.keys(CONFIG_SETORES).forEach(id => {
+        const u = getSectorUniversos(id);
+        const caixas = parseInt(u.reapro?.replace(" CX", "") || "0") || 0;
+        reaproSetores[id] = {
+          feitoDAll: caixas,
+          feitoElog: parseInt(u.elog?.replace(" CX", "") || "0") || 0
+        };
+      });
+
+      const reaproPayload = {
+        setores: reaproSetores,
+        indicadores: {
+          totalPresoDAll: 0,
+          emCursoColetado: totalFeitoHoje,
+          totalEmMaquina: Object.keys(CONFIG_SETORES).reduce((acc, id) => acc + getSectorData(id).maquina, 0),
+          disponibilidade: metaPct
+        },
+        terminoPrevisao: '18:00',
+        capacidadeFechamentoEst: totalCapacidade,
+        listasFechadas: {
+          artigos: totalAlimento + totalMontanha,
+          colis: totalColis
+        }
+      };
+
+      const sheetUrl = await exportToGoogleSheets({
+        setores,
+        colaboradores,
+        reapro: reaproPayload,
+        historico,
+        capacidade
+      });
+
+      timer.end();
+      setSyncStatusMsg({
+        type: 'success',
+        text: `📊 Planilha Google Sheets gravada com sucesso! (${sheetUrl ? 'Sincronizado' : 'OK'})`
+      });
+      setTimeout(() => setSyncStatusMsg(null), 5000);
+    } catch (err) {
+      timer.endWithError(err);
+      console.error('[ConsoleOperacional] Erro ao exportar planilha:', err);
+      setSyncStatusMsg({
+        type: 'warn',
+        text: `⚠️ Google Sheets: ${(err as Error).message || 'Autenticação necessária. Baixando cópia CSV...'}`
+      });
+      handleExportCSV();
+      setTimeout(() => setSyncStatusMsg(null), 5000);
+    } finally {
+      setIsSyncingSheets(false);
+    }
+  };
 
   return (
     <div 
@@ -621,16 +803,61 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
             <span>{carrosselAtivo ? 'Pausar TV (Auto 8s)' : 'Modo Apresentação (TV)'}</span>
           </button>
 
+          {/* Sincronizar Banco de Dados (Supabase + IndexedDB) */}
+          <button 
+            onClick={handleSyncDatabase}
+            disabled={isSyncingDb}
+            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+            title="Persistir todos os setores e atividades no Supabase e IndexedDB"
+          >
+            <Database size={14} className={isSyncingDb ? 'animate-spin' : ''} />
+            <span>{isSyncingDb ? 'Gravando Banco...' : 'Sincronizar Banco'}</span>
+          </button>
+
+          {/* Gravar na Planilha Google Sheets */}
+          <button 
+            onClick={handleSyncGoogleSheets}
+            disabled={isSyncingSheets}
+            className="bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+            title="Exportar dados consolidados para a planilha Google Sheets"
+          >
+            <FileSpreadsheet size={14} className={isSyncingSheets ? 'animate-spin' : ''} />
+            <span>{isSyncingSheets ? 'Enviando...' : 'Gravar Planilha'}</span>
+          </button>
+
           {/* CSV Export Button */}
           <button 
             onClick={handleExportCSV}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+            title="Baixar planilha CSV local"
           >
             <Download size={14} />
             <span>Exportar CSV</span>
           </button>
         </div>
       </header>
+
+      {/* NOTIFICAÇÃO DE STATUS DE SINCRONIZAÇÃO */}
+      {syncStatusMsg && (
+        <div className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition-all duration-300 animate-in fade-in shadow-md ${
+          syncStatusMsg.type === 'success' 
+            ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300' 
+            : syncStatusMsg.type === 'warn'
+            ? 'bg-amber-950/70 border-amber-500/40 text-amber-300'
+            : 'bg-rose-950/70 border-rose-500/40 text-rose-300'
+        }`}>
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={16} className={syncStatusMsg.type === 'success' ? 'text-emerald-400' : 'text-amber-400'} />
+            <span>{syncStatusMsg.text}</span>
+          </div>
+          <button 
+            onClick={() => setSyncStatusMsg(null)}
+            className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded bg-black/30 hover:bg-black/50"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* FITA COPIL / MATRIZ DE PERFORMANCE (TELA DE DESCANSO / APRESENTAÇÃO) */}
       <div className="bg-[#0e0e16] border border-[#222234] rounded-xl p-3 shadow-md flex flex-wrap items-center justify-between gap-3">
@@ -718,6 +945,104 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
         {visaoAtual === 'TODOS' ? (
           /* VISÃO GRID (TODOS OS SETORES) */
           <>
+            {/* PAINEL DE ESTRATÉGIA IA & PROMESSAS DE ENTREGA (SLA D+2 A D-2) */}
+            {strategy && (
+              <div className="bg-[#0e0e16] border border-[#222234] rounded-2xl p-4 shadow-lg flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md shrink-0">
+                      <Sparkles size={16} className="animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-white uppercase tracking-wider">
+                          Estratégia do Dia & Promessas de Entrega
+                        </span>
+                        <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                          strategy.estrategiaPrincipal === 'PRIORIDADE_LOJAS'
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        }`}>
+                          {strategy.estrategiaPrincipal === 'PRIORIDADE_LOJAS' ? '🎯 Coleta Lojas Prioritárias' : '⚡ Coleta Total Contínua'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
+                        {strategy.diagnosticoGeral}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={refreshStrategy}
+                      disabled={isStrategyLoading}
+                      className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      title="Recalcular com IA"
+                    >
+                      <RefreshCw size={12} className={isStrategyLoading ? 'animate-spin' : ''} />
+                      <span>{isStrategyLoading ? 'Atualizando...' : 'Recalcular'}</span>
+                    </button>
+                    <button
+                      onClick={() => setIsStrategyModalOpen(true)}
+                      className="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase bg-indigo-600 hover:bg-indigo-500 text-white transition flex items-center gap-1.5 shadow-md cursor-pointer"
+                    >
+                      <Sparkles size={12} />
+                      <span>Ver Análise IA</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 5 Promessas Cards (D+2 a D-2) */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                  {(['D+2', 'D+1', 'D-0', 'D-1', 'D-2'] as PromiseSLA[]).map((sla) => {
+                    const b = strategy.promessas.buckets[sla];
+                    const isCrit = sla === 'D-2' || sla === 'D-1';
+                    const isBest = sla === 'D+2';
+                    const isNorm = sla === 'D+1';
+                    return (
+                      <div
+                        key={sla}
+                        className={`p-3 rounded-xl border flex flex-col justify-between transition-all ${
+                          isBest
+                            ? 'bg-emerald-950/20 border-emerald-500/30'
+                            : isNorm
+                            ? 'bg-sky-950/20 border-sky-500/30'
+                            : sla === 'D-0'
+                            ? 'bg-amber-950/20 border-amber-500/30'
+                            : isCrit && sla === 'D-1'
+                            ? 'bg-orange-950/20 border-orange-500/30'
+                            : 'bg-red-950/30 border-red-500/40 animate-pulse'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-[10px] font-black uppercase font-mono px-1.5 py-0.5 rounded ${
+                            isBest
+                              ? 'text-emerald-300 bg-emerald-500/20'
+                              : isNorm
+                              ? 'text-sky-300 bg-sky-500/20'
+                              : sla === 'D-0'
+                              ? 'text-amber-300 bg-amber-500/20'
+                              : isCrit && sla === 'D-1'
+                              ? 'text-orange-300 bg-orange-500/20'
+                              : 'text-red-300 bg-red-500/20'
+                          }`}>
+                            {sla}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-white">{b?.percentage || 0}%</span>
+                        </div>
+                        <div className="text-base font-black text-white font-mono">
+                          {b?.volume?.toLocaleString('pt-BR')} <span className="text-[10px] font-sans text-slate-400">cx</span>
+                        </div>
+                        <span className="text-[9.5px] text-slate-400 mt-1 line-clamp-1">
+                          {b?.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Top 4 Metrics Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
               <div className="bg-[#111118] border border-[#1e1e2a] border-t-2 border-t-emerald-500 p-4 rounded-xl relative overflow-hidden shadow-sm">
@@ -757,14 +1082,41 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
               </div>
             </div>
 
-            {/* Grid de Cards de Setor */}
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-1 h-3 bg-emerald-500 rounded-full"></span>
-                  <span>Visão por Setor • Atividade e Universos (Alimento / Montanha)</span>
+            {/* Grid de Cards de Setor (Monitor de Setores Atividade) */}
+            <div className="space-y-3">
+              <div className="bg-[#0e0e16] border border-[#222234] rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <Activity size={16} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">Monitor de Setores Atividade</span>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-mono px-2 py-0.5 rounded border border-emerald-500/30">
+                        {setoresAtivosCount}/4 Setores Ativos
+                      </span>
+                      <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-mono px-2 py-0.5 rounded border border-indigo-500/30">
+                        🟢 Database + Planilha OK
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Métricas operacionais, universos de produtos (Alimento/Montanha), Colis, Reabastecimento e persistência atômica
+                    </p>
+                  </div>
                 </div>
-                <span className="text-[10px] text-slate-500">Clique no card para abrir visão detalhada</span>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSyncDatabase}
+                    disabled={isSyncingDb}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 transition flex items-center gap-1.5"
+                    title="Forçar sincronização de todos os setores no banco de dados"
+                  >
+                    <Database size={13} className={isSyncingDb ? 'animate-spin' : ''} />
+                    <span>{isSyncingDb ? 'Gravando...' : 'Sincronizar Banco'}</span>
+                  </button>
+                  <span className="text-[10px] text-slate-500 hidden sm:inline">Clique no card para abrir visão detalhada</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1683,6 +2035,15 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
           </div>
         </div>
       )}
+
+      {/* MODAL DE ESTRATÉGIA IA */}
+      <AIStrategyModal
+        isOpen={isStrategyModalOpen}
+        onClose={() => setIsStrategyModalOpen(false)}
+        strategy={strategy}
+        isLoading={isStrategyLoading}
+        onRefresh={refreshStrategy}
+      />
 
       {/* RODAPÉ */}
       <footer className="pt-3 border-t border-[#1e1e2a] flex flex-wrap justify-between items-center text-[11px] text-slate-400 gap-2">

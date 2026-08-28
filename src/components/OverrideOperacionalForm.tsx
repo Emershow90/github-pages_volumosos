@@ -160,10 +160,11 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
     try {
       const parsedOverrides: Record<string, number | null> = {};
       Object.entries(formData).forEach(([field, val]) => {
-        if (val.trim() === '') {
+        const strVal = String(val || '').trim();
+        if (strVal === '') {
           parsedOverrides[field] = null; // Remove override, volta ao sugerido
         } else {
-          parsedOverrides[field] = Number(val);
+          parsedOverrides[field] = Number(strVal);
         }
       });
 
@@ -302,7 +303,8 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
               
               <div className="space-y-2">
                 {Object.entries(formData).map(([field, val]) => {
-                  const hasOverride = val.trim() !== '';
+                  const strVal = String(val || '').trim();
+                  const hasOverride = strVal !== '';
                   let sugVal = '';
                   if (field === 'ativ') sugVal = suggestedAtiv;
                   if (field === 'uph') sugVal = suggestedUph;

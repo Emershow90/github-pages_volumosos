@@ -9,6 +9,7 @@ import { ExecutivoBarChart, AnalyticsDoubleLineChart, HourlyBarChart } from "./C
 import { TrendingUp, AlertOctagon, Zap, Shield, HelpCircle, Activity } from "lucide-react";
 import { SupabaseHealthPanel } from "./SupabaseHealthPanel";
 import { HealthDashboard } from "./HealthDashboard";
+import { AIForecastPanel } from "./AIForecastPanel";
 
 interface ExecutivoTabProps {
   setores: Setor[];
@@ -259,6 +260,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({ setores, historico }
 
   return (
     <div className="space-y-6">
+      {/* Copiloto de Inteligência Artificial Gemini: Previsão Preditiva de Carga (Soltura - Coleta - Carga - Expedição) */}
+      <AIForecastPanel />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="kpi-card">
           <div className="kpi-value text-white font-mono">

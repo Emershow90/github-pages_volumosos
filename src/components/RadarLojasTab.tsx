@@ -41,6 +41,9 @@ import { StoreOperation, ParsedProgramRow, StoreMaster, RadarLoja } from "../typ
 import { useSectorStore } from "../stores/useSectorStore";
 import { ModalConfirmacao } from "./ModalConfirmacao";
 import { usePlanoCarregamentoRisk, RiskLevel } from "../hooks/usePlanoCarregamentoRisk";
+import { useAIStrategy } from "../hooks/useAIStrategy";
+import { AIStrategyBanner } from "./AIStrategyBanner";
+import { AIStrategyModal } from "./AIStrategyModal";
 
 interface RadarLojasTabProps {
   currentRole?: string;
@@ -61,6 +64,15 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
 
   // Hook do Plano de Carregamento & Risco
   const { operations: riskOperations, summary: riskSummary, loading: riskLoading, planoCarregamento } = usePlanoCarregamentoRisk();
+
+  // Hook do Copiloto IA - Estratégia de Coleta e Balanceamento de Promessas
+  const { 
+    strategy, 
+    isLoading: isStrategyLoading, 
+    isModalOpen: isStrategyModalOpen, 
+    setIsModalOpen: setIsStrategyModalOpen, 
+    refreshStrategy 
+  } = useAIStrategy();
 
   // Estado de conexão e sincronização
   const [onlineState, setOnlineState] = useState<boolean>(isOnline());
@@ -493,6 +505,14 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* BANNER DO COPILOTO IA - ESTRATÉGIA DO DIA & PROMESSAS */}
+      <AIStrategyBanner
+        strategy={strategy}
+        isLoading={isStrategyLoading}
+        onOpenModal={() => setIsStrategyModalOpen(true)}
+        onRefresh={refreshStrategy}
+      />
 
       {/* 2. FAIXA DE KPIS (4 CARDS) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1083,6 +1103,15 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
           </div>
         )}
       </AnimatePresence>
+
+      {/* MODAL DO COPILOTO IA */}
+      <AIStrategyModal
+        isOpen={isStrategyModalOpen}
+        onClose={() => setIsStrategyModalOpen(false)}
+        strategy={strategy}
+        isLoading={isStrategyLoading}
+        onRefresh={refreshStrategy}
+      />
 
       {/* MODAL DE CONFIRMAÇÃO DE RESET */}
       {isConfirmModalOpen && (
