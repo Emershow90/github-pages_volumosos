@@ -112,8 +112,8 @@ export const ConexoesTab: React.FC = () => {
     }
   };
 
-  const ATIVIDADE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=0&single=true&output=csv';
-  const PLANO_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv';
+  const ATIVIDADE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRTghosKUGfdajRIIBogZzdYcxh6G4Yrj6zIHojZFw8zHWoQiGAwz3VvNNr4zTiJWe3VeNOzFsE0dOT/pub?gid=0&single=true&output=csv';
+  const PLANO_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRTghosKUGfdajRIIBogZzdYcxh6G4Yrj6zIHojZFw8zHWoQiGAwz3VvNNr4zTiJWe3VeNOzFsE0dOT/pub?gid=1141245157&single=true&output=csv';
 
   useEffect(() => {
     const interval = setInterval(() => {

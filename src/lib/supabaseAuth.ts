@@ -4,15 +4,28 @@
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;
-    if (reason && (
-      (typeof reason === 'string' && reason.includes('WebSocket closed')) ||
-      (reason.message && typeof reason.message === 'string' && (
-        reason.message.includes('WebSocket closed') || 
-        reason.message.includes('closed without opened')
-      )) ||
-      (reason.name === 'TypeError' && reason.message && reason.message.includes('fetch of #<Window> which has only a getter'))
+    const reasonStr = reason ? (typeof reason === 'string' ? reason : (reason.message || String(reason))) : '';
+    const reasonName = reason && typeof reason === 'object' ? reason.name : '';
+
+    if (reasonStr && (
+      reasonStr.toLowerCase().includes('websocket') ||
+      reasonStr.toLowerCase().includes('closed without opened') ||
+      reasonStr.toLowerCase().includes('failed to connect') ||
+      (reasonName === 'TypeError' && reasonStr.includes('fetch of #<Window> which has only a getter'))
     )) {
       console.warn('[SafeEnvironment] Suppressed benign unhandled sandbox rejection:', reason);
+      event.preventDefault();
+    }
+  });
+
+  window.addEventListener('error', (event) => {
+    const message = event.message || '';
+    if (message && (
+      message.toLowerCase().includes('websocket') ||
+      message.toLowerCase().includes('closed without opened') ||
+      message.toLowerCase().includes('failed to connect to websocket')
+    )) {
+      console.warn('[SafeEnvironment] Suppressed benign sandbox window error:', message);
       event.preventDefault();
     }
   });
