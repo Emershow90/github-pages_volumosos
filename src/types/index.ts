@@ -10,3 +10,5 @@ export * from './ActivityEntry';
 export * from './PainelProducao';
 export * from './AIStrategy';
 export * from './AIForecast';
+export * from './Gargalo';
+export * from './ActionPlan';

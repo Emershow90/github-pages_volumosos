@@ -3,8 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from "react";
-import { motion } from "motion/react";
+import React, { useState, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  Cell,
+} from "recharts";
 import {
   Setor,
   ReferenteSemana,
@@ -12,54 +25,44 @@ import {
   ColaboradorStatus,
   RadarLoja,
   ReaproData,
-  ReaproSetor,
   BolsaoData,
   CopilSetor,
   HistoricoRegistro,
   UserRole,
   CapacidadeSetor,
 } from "../types";
-import { TrendLineChart } from "./CommandCharts";
 import {
   Edit3,
-  Shield,
-  ArrowUp,
-  ArrowDown,
-  Terminal,
-  AlertTriangle,
-  Cpu,
-  GripVertical,
-  ChevronUp,
-  ChevronDown,
-  ArrowLeft,
-  ArrowRight,
-  TrendingUp,
-  Activity,
   Users,
-  Radio,
-  Layers,
-  RefreshCw,
+  Activity,
   BarChart2,
+  TrendingUp,
+  Sliders,
+  PieChart,
   Apple,
   Mountain,
   Package,
-  Sliders,
-  PieChart,
-  Check,
-  X,
+  RotateCcw,
   Tag,
   Plus,
   Trash2,
-  RotateCcw,
-  Boxes,
+  Check,
+  X,
   Clock,
   Sparkles,
-  Timer,
-  Gauge,
-  CheckCircle2,
+  Layers,
+  ArrowRight,
+  Shield,
+  AlertTriangle,
+  FileSpreadsheet,
+  Terminal,
+  Cpu,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useSectorStore } from "../stores/useSectorStore";
 import { useUserStore } from "../stores/useUserStore";
+import { exportToGoogleSheets, initGoogleIdentity } from "../services/googleSheetsExportService";
 
 interface DashboardTabProps {
   setores: Setor[];
@@ -84,23 +87,12 @@ interface DashboardTabProps {
   onNavigateTab?: (tab: string) => void;
 }
 
-import { exportToGoogleSheets, initGoogleIdentity } from '../services/googleSheetsExportService';
-import { DailyActivityAlertBanner } from './DailyActivityAlertBanner';
-
 export const DashboardTab: React.FC<DashboardTabProps> = ({
   setores,
   referentesSemana,
   colaboradores,
-  radar,
   reaproData,
-  bolsaoData,
-  copilData,
-  copilActiveSector,
-  setCopilActiveSector,
   onToggleSeguranca,
-  onSaveRadar,
-  onSaveBolsao,
-  onSaveReapro,
   terminalLogs,
   onTerminalCommand,
   currentRole,
@@ -110,9 +102,24 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onNavigateTab,
 }) => {
   const [isExporting, setIsExporting] = useState(false);
+  const [activeSection, setActiveSection] = useState<"all" | "escala" | "monitor" | "grafico">("all");
+  const [showTerminal, setShowTerminal] = useState(false);
+  const [terminalInput, setTerminalInput] = useState("");
+  const [chartViewMode, setChartViewMode] = useState<"historico" | "uph_setores" | "volume_mix">("historico");
+
+  // Inline editing states for Monitor de Setores
+  const [editingMetric, setEditingMetric] = useState<{ sid: string; field: string } | null>(null);
+  const [editMetricValue, setEditMetricValue] = useState<string>("");
+
+  // Store & User Access
+  const { activityEntries, updateActivityUniversosBatch, updateSectorOverride } = useSectorStore();
+  const { currentUser, currentUserUid } = useUserStore();
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  const isEditable =
+    currentRole === UserRole.Admin || currentRole === UserRole.Coordenador || currentRole === UserRole.Referente;
 
   useEffect(() => {
-    // We delay the initialization slightly to ensure the external script has loaded.
     const tId = setTimeout(() => {
       initGoogleIdentity();
     }, 1500);
@@ -129,182 +136,85 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         historico,
         capacidade,
       });
-      window.open(url, '_blank');
-      alert('Relatório consolidado exportado com sucesso no Google Sheets!');
-    } catch (err: any) {
+      window.open(url, "_blank");
+    } catch (err: unknown) {
       console.error(err);
-      alert('Erro ao exportar: ' + (err.message || 'Erro desconhecido'));
+      const errMsg = err instanceof Error ? err.message : "Erro desconhecido";
+      alert("Erro ao exportar: " + errMsg);
     } finally {
       setIsExporting(false);
     }
   };
 
-  // Widget Order State with Drag & Drop & Persistence
-  const [cardOrder, setCardOrder] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem("dashboard_card_order");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const required = [
-          "referentes",
-          "executivos",
-          "atrasos",
-          "setores",
-          "copil",
-          "radar",
-          "bolsao",
-          "reapro",
-          "trend",
-          "terminal",
-        ];
-        // Validate saved order contains all required items
-        if (
-          parsed.length === required.length &&
-          required.every((r) => parsed.includes(r))
-        ) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.error("Error parsing card order:", e);
-    }
-    // Default logical order matching target layout specification
-    return [
-      "referentes",
-      "executivos",
-      "atrasos",
-      "setores",
-      "copil",
-      "radar",
-      "bolsao",
-      "reapro",
-      "trend",
-      "terminal",
-    ];
-  });
+  // Plantão do Dia
+  const DIAS_LISTA = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+  const hojeIdx = new Date().getDay();
+  const nomeHoje = DIAS_LISTA[hojeIdx];
+  const plantaoHoje = useMemo(() => {
+    return (
+      referentesSemana.find(
+        (r) =>
+          r.dia?.toLowerCase().trim().startsWith(nomeHoje.toLowerCase().slice(0, 3)) ||
+          r.dia?.toLowerCase().trim() === nomeHoje.toLowerCase()
+      ) ||
+      referentesSemana[hojeIdx] ||
+      referentesSemana[0]
+    );
+  }, [referentesSemana, hojeIdx, nomeHoje]);
 
-  // Minimized state of widgets with Persistence
-  const [minimized, setMinimized] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem("dashboard_card_minimized");
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error("Error parsing minimized state:", e);
-    }
-    return {};
-  });
+  // Contagem de operadores por status
+  const totalColaboradores = colaboradores.length;
+  const operadoresEmOperacao = colaboradores.filter((c) => c.status === ColaboradorStatus.Operacao || c.status === "Operacao").length;
+  const operadoresApoio = colaboradores.filter(
+    (c) =>
+      c.status === ColaboradorStatus.Apoio ||
+      c.status === ColaboradorStatus.Reabastecimento ||
+      c.status === ColaboradorStatus.GestaoEstoque
+  ).length;
+  const operadoresPausa = colaboradores.filter(
+    (c) =>
+      c.status === ColaboradorStatus.Ausente ||
+      c.status === ColaboradorStatus.BH ||
+      (c.status as string) === "Pausa" ||
+      (c.status as string) === "Refeicao"
+  ).length;
 
-  const [radarEdit, setRadarEdit] = useState(false);
-  const [localRadar, setLocalRadar] = useState<RadarLoja[]>([]);
-  const [bolsaoEdit, setBolsaoEdit] = useState(false);
-  const [localBolsao, setLocalBolsao] = useState<BolsaoData>({ ...bolsaoData });
-  const [reaproEdit, setReaproEdit] = useState(false);
-  const [localReapro, setLocalReapro] = useState<ReaproData>({ ...reaproData });
-  const [terminalInput, setTerminalInput] = useState("");
+  // Totais operacionais do CD
+  const totalVolumeAtiv = useMemo(() => setores.reduce((sum, s) => sum + (s.ativ || 0), 0), [setores]);
+  const totalReabastecimento = useMemo(() => setores.reduce((sum, s) => sum + (s.reproTotal || 0), 0), [setores]);
+  const totalColis = useMemo(() => setores.reduce((sum, s) => sum + (s.colis || 0), 0), [setores]);
+  const mediaUPH = useMemo(
+    () => (setores.length ? Math.round(setores.reduce((sum, s) => sum + (s.uph || 0), 0) / setores.length) : 0),
+    [setores]
+  );
+  const mediaSLA = useMemo(
+    () =>
+      setores.length
+        ? parseFloat((setores.reduce((sum, s) => sum + (s.promessa || 0), 0) / setores.length).toFixed(1))
+        : 0,
+    [setores]
+  );
 
-  // Drag and drop local states
-  const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
-
-  // Leitura reativa das entradas de atividade do useSectorStore
-  const { activityEntries, updateActivityUniversosBatch, updateSectorOverride } = useSectorStore();
-  const { currentUser, currentUserUid } = useUserStore();
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  // Modal / Edição rápida de universos
-  const [editingSectorUniversos, setEditingSectorUniversos] = useState<string | null>(null);
-  const [editAlimento, setEditAlimento] = useState<number>(0);
-  const [editMontanha, setEditMontanha] = useState<number>(0);
-  const [editCustomUniversos, setEditCustomUniversos] = useState<{ id: string; name: string; value: number }[]>([]);
-  const [editReproTotal, setEditReproTotal] = useState<number>(0);
-  const [editColis, setEditColis] = useState<number>(0);
-  const [editAtividade, setEditAtividade] = useState<number>(0);
-  const [editElog, setEditElog] = useState<string>('');
-
-  const handleOpenEditUniversos = (sid: string, ativTotal: number, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    const mix = getSectorMix(sid, ativTotal);
-    const entry = activityEntries.find(e => e.sectorId === sid && e.activityDate === todayStr) ||
-                  activityEntries.find(e => e.sectorId === sid);
-    const sectorObj = setores.find(s => String(s.id) === String(sid) || String(s.numero) === String(sid));
-    const currentRepro = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || 151);
-    const currentColis = sectorObj?.colis ?? entry?.colis ?? mix.colis ?? 0;
-    const currentAtiv = sectorObj?.ativ ?? entry?.atividade ?? ativTotal;
-
-    setEditingSectorUniversos(sid);
-    setEditAlimento(mix.alimento);
-    setEditMontanha(mix.montanha);
-    setEditCustomUniversos(mix.customUniversos.map(c => ({ id: c.id, name: c.name, value: c.value })));
-    setEditReproTotal(currentRepro);
-    setEditColis(currentColis);
-    setEditAtividade(currentAtiv);
-    setEditElog(entry?.elog || '');
-  };
-
-  const handleSaveUniversos = async () => {
-    if (!editingSectorUniversos) return;
-    try {
-      const uId = currentUserUid || currentUser || 'system';
-      const customObj: Record<string, number> = {};
-      editCustomUniversos.forEach(item => {
-        if (item.name.trim()) {
-          customObj[item.name.trim()] = item.value;
-        }
-      });
-
-      // 1. Atualiza dados operacionais detalhados na coleção activity_entries
-      await updateActivityUniversosBatch(editingSectorUniversos, todayStr, uId, {
-        alimento: editAlimento,
-        montanha: editMontanha,
-        l7Mochila: 0,
-        adhocCategories: customObj,
-        colis: editColis,
-        atividade: editAtividade,
-        elog: editElog,
-        reapro: `${editReproTotal} CX`
-      });
-
-      // 2. Atualiza os overrides no Setor (Single Source of Truth para o Painel)
-      await updateSectorOverride(editingSectorUniversos, {
-        ...(editAtividade > 0 ? { ativ: editAtividade } : {}),
-        reproTotal: editReproTotal,
-        colis: editColis,
-      }, uId);
-
-      if (onUpdateSetor) {
-        if (editAtividade > 0) onUpdateSetor(editingSectorUniversos, 'ativ', editAtividade);
-        onUpdateSetor(editingSectorUniversos, 'reproTotal', editReproTotal);
-        onUpdateSetor(editingSectorUniversos, 'colis', editColis);
-      }
-      setEditingSectorUniversos(null);
-    } catch (err) {
-      console.error('[DashboardTab] Erro ao salvar universos:', err);
-      setEditingSectorUniversos(null);
-    }
-  };
-
-  // Helper de mix de universos (Alimento, Montanha, Custom) e Reposição / Caixas
+  // Helper de mix de universos
   const getSectorMix = (sid: string, ativTotal: number) => {
-    const entry = activityEntries.find(e => e.sectorId === sid && e.activityDate === todayStr) ||
-                  activityEntries.find(e => e.sectorId === sid);
-    const sectorObj = setores.find(s => String(s.id) === String(sid) || String(s.numero) === String(sid));
-    const reproVal = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || (sid === '87' ? 151 : 127));
-    const colisVal = sectorObj?.colis ?? entry?.colis ?? (sid === '87' ? 1500 : 0);
-    const atividadeVal = sectorObj?.ativ ?? entry?.atividade ?? 0;
+    const entry =
+      activityEntries.find((e) => e.sectorId === sid && e.activityDate === todayStr) ||
+      activityEntries.find((e) => e.sectorId === sid);
+    const sectorObj = setores.find((s) => String(s.id) === String(sid) || String(s.numero) === String(sid));
+    const reproVal = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || (sid === "87" ? 151 : 127));
+    const colisVal = sectorObj?.colis ?? entry?.colis ?? (sid === "87" ? 1500 : 0);
+    const atividadeVal = sectorObj?.ativ ?? entry?.atividade ?? ativTotal;
 
-    // Custom categories extraction
     const customList: { id: string; name: string; value: number; pct: number }[] = [];
-    if (entry?.adhocCategories && typeof entry.adhocCategories === 'object') {
+    if (entry?.adhocCategories && typeof entry.adhocCategories === "object") {
       Object.entries(entry.adhocCategories).forEach(([name, val], idx) => {
-        const numVal = typeof val === 'number' ? val : parseInt(String(val)) || 0;
+        const numVal = typeof val === "number" ? val : parseInt(String(val)) || 0;
         if (numVal > 0) {
           customList.push({
             id: `custom-${idx}-${name}`,
             name,
             value: numVal,
-            pct: 0
+            pct: 0,
           });
         }
       });
@@ -317,7 +227,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       const alim = entry.alimento || 0;
       const mont = entry.montanha || 0;
 
-      customList.forEach(c => {
+      customList.forEach((c) => {
         c.pct = Math.round((c.value / safeTot) * 100);
       });
 
@@ -326,27 +236,26 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         montanha: mont,
         customUniversos: customList,
         colis: colisVal,
-      atividade: atividadeVal,
+        atividade: atividadeVal,
         reapro: `${reproVal} CX`,
-        elog: entry.elog || '2J RA FALC (174)',
+        elog: entry.elog || "2J RA FALC (174)",
         alimentoPct: Math.round((alim / safeTot) * 100),
         montanhaPct: Math.round((mont / safeTot) * 100),
         colisPct: Math.round((colisVal / safeTot) * 100),
-        total: totUniversos > 0 ? totUniversos : ativTotal
+        total: totUniversos > 0 ? totUniversos : ativTotal,
       };
     }
 
-    // Proporções operacionais de referência padrão do CD por setor (Universos Alimento, Montanha)
     const mixPadrao: Record<string, { alim: number; mont: number }> = {
-      '88': { alim: 0.65, mont: 0.35 },
-      '87': { alim: 0.40, mont: 0.60 },
-      '86': { alim: 0.30, mont: 0.70 },
-      '89': { alim: 0.60, mont: 0.40 },
-      '85': { alim: 0.50, mont: 0.50 },
+      "88": { alim: 0.65, mont: 0.35 },
+      "87": { alim: 0.4, mont: 0.6 },
+      "86": { alim: 0.3, mont: 0.7 },
+      "89": { alim: 0.6, mont: 0.4 },
+      "85": { alim: 0.5, mont: 0.5 },
     };
 
-    const ratio = mixPadrao[sid] || { alim: 0.50, mont: 0.50 };
-    const base = ativTotal > 0 ? ativTotal : (sid === '88' ? 5965 : sid === '87' ? 15899 : 4500);
+    const ratio = mixPadrao[sid] || { alim: 0.5, mont: 0.5 };
+    const base = ativTotal > 0 ? ativTotal : sid === "88" ? 5965 : sid === "87" ? 15899 : 4500;
     const alim = Math.round(base * ratio.alim);
     const mont = Math.max(0, base - alim);
 
@@ -357,18 +266,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       colis: colisVal,
       atividade: atividadeVal,
       reapro: `${reproVal} CX`,
-      elog: '2J RA FALC (174)',
+      elog: "2J RA FALC (174)",
       alimentoPct: Math.round(ratio.alim * 100),
       montanhaPct: Math.round(ratio.mont * 100),
       colisPct: Math.round((colisVal / (base || 1)) * 100),
-      total: base
+      total: base,
     };
   };
 
-  // Inline editing states for Monitor de Setores Ativos
-  const [editingMetric, setEditingMetric] = useState<{ sid: string; field: string } | null>(null);
-  const [editMetricValue, setEditMetricValue] = useState<string>("");
-
+  // Edição inline rápida
   const handleSaveInline = () => {
     if (!editingMetric || !onUpdateSetor) return;
     const { sid, field } = editingMetric;
@@ -377,119 +283,80 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     setEditingMetric(null);
   };
 
-  // Synchronize local states with props when edit modes trigger
-  const handleRadarEditToggle = () => {
-    if (radarEdit) {
-      onSaveRadar(localRadar);
-    } else {
-      setLocalRadar([...radar]);
-    }
-    setRadarEdit(!radarEdit);
+  // Modal / Edição rápida de universos
+  const [editingSectorUniversos, setEditingSectorUniversos] = useState<string | null>(null);
+  const [editAlimento, setEditAlimento] = useState<number>(0);
+  const [editMontanha, setEditMontanha] = useState<number>(0);
+  const [editCustomUniversos, setEditCustomUniversos] = useState<{ id: string; name: string; value: number }[]>([]);
+  const [editReproTotal, setEditReproTotal] = useState<number>(0);
+  const [editColis, setEditColis] = useState<number>(0);
+  const [editAtividade, setEditAtividade] = useState<number>(0);
+  const [editElog, setEditElog] = useState<string>("");
+
+  const handleOpenEditUniversos = (sid: string, ativTotal: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const mix = getSectorMix(sid, ativTotal);
+    const entry =
+      activityEntries.find((ent) => ent.sectorId === sid && ent.activityDate === todayStr) ||
+      activityEntries.find((ent) => ent.sectorId === sid);
+    const sectorObj = setores.find((s) => String(s.id) === String(sid) || String(s.numero) === String(sid));
+    const currentRepro = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || 151);
+    const currentColis = sectorObj?.colis ?? entry?.colis ?? mix.colis ?? 0;
+    const currentAtiv = sectorObj?.ativ ?? entry?.atividade ?? ativTotal;
+
+    setEditingSectorUniversos(sid);
+    setEditAlimento(mix.alimento);
+    setEditMontanha(mix.montanha);
+    setEditCustomUniversos(mix.customUniversos.map((c) => ({ id: c.id, name: c.name, value: c.value })));
+    setEditReproTotal(currentRepro);
+    setEditColis(currentColis);
+    setEditAtividade(currentAtiv);
+    setEditElog(entry?.elog || "");
   };
 
-  const handleBolsaoEditToggle = () => {
-    if (bolsaoEdit) {
-      onSaveBolsao(localBolsao);
-    } else {
-      setLocalBolsao({ ...bolsaoData });
-    }
-    setBolsaoEdit(!bolsaoEdit);
-  };
-
-  const handleReaproEditToggle = async () => {
-    if (reaproEdit) {
-      onSaveReapro(localReapro);
-
-      // Sincroniza bidirecionalmente cada setor editado no Card Repro com a store e o banco
+  const handleSaveUniversos = async () => {
+    if (!editingSectorUniversos) return;
+    try {
       const uId = currentUserUid || currentUser || "system";
-      for (const s of setores) {
-        const secVal = localReapro.setores[s.id]?.feitoDAll;
-        if (secVal !== undefined && secVal !== s.reproTotal) {
-          await updateSectorOverride(s.id, { reproTotal: secVal }, uId);
-          if (onUpdateSetor) {
-            onUpdateSetor(s.id, "reproTotal", secVal);
-          }
+      const customObj: Record<string, number> = {};
+      editCustomUniversos.forEach((item) => {
+        if (item.name.trim()) {
+          customObj[item.name.trim()] = item.value;
         }
+      });
+
+      await updateActivityUniversosBatch(editingSectorUniversos, todayStr, uId, {
+        alimento: editAlimento,
+        montanha: editMontanha,
+        l7Mochila: 0,
+        adhocCategories: customObj,
+        colis: editColis,
+        atividade: editAtividade,
+        elog: editElog,
+        reapro: `${editReproTotal} CX`,
+      });
+
+      await updateSectorOverride(
+        editingSectorUniversos,
+        {
+          ...(editAtividade > 0 ? { ativ: editAtividade } : {}),
+          reproTotal: editReproTotal,
+          colis: editColis,
+        },
+        uId
+      );
+
+      if (onUpdateSetor) {
+        if (editAtividade > 0) onUpdateSetor(editingSectorUniversos, "ativ", editAtividade);
+        onUpdateSetor(editingSectorUniversos, "reproTotal", editReproTotal);
+        onUpdateSetor(editingSectorUniversos, "colis", editColis);
       }
-    } else {
-      const initialSetoresMap: Record<string, ReaproSetor> = { ...reaproData.setores };
-      setores.forEach((s) => {
-        initialSetoresMap[s.id] = {
-          feitoDAll: s.reproTotal ?? initialSetoresMap[s.id]?.feitoDAll ?? 0,
-          feitoElog: initialSetoresMap[s.id]?.feitoElog ?? 0,
-        };
-      });
-      setLocalReapro({
-        ...reaproData,
-        setores: initialSetoresMap,
-      });
+      setEditingSectorUniversos(null);
+    } catch (err) {
+      console.error("[DashboardTab] Erro ao salvar universos:", err);
+      setEditingSectorUniversos(null);
     }
-    setReaproEdit(!reaproEdit);
   };
-
-  // Métricas automáticas e conscientes do Painel REAPRO (Reabastecimento)
-  const totalDAllReal = setores.reduce((sum, s) => {
-    const val = s.reproTotal ?? (reaproData?.setores?.[s.id]?.feitoDAll || 0);
-    return sum + (val || 0);
-  }, 0);
-
-  const operadoresApoio = colaboradores.filter(
-    (c) =>
-      c.status === ColaboradorStatus.Reabastecimento ||
-      c.status === ColaboradorStatus.Apoio ||
-      c.status === ColaboradorStatus.GestaoEstoque ||
-      (c.funcao &&
-        (c.funcao.toLowerCase().includes("reabast") ||
-          c.funcao.toLowerCase().includes("repos") ||
-          c.funcao.toLowerCase().includes("estoque")))
-  );
-
-  const capFechamentoAuto = Math.max(1, operadoresApoio.length) * 120;
-  const capFechamentoDisplay =
-    reaproData?.capacidadeFechamentoEst && reaproData.capacidadeFechamentoEst > 0
-      ? reaproData.capacidadeFechamentoEst
-      : capFechamentoAuto;
-
-  const presoDAllReal = reaproData?.indicadores?.totalPresoDAll || 0;
-  const emCursoReal =
-    reaproData?.indicadores?.emCursoColetado && reaproData.indicadores.emCursoColetado > 0
-      ? reaproData.indicadores.emCursoColetado
-      : Math.round(totalDAllReal * 0.85);
-
-  const emMaquinaReal =
-    reaproData?.indicadores?.totalEmMaquina && reaproData.indicadores.totalEmMaquina > 0
-      ? reaproData.indicadores.totalEmMaquina
-      : Math.round(totalDAllReal * 0.15);
-
-  const disponibilidadeCalculada =
-    totalDAllReal === 0
-      ? 100
-      : Math.max(
-          0,
-          Math.min(
-            100,
-            Math.round(((totalDAllReal - presoDAllReal) / totalDAllReal) * 100)
-          )
-        );
-
-  // Projeção Inteligente de Término
-  const horasRestantes =
-    capFechamentoDisplay > 0 ? totalDAllReal / capFechamentoDisplay : 1;
-  const minRestantes = Math.round(horasRestantes * 60);
-  const projectedDate = new Date(Date.now() + minRestantes * 60 * 1000);
-  const autoTerminoPrevisao = `${String(projectedDate.getHours()).padStart(
-    2,
-    "0"
-  )}:${String(projectedDate.getMinutes()).padStart(2, "0")}`;
-  const displayTerminoPrevisao =
-    reaproData?.terminoPrevisao && reaproData.terminoPrevisao.trim() !== ""
-      ? reaproData.terminoPrevisao
-      : autoTerminoPrevisao;
-
-  const tempoRestanteStr =
-    minRestantes >= 60
-      ? `${Math.floor(minRestantes / 60)}h ${minRestantes % 60}m`
-      : `${minRestantes}m`;
 
   const handleTerminalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -499,2013 +366,907 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     }
   };
 
-  const isEditable =
-    currentRole === UserRole.Admin || currentRole === UserRole.Coordenador;
+  // Dados para Gráficos
+  const chartHistoricoData = useMemo(() => {
+    return historico.slice(-14).map((h) => ({
+      name: `${h.data.slice(0, 5)} S${h.setor}`,
+      ATIV: h.ativ,
+      UPH: h.uph,
+    }));
+  }, [historico]);
 
-  // Constants & Calculated indicators for header scale
-  const DIAS = [
-    "domingo",
-    "segunda",
-    "terca",
-    "quarta",
-    "quinta",
-    "sexta",
-    "sabado",
-  ];
-  const diaHoje = DIAS[new Date().getDay()];
-  const refHoje =
-    referentesSemana.find((r) => r.dia.toLowerCase() === diaHoje) ||
-    referentesSemana[0];
-
-  const eqAtivaCount = colaboradores.filter((c) => c.status === "Operacao").length;
-
-  // Executive dashboard stats (Calculated matching Executive tab exactly)
-  const totalVolume = setores.reduce((sum, s) => sum + s.ativ, 0);
-  const mediaUPH = setores.length
-    ? Math.round(setores.reduce((sum, s) => sum + s.uph, 0) / setores.length)
-    : 0;
-  const mediaSLA = setores.length
-    ? parseFloat(
-        (setores.reduce((sum, s) => sum + s.promessa, 0) / setores.length).toFixed(
-          1
-        )
-      )
-    : 0;
-  const capTotal = capacidade.reduce((sum, c) => sum + c.abertura, 0);
-  const totalRiscoSetores = setores.filter(
-    (s) => s.bsi < 99 || s.infracaoSeguranca
-  ).length;
-
-  const gargalo = setores.length
-    ? setores.reduce(
-        (min, s) => (s.uph > 0 && s.uph < min.uph ? s : min),
-        setores[0]
-      )
-    : null;
-
-  // Helper mapping columns span for desktop
-  const colSpanMap: Record<string, string> = {
-    referentes: "lg:col-span-2",
-    executivos: "lg:col-span-2",
-    setores: "lg:col-span-2",
-    copil: "lg:col-span-1",
-    radar: "lg:col-span-1",
-    bolsao: "lg:col-span-1",
-    reapro: "lg:col-span-2",
-    trend: "lg:col-span-1",
-    terminal: "lg:col-span-1",
-  };
-
-  // Drag & Drop handlers
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    setDraggedId(id);
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", id);
-  };
-
-  const handleDragOver = (e: React.DragEvent, id: string) => {
-    e.preventDefault();
-    if (draggedId && draggedId !== id) {
-      setDragOverId(id);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent, targetId: string) => {
-    e.preventDefault();
-    if (!draggedId || draggedId === targetId) return;
-
-    const draggedIndex = cardOrder.indexOf(draggedId);
-    const targetIndex = cardOrder.indexOf(targetId);
-
-    if (draggedIndex !== -1 && targetIndex !== -1) {
-      const newOrder = [...cardOrder];
-      newOrder.splice(draggedIndex, 1);
-      newOrder.splice(targetIndex, 0, draggedId);
-      setCardOrder(newOrder);
-      localStorage.setItem("dashboard_card_order", JSON.stringify(newOrder));
-    }
-    setDraggedId(null);
-    setDragOverId(null);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedId(null);
-    setDragOverId(null);
-  };
-
-  // Accessibility reordering buttons (TV & Tablet compatibility)
-  const handleMoveUp = (id: string) => {
-    const idx = cardOrder.indexOf(id);
-    if (idx > 0) {
-      const newOrder = [...cardOrder];
-      const temp = newOrder[idx];
-      newOrder[idx] = newOrder[idx - 1];
-      newOrder[idx - 1] = temp;
-      setCardOrder(newOrder);
-      localStorage.setItem("dashboard_card_order", JSON.stringify(newOrder));
-    }
-  };
-
-  const handleMoveDown = (id: string) => {
-    const idx = cardOrder.indexOf(id);
-    if (idx < cardOrder.length - 1) {
-      const newOrder = [...cardOrder];
-      const temp = newOrder[idx];
-      newOrder[idx] = newOrder[idx + 1];
-      newOrder[idx + 1] = temp;
-      setCardOrder(newOrder);
-      localStorage.setItem("dashboard_card_order", JSON.stringify(newOrder));
-    }
-  };
-
-  const toggleMinimize = (id: string) => {
-    const updated = { ...minimized, [id]: !minimized[id] };
-    setMinimized(updated);
-    localStorage.setItem("dashboard_card_minimized", JSON.stringify(updated));
-  };
-
-  // Reusable widget container wrapping card contents
-  const renderWidget = (
-    id: string,
-    title: string,
-    icon: React.ReactNode,
-    minimizedIndicator: React.ReactNode,
-    children: React.ReactNode,
-    borderClasses: string = ""
-  ) => {
-    const isMin = !!minimized[id];
-    const isDragging = draggedId === id;
-    const isDragOver = dragOverId === id;
-
-    return (
-      <motion.div
-        key={id}
-        layout
-        transition={{ type: "spring", stiffness: 350, damping: 30 }}
-        className={`glass-card flex flex-col h-full overflow-hidden transition-all duration-300 relative ${
-          colSpanMap[id] || "lg:col-span-1"
-        } ${borderClasses} ${
-          isDragging
-            ? "opacity-40 scale-[0.98] border-dashed border-indigo-500/50 bg-indigo-950/5"
-            : ""
-        } ${
-          isDragOver
-            ? "border-indigo-500/60 bg-indigo-950/10 shadow-[0_0_20px_rgba(99,102,241,0.2)]"
-            : ""
-        }`}
-        onDragOver={(e) => handleDragOver(e, id)}
-        onDrop={(e) => handleDrop(e, id)}
-      >
-        {/* Widget Drag-Handle Header */}
-        <div
-          className="flex items-center justify-between pb-3 border-b border-white/5 p-4 select-none cursor-grab active:cursor-grabbing bg-black/15 hover:bg-black/25 transition-colors duration-150 rounded-t-xl"
-          draggable={true}
-          onDragStart={(e) => handleDragStart(e, id)}
-          onDragEnd={handleDragEnd}
-          title="Arraste pelo cabeçalho para reorganizar"
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <GripVertical
-              size={14}
-              className="text-zinc-600 hover:text-indigo-400 cursor-grab flex-shrink-0"
-            />
-            <span className="text-zinc-400 flex-shrink-0">{icon}</span>
-            <span className="text-xs font-black text-white uppercase tracking-widest truncate">
-              {title}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Quick Reorder Arrows for TVs & Tablets */}
-            <div className="flex items-center gap-0.5 bg-black/45 border border-white/5 rounded-md p-0.5">
-              <button
-                type="button"
-                onClick={() => handleMoveUp(id)}
-                disabled={cardOrder.indexOf(id) === 0}
-                className="p-1 text-zinc-500 hover:text-white hover:bg-white/5 rounded disabled:opacity-20 disabled:pointer-events-none transition-colors"
-                title="Mover para cima/trás"
-              >
-                <ArrowUp size={12} />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleMoveDown(id)}
-                disabled={cardOrder.indexOf(id) === cardOrder.length - 1}
-                className="p-1 text-zinc-500 hover:text-white hover:bg-white/5 rounded disabled:opacity-20 disabled:pointer-events-none transition-colors"
-                title="Mover para baixo/frente"
-              >
-                <ArrowDown size={12} />
-              </button>
-            </div>
-
-            {/* Minimize / Expand Toggle */}
-            <button
-              type="button"
-              onClick={() => toggleMinimize(id)}
-              className="text-zinc-500 hover:text-white p-1 hover:bg-white/5 rounded transition-colors"
-              title={isMin ? "Expandir" : "Minimizar"}
-            >
-              {isMin ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-            </button>
-          </div>
-        </div>
-
-        {/* Content body */}
-        <div className="flex-1 p-5">
-          {isMin ? (
-            <div className="flex items-center justify-between py-1 text-zinc-400 text-xs font-mono">
-              <span className="text-[10px] uppercase font-black text-zinc-600 tracking-wider">
-                Modo Compacto
-              </span>
-              <div className="bg-white/5 border border-white/5 rounded-lg px-3 py-1.5 text-indigo-400 font-bold text-center">
-                {minimizedIndicator}
-              </div>
-            </div>
-          ) : (
-            children
-          )}
-        </div>
-      </motion.div>
-    );
-  };
+  const chartSetoresUPH = useMemo(() => {
+    return setores.map((s) => ({
+      setor: `S${s.id}`,
+      uph: s.uph,
+      metaUph: s.id === "87" ? 520 : s.id === "88" ? 480 : 450,
+      sla: s.promessa,
+    }));
+  }, [setores]);
 
   return (
-    <div className="space-y-6">
-      {/* Ações Globais do Painel */}
-      <div className="flex justify-between items-center bg-black/40 border border-white/5 p-4 rounded-xl">
-        <div>
-          <h2 className="text-sm font-black text-white tracking-widest uppercase">
-            Visão Geral & Consolidado
-          </h2>
-          <p className="text-[10px] text-zinc-500 font-mono mt-1">
-            Geração de relatórios e exportações diárias
-          </p>
+    <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
+      {/* 🧭 Top Bar & Seletor de Seções (Escala | Monitor | Gráfico) */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[#0a0a10] border border-white/10 p-4 rounded-2xl shadow-lg">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <Layers size={20} />
+          </div>
+          <div>
+            <h1 className="text-base font-black text-white uppercase tracking-wider">
+              Painel Operacional
+            </h1>
+            <p className="text-xs text-zinc-400 font-mono">
+              Escala &bull; Monitor em Tempo Real &bull; Gráficos de Produção
+            </p>
+          </div>
         </div>
-        <button
-          onClick={handleExportSheets}
-          disabled={isExporting}
-          className="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-lg text-xs font-black transition-all disabled:opacity-50"
-        >
-          {isExporting ? (
-            <span className="w-3 h-3 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin"></span>
-          ) : (
-            <span className="text-[14px]">☁️</span>
-          )}
-          {isExporting ? "EXPORTANDO..." : "SALVAR NO GOOGLE SHEETS"}
-        </button>
+
+        {/* Filtros de Seção & Ações */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center bg-black/50 border border-white/10 rounded-xl p-1 text-xs">
+            <button
+              onClick={() => setActiveSection("all")}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                activeSection === "all"
+                  ? "bg-indigo-600 text-white shadow-md"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              🌟 Todos
+            </button>
+            <button
+              onClick={() => setActiveSection("escala")}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                activeSection === "escala"
+                  ? "bg-emerald-600 text-white shadow-md"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Users size={13} />
+              <span>Escala</span>
+            </button>
+            <button
+              onClick={() => setActiveSection("monitor")}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                activeSection === "monitor"
+                  ? "bg-sky-600 text-white shadow-md"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Activity size={13} />
+              <span>Monitor</span>
+            </button>
+            <button
+              onClick={() => setActiveSection("grafico")}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+                activeSection === "grafico"
+                  ? "bg-purple-600 text-white shadow-md"
+                  : "text-zinc-400 hover:text-white"
+              }`}
+            >
+              <TrendingUp size={13} />
+              <span>Gráficos</span>
+            </button>
+          </div>
+
+          <button
+            onClick={handleExportSheets}
+            disabled={isExporting}
+            className="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+            title="Exportar dados operacionais para o Google Sheets"
+          >
+            {isExporting ? (
+              <span className="w-3.5 h-3.5 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin"></span>
+            ) : (
+              <FileSpreadsheet size={14} className="text-emerald-400" />
+            )}
+            <span>{isExporting ? "Exportando..." : "Google Sheets"}</span>
+          </button>
+
+          <button
+            onClick={() => setShowTerminal(!showTerminal)}
+            className={`p-2 rounded-xl border text-xs font-mono transition-all ${
+              showTerminal
+                ? "bg-emerald-500/20 border-emerald-500 text-emerald-300"
+                : "bg-black/40 border-white/10 text-zinc-400 hover:text-white"
+            }`}
+            title="Terminal de Comando Operacional"
+          >
+            <Terminal size={15} />
+          </button>
+        </div>
       </div>
 
-      {/* Draggable & Animating Widgets Flow */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {cardOrder.map((id) => {
-          switch (id) {
-            case "referentes":
-              return renderWidget(
-                "referentes",
-                `Escala de Plantão & Liderança — Hoje (${diaHoje.toUpperCase()})`,
-                <Users size={14} className="text-emerald-400" />,
-                `S87: ${refHoje?.ref87 || "—"} | Vol: ${refHoje?.refVol || "—"}`,
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-                  <div className="p-3 flex items-center gap-3 border border-emerald-500/20 bg-emerald-950/10 rounded-xl">
-                    <div className="w-9 h-9 rounded-full bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-sm">
-                      {refHoje?.ref87?.[0] || "?"}
-                    </div>
-                    <div>
-                      <p className="text-[0.55rem] font-bold text-emerald-400 uppercase tracking-widest leading-none">
-                        Referente S87
-                      </p>
-                      <p className="text-xs font-black text-white uppercase tracking-wide truncate max-w-[180px] mt-1">
-                        {refHoje?.ref87 || "Não Definido"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="p-3 flex items-center gap-3 border border-cyan-500/20 bg-cyan-950/10 rounded-xl">
-                    <div className="w-9 h-9 rounded-full bg-cyan-500/20 text-cyan-400 font-black flex items-center justify-center text-sm">
-                      {refHoje?.refVol?.[0] || "?"}
-                    </div>
-                    <div>
-                      <p className="text-[0.55rem] font-bold text-cyan-400 uppercase tracking-widest leading-none">
-                        Ref. Volumosos
-                      </p>
-                      <p className="text-xs font-black text-white uppercase tracking-wide truncate max-w-[180px] mt-1">
-                        {refHoje?.refVol || "Não Definido"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="p-3 flex items-center justify-between border border-blue-500/15 bg-blue-950/10 rounded-xl">
-                    <div>
-                      <p className="text-[0.55rem] font-bold text-blue-400 uppercase tracking-widest leading-none">
-                        Equipe Ativa Geral
-                      </p>
-                      <p className="text-base font-black text-white mt-1 font-mono">
-                        {eqAtivaCount} Operadores
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[0.55rem] font-bold text-gray-500 uppercase leading-none">
-                        Apoio
-                      </p>
-                      <p className="text-xs font-bold text-blue-300 mt-1">
-                        {refHoje?.apoios || "—"}
-                      </p>
-                    </div>
-                  </div>
-                </div>,
-                "border-l-2 border-emerald-500/50"
-              );
-
-            case "executivos":
-              return renderWidget(
-                "executivos",
-                "Indicadores Executivos Consolidados",
-                <TrendingUp size={14} className="text-indigo-400" />,
-                `Volume: ${(totalVolume ?? 0).toLocaleString("pt-BR")} | SLA: ${mediaSLA}%`,
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 w-full">
-                  <div className="kpi-card">
-                    <div className="kpi-value text-white font-mono">
-                      {(totalVolume ?? 0).toLocaleString("pt-BR")}
-                    </div>
-                    <div className="kpi-label">Volume Total</div>
-                    <div className="text-[9px] text-zinc-500 mt-1 font-sans">
-                      Soma ATIV real-time
-                    </div>
-                  </div>
-                  <div className="kpi-card">
-                    <div className="kpi-value text-sky-400 font-mono">
-                      {mediaUPH}
-                    </div>
-                    <div className="kpi-label">Produtividade Média</div>
-                    <div className="text-[9px] text-zinc-500 mt-1 font-sans">
-                      UPH médio operacional
-                    </div>
-                  </div>
-                  <div className="kpi-card">
-                    <div className="kpi-value text-emerald-400 font-mono">
-                      {mediaSLA}%
-                    </div>
-                    <div className="kpi-label">Eficiência (SLA)</div>
-                    <div className="text-[9px] text-zinc-500 mt-1 font-sans">
-                      SLA médio da entrega
-                    </div>
-                  </div>
-                  <div className="kpi-card">
-                    <div className="kpi-value text-indigo-400 font-mono">
-                      {(capTotal ?? 0).toLocaleString("pt-BR")}
-                    </div>
-                    <div className="kpi-label">Capacidade Ativa</div>
-                    <div className="text-[9px] text-zinc-500 mt-1 font-sans">
-                      Meta de abertura
-                    </div>
-                  </div>
-                  <div className="kpi-card">
-                    <div className="kpi-value text-amber-500 font-mono">
-                      {gargalo ? `S${gargalo.id}` : "—"}
-                    </div>
-                    <div className="kpi-label">Gargalo Ativo</div>
-                    <div className="text-[9px] text-zinc-500 mt-1 font-sans">
-                      Menor UPH ({gargalo?.uph || 0} UPH)
-                    </div>
-                  </div>
-                  <div className="kpi-card">
-                    <div className="kpi-value text-red-500 font-mono">
-                      {totalRiscoSetores}
-                    </div>
-                    <div className="kpi-label">Risco Crítico</div>
-                    <div className="text-[9px] text-zinc-500 mt-1 font-sans">
-                      Setores em perigo/BSI
-                    </div>
-                  </div>
-                </div>,
-                "border-l-2 border-indigo-500/50"
-              );
-
-            case "atrasos":
-              {
-                // Real-time calculations based on active dataset
-                const totalLojasRadar = radar.length;
-                const naoColetadas = radar.filter(r => r.vol === 0 || r.prog === 0).length;
-                const pendentesCarregamento = radar.filter(r => r.prog > 0 && r.prog < 100).length;
-                const concluidasExp = radar.filter(r => r.prog === 100).length;
-
-                const setoresComRiscoList = setores.map(s => {
-                  let risco: "baixo" | "medio" | "alto" = "baixo";
-                  let motivo = "Desempenho operacional estável e seguro.";
-                  
-                  if (s.infracaoSeguranca) {
-                    risco = "alto";
-                    motivo = "Infração de segurança / Bloqueio imediato de postos.";
-                  } else if (s.promessa < 98.5 || s.uph < 320) {
-                    risco = "alto";
-                    motivo = `KPI Crítico! UPH de ${s.uph} e SLA de ${s.promessa}% abaixo do limite de corte.`;
-                  } else if (s.promessa < 99.5 || s.uph < 450) {
-                    risco = "medio";
-                    motivo = `Atenção: Fluxo moderado de carregamento pendente (UPH: ${s.uph}).`;
+      {/* Terminal retrátil quando solicitado */}
+      <AnimatePresence>
+        {showTerminal && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden bg-black/90 border border-emerald-500/40 rounded-2xl p-4 font-mono text-xs shadow-2xl"
+          >
+            <div className="flex justify-between items-center pb-2 mb-2 border-b border-emerald-500/20">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold">
+                <Cpu size={14} />
+                <span>TERMINAL DE COMANDO &bull; AI COPIL LOGISTICS</span>
+              </div>
+              <button
+                onClick={() => setShowTerminal(false)}
+                className="text-zinc-500 hover:text-white p-1"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-1 pr-2 custom-scrollbar text-[11px]">
+              <div className="text-zinc-500">
+                Sintaxe permitida:{" "}
+                <span className="text-emerald-400">"S[Setor] [parâmetro] para [Valor]"</span> (ex:{" "}
+                <span className="text-sky-300">S87 promessa para 99.8</span>,{" "}
+                <span className="text-sky-300">S87 uph para 520</span>)
+              </div>
+              {terminalLogs.map((log, idx) => (
+                <div
+                  key={idx}
+                  className={
+                    log.startsWith("> ")
+                      ? "text-emerald-400 font-bold"
+                      : log.includes("Erro")
+                      ? "text-rose-400"
+                      : "text-zinc-300"
                   }
-                  
-                  return { id: s.id, risco, motivo, resp: s.resp };
-                });
-
-                const setoresAltoRisco = setoresComRiscoList.filter(s => s.risco === "alto").length;
-                const setoresMedioRisco = setoresComRiscoList.filter(s => s.risco === "medio").length;
-                const setoresBaixoRisco = setoresComRiscoList.filter(s => s.risco === "baixo").length;
-
-                return renderWidget(
-                  "atrasos",
-                  "Previsão Inteligente de Atrasos & Riscos",
-                  <AlertTriangle size={14} className="text-red-400" />,
-                  `Alertas Críticos: ${setoresAltoRisco + radar.filter(r => r.prog < 100 && r.vol > 0).length} | Monitoramento Ativo`,
-                  <div className="space-y-4 w-full text-xs">
-                    {/* Executive Risk Index Summary */}
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl">
-                        <p className="text-lg font-black text-red-400 font-mono leading-none">
-                          {setoresAltoRisco + radar.filter(r => r.prog < 70 && r.vol > 0).length}
-                        </p>
-                        <p className="text-[8px] text-zinc-400 uppercase font-bold tracking-widest mt-1">Risco Alto</p>
-                      </div>
-                      <div className="bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-xl">
-                        <p className="text-lg font-black text-amber-400 font-mono leading-none">
-                          {setoresMedioRisco + radar.filter(r => r.prog >= 70 && r.prog < 100).length}
-                        </p>
-                        <p className="text-[8px] text-zinc-400 uppercase font-bold tracking-widest mt-1">Risco Médio</p>
-                      </div>
-                      <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl">
-                        <p className="text-lg font-black text-emerald-400 font-mono leading-none">
-                          {setoresBaixoRisco + concluidasExp}
-                        </p>
-                        <p className="text-[8px] text-zinc-400 uppercase font-bold tracking-widest mt-1">Risco Baixo</p>
-                      </div>
-                    </div>
-
-                    {/* Automatic Calculations Details Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 font-mono">
-                      <div className="bg-white/[0.01] border border-white/5 p-2 rounded-lg text-left">
-                        <span className="text-[8px] text-zinc-500 uppercase tracking-widest block">Pendentes Corte</span>
-                        <span className="text-sm font-black text-white">{radar.filter(r => r.prog < 100).length} Lojas</span>
-                      </div>
-                      <div className="bg-white/[0.01] border border-white/5 p-2 rounded-lg text-left">
-                        <span className="text-[8px] text-zinc-500 uppercase tracking-widest block">Sem Coleta</span>
-                        <span className="text-sm font-black text-amber-400">{naoColetadas} Lojas</span>
-                      </div>
-                      <div className="bg-white/[0.01] border border-white/5 p-2 rounded-lg text-left">
-                        <span className="text-[8px] text-zinc-500 uppercase tracking-widest block">Carregamentos</span>
-                        <span className="text-sm font-black text-indigo-400">{pendentesCarregamento} Ativos</span>
-                      </div>
-                      <div className="bg-white/[0.01] border border-white/5 p-2 rounded-lg text-left">
-                        <span className="text-[8px] text-zinc-500 uppercase tracking-widest block">Concluídas</span>
-                        <span className="text-sm font-black text-emerald-400">{concluidasExp} Lojas</span>
-                      </div>
-                    </div>
-
-                    {/* Dynamic Alert Rows */}
-                    <div className="space-y-2">
-                      <p className="text-[8px] text-zinc-400 uppercase font-black tracking-widest mb-1">
-                        Detalhamento de Alertas Preventivos
-                      </p>
-                      
-                      <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
-                        {/* Lojas com pendências críticas */}
-                        {radar.map((r, idx) => {
-                          if (r.prog === 100) return null;
-                          const isCritical = r.prog < 60;
-                          const riskBadge = isCritical ? (
-                            <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[8px] font-black px-1 rounded font-mono">RISCO ALTO</span>
-                          ) : (
-                            <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[8px] font-black px-1 rounded font-mono">RISCO MÉDIO</span>
-                          );
-                          return (
-                            <div key={`alert-r-${idx}`} className="flex items-center justify-between p-2 bg-black/30 border border-white/5 rounded-lg">
-                              <div className="text-left">
-                                <p className="font-bold text-white uppercase">{r.loja}</p>
-                                <p className="text-[9px] text-zinc-500 font-mono">Expedição: {r.prog}% • Corte às {r.corte} • {r.vol - r.ativ} volumosos restantes</p>
-                              </div>
-                              <div>{riskBadge}</div>
-                            </div>
-                          );
-                        })}
-
-                        {/* Setores com desvios de produtividade */}
-                        {setoresComRiscoList.map((s) => {
-                          if (s.risco === "baixo") return null;
-                          const riskBadge = s.risco === "alto" ? (
-                            <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[8px] font-black px-1 rounded font-mono">RISCO ALTO</span>
-                          ) : (
-                            <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[8px] font-black px-1 rounded font-mono">RISCO MÉDIO</span>
-                          );
-                          return (
-                            <div key={`alert-s-${s.id}`} className="flex items-center justify-between p-2 bg-black/30 border border-white/5 rounded-lg">
-                              <div className="text-left">
-                                <p className="font-bold text-white uppercase font-sans">Setor S{s.id} ({s.resp})</p>
-                                <p className="text-[9px] text-zinc-500 leading-snug">{s.motivo}</p>
-                              </div>
-                              <div>{riskBadge}</div>
-                            </div>
-                          );
-                        })}
-
-                        {radar.filter(r => r.prog < 100).length === 0 && setoresComRiscoList.filter(s => s.risco !== "baixo").length === 0 && (
-                          <div className="p-3 text-center text-zinc-500 bg-white/[0.01] border border-dashed border-white/5 rounded-lg">
-                            Sem gargalos ativos. Toda a operação está em conformidade com o SLA!
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>,
-                  "border-l-2 border-red-500/50"
-                );
-              }
-
-            case "setores": {
-              const DIAS_LISTA = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-              const hojeIdx = new Date().getDay();
-              const nomeHoje = DIAS_LISTA[hojeIdx];
-              const plantaoHoje = referentesSemana.find(
-                r => r.dia?.toLowerCase().trim().startsWith(nomeHoje.toLowerCase().slice(0, 3)) ||
-                     r.dia?.toLowerCase().trim() === nomeHoje.toLowerCase()
-              ) || referentesSemana[hojeIdx] || referentesSemana[0];
-
-              return renderWidget(
-                "setores",
-                "Monitor de Setores Ativos",
-                <Activity size={14} className="text-indigo-400" />,
-                `Avg SLA: ${mediaSLA}% | Ativos: ${totalVolume}`,
-                <div className="w-full space-y-4">
-                  {plantaoHoje && (
-                    <div className="w-full flex flex-wrap items-center justify-between bg-indigo-950/40 border border-indigo-500/20 rounded-xl px-4 py-2.5 text-xs gap-2">
-                      <div className="flex items-center gap-2 text-indigo-300 font-bold uppercase tracking-wider">
-                        <Users size={14} className="text-indigo-400" />
-                        <span>Plantão Ativo ({plantaoHoje.dia || nomeHoje}):</span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-4 text-zinc-300 font-mono text-[11px]">
-                        <span><strong className="text-indigo-300 font-sans">SB7 (S87):</strong> {plantaoHoje.ref87 || plantaoHoje.referente_sb7 || "—"}</span>
-                        <span><strong className="text-amber-300 font-sans">Volumosos:</strong> {plantaoHoje.refVol || plantaoHoje.referente_volumosos || "—"}</span>
-                        {(plantaoHoje.apoios || plantaoHoje.apoio) && (
-                          <span><strong className="text-sky-300 font-sans">Apoio:</strong> {plantaoHoje.apoios || plantaoHoje.apoio}</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-                  {setores.map((s, idx) => {
-                    const isDanger = s.bsi < 99 || s.infracaoSeguranca;
-                    const dangerClasses = isDanger
-                      ? "neon-border-red border-red-500/40"
-                      : "";
-                    const borderTopColor = isDanger ? "#ef4444" : "#6366f1";
-                    const isCaixasSector = ["87","087","88","088","89","089","90","090"].includes(String(s.id));
-                    const unitText = isCaixasSector ? "CAIXAS" : "COLIS";
-                    
-                    // Única fonte da verdade resolvida (Override > Sugerido > Default)
-                    const atividadeValue = s.ativ;
-                    const mix = getSectorMix(s.id, atividadeValue);
-
-                    const plantaoLider = s.id === "87" 
-                      ? (plantaoHoje?.ref87 || plantaoHoje?.referente_sb7 || s.resp || 'Líder') 
-                      : (plantaoHoje?.refVol || plantaoHoje?.referente_volumosos || s.resp || 'Líder');
-                    const plantaoLiderStr = String(plantaoLider || 'Líder');
-                    const initialLetter = plantaoLiderStr.charAt(0).toUpperCase() || 'L';
-                    const plantaoPrimeiroNome = plantaoLiderStr.split(" ")[0] || 'Líder';
-
-                    return (
-                      <div
-                        key={s.id}
-                        className={`glass-card p-6 flex flex-col justify-between border-t-2 transition-all duration-300 rounded-[18px] space-y-4 ${dangerClasses}`}
-                        style={{
-                          borderTopColor,
-                          borderLeftColor: "rgba(255,255,255,0.06)",
-                          borderRightColor: "rgba(255,255,255,0.06)",
-                          borderBottomColor: "rgba(255,255,255,0.06)",
-                          borderStyle: "solid",
-                          borderLeftWidth: "1px",
-                          borderRightWidth: "1px",
-                          borderBottomWidth: "1px",
-                          borderTopWidth: "2px"
-                        }}
-                      >
-                        {/* Header: Sector ID, Responsible, Security Toggle */}
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-full border border-white/10 overflow-hidden bg-black/50 flex items-center justify-center text-sm font-black text-zinc-300">
-                              {initialLetter}
-                            </div>
-                            <div>
-                              <p className="text-sm font-black text-white leading-none uppercase tracking-wider">
-                                SETOR {s.id} • {unitText}
-                              </p>
-                              <p className="text-[0.6rem] font-bold text-indigo-300 mt-1 uppercase tracking-widest truncate max-w-[120px]" title={`Plantão: ${plantaoLiderStr}`}>
-                                Plantão: {plantaoPrimeiroNome}
-                              </p>
-                            </div>
-                          </div>
-                          {isEditable && (
-                            <button
-                              type="button"
-                              onClick={() => onToggleSeguranca(idx)}
-                              className={`px-2 py-1 rounded text-[0.6rem] font-black tracking-widest uppercase transition-colors flex items-center gap-1 ${
-                                s.infracaoSeguranca
-                                  ? "bg-red-950/80 text-red-400 border border-red-800/40 pulse-anim"
-                                  : "bg-emerald-950/80 text-emerald-400 border border-emerald-800/40"
-                              }`}
-                            >
-                              <span>🛡️</span>
-                              <span>SEGURANÇA</span>
-                            </button>
-                          )}
-                        </div>
-
-                        {/* HIGH-PROMINENCE ELEMENT: Atividade Principal Display */}
-                        <div
-                          onClick={() => {
-                            if (isEditable) {
-                              setEditingMetric({ sid: s.id, field: "ativ" });
-                              setEditMetricValue(String(s.ativ));
-                            }
-                          }}
-                          className={`flex flex-col items-center justify-center py-4 bg-white/[0.02] border border-white/5 rounded-2xl relative overflow-hidden transition-all duration-200 group/ativ ${
-                            isEditable ? "cursor-pointer hover:bg-indigo-500/10 hover:border-indigo-500/30" : ""
-                          }`}
-                        >
-                          <span className="text-[0.65rem] font-black text-zinc-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                            ATIVIDADE
-                            {isEditable && (
-                              <Edit3
-                                size={10}
-                                className="text-zinc-500 group-hover/ativ:text-indigo-400 transition-colors"
-                              />
-                            )}
-                          </span>
-                          {editingMetric?.sid === s.id && editingMetric?.field === "ativ" ? (
-                            <div className="flex items-center gap-1 z-10" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                type="number"
-                                value={editMetricValue}
-                                onChange={(e) => setEditMetricValue(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") handleSaveInline();
-                                  if (e.key === "Escape") setEditingMetric(null);
-                                }}
-                                className="w-24 text-center font-black font-mono text-xl bg-black border border-indigo-500 rounded px-1.5 py-0.5 text-white focus:outline-none"
-                                autoFocus
-                              />
-                              <button
-                                onClick={handleSaveInline}
-                                className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold cursor-pointer"
-                              >
-                                ✓
-                              </button>
-                              <button
-                                onClick={() => setEditingMetric(null)}
-                                className="p-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded text-[10px] font-bold cursor-pointer"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          ) : (
-                            <span 
-                              onClick={(e) => {
-                                if (isEditable) {
-                                  e.stopPropagation();
-                                  handleOpenEditUniversos(s.id, atividadeValue, e);
-                                }
-                              }}
-                              className={`text-4xl lg:text-5xl font-black font-mono tracking-tight text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.05)] ${isEditable ? 'cursor-pointer hover:text-indigo-300 transition-colors' : ''}`}
-                              title={isEditable ? "Clique para editar os parâmetros e a atividade deste setor" : undefined}
-                            >
-                              {(atividadeValue ?? 0).toLocaleString("pt-BR")}
-                            </span>
-                          )}
-
-
-                        </div>
-
-                        {/* BLOCO DE UNIVERSOS DE PRODUTOS */}
-                        {(() => {
-                          const mix = getSectorMix(s.id, atividadeValue);
-                          return (
-                            <div 
-                              onClick={(e) => isEditable && handleOpenEditUniversos(s.id, atividadeValue, e)}
-                              className={`bg-white/[0.02] border border-white/5 p-2.5 rounded-xl space-y-2 transition-all group/uni ${
-                                isEditable ? "cursor-pointer hover:bg-white/[0.04] hover:border-indigo-500/30" : ""
-                              }`}
-                            >
-                              <div className="flex justify-between items-center text-[0.6rem] font-bold text-zinc-400">
-                                <span className="flex items-center gap-1 text-indigo-300">
-                                  <PieChart size={11} />
-                                  <span>UNIVERSOS DE PRODUTOS</span>
-                                </span>
-                                <div className="flex items-center gap-1.5 font-mono">
-                                  <span className="text-zinc-300">{(mix.total ?? 0).toLocaleString('pt-BR')} un</span>
-                                  {isEditable && (
-                                    <span className="text-[9px] text-indigo-400 font-sans font-bold group-hover/uni:underline flex items-center gap-0.5">
-                                      <Sliders size={9} /> Editar
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Mini Barra Segmentada Proporcional dos Universos */}
-                              <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-black/40 border border-white/5">
-                                <div style={{ width: `${mix.alimentoPct}%` }} className="bg-amber-500 h-full" title={`Alimento: ${(mix.alimento ?? 0).toLocaleString('pt-BR')} (${mix.alimentoPct}%)`}></div>
-                                <div style={{ width: `${mix.montanhaPct}%` }} className="bg-purple-500 h-full" title={`Montanha: ${(mix.montanha ?? 0).toLocaleString('pt-BR')} (${mix.montanhaPct}%)`}></div>
-                                {mix.customUniversos.map((cu, idx) => (
-                                  <div
-                                    key={`dash-bar-custom-${idx}`}
-                                    style={{ width: `${cu.pct}%` }}
-                                    className="bg-cyan-500 h-full"
-                                    title={`${cu.name}: ${(cu.value ?? 0).toLocaleString('pt-BR')} (${cu.pct}%)`}
-                                  ></div>
-                                ))}
-                              </div>
-
-                              {/* Pílulas de Universos (Alimento, Montanha) */}
-                              <div className="grid grid-cols-2 gap-1.5 text-[0.6rem] font-mono">
-                                <div className="bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg flex flex-col">
-                                  <span className="text-amber-400 font-sans flex items-center gap-0.5 font-bold text-[0.55rem]">
-                                    <Apple size={9} /> 🍎 Alimento
-                                  </span>
-                                  <span className="text-white font-bold text-[0.65rem]">{(mix.alimento ?? 0).toLocaleString('pt-BR')} <span className="text-amber-400/80 font-normal text-[0.55rem]">({mix.alimentoPct}%)</span></span>
-                                </div>
-
-                                <div className="bg-purple-500/10 border border-purple-500/20 px-2 py-1 rounded-lg flex flex-col">
-                                  <span className="text-purple-400 font-sans flex items-center gap-0.5 font-bold text-[0.55rem]">
-                                    <Mountain size={9} /> ⛰️ Montanha
-                                  </span>
-                                  <span className="text-white font-bold text-[0.65rem]">{(mix.montanha ?? 0).toLocaleString('pt-BR')} <span className="text-purple-400/80 font-normal text-[0.55rem]">({mix.montanhaPct}%)</span></span>
-                                </div>
-                              </div>
-
-                              {/* Universos Customizados */}
-                              {mix.customUniversos.length > 0 && (
-                                <div className="grid grid-cols-2 gap-1.5 text-[0.6rem] font-mono">
-                                  {mix.customUniversos.map((cu, idx) => (
-                                    <div key={`dash-cu-${idx}`} className="bg-cyan-500/10 border border-cyan-500/20 px-2 py-1 rounded-lg flex flex-col">
-                                      <span className="text-cyan-400 font-sans flex items-center gap-0.5 font-bold text-[0.55rem] truncate">
-                                        <Tag size={9} /> {cu.name}
-                                      </span>
-                                      <span className="text-white font-bold text-[0.65rem]">{(cu.value ?? 0).toLocaleString('pt-BR')} <span className="text-cyan-400/80 font-normal text-[0.55rem]">({cu.pct}%)</span></span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {/* Card de REABASTECIMENTO */}
-                              <div className="bg-amber-950/40 border border-amber-500/50 px-3 py-2 rounded-xl flex items-center justify-between shadow-sm">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-6 h-6 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-400">
-                                    <RotateCcw size={13} />
-                                  </div>
-                                  <div>
-                                    <span className="text-amber-400 font-sans font-black text-[0.65rem] uppercase tracking-wider block">
-                                      REABASTECIMENTO
-                                    </span>
-                                    <span className="text-[0.55rem] text-amber-300/70 font-sans block">
-                                      Caixas para reabastecimento
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="flex items-baseline gap-1 font-mono">
-                                  <span className="text-amber-300 font-black text-lg">{(s.reproTotal ?? (parseInt(reaproData?.setores?.[s.id]?.feitoDAll?.toString() || "0") || (s.id === '87' ? 151 : 127))).toLocaleString('pt-BR')}</span>
-                                  <span className="text-amber-400/80 text-[0.65rem] font-bold">CX</span>
-                                </div>
-                              </div>
-
-                              {/* Card de COLIS COLETA */}
-                              <div 
-                                onClick={(e) => {
-                                  if (isEditable) {
-                                    handleOpenEditUniversos(s.id, s.ativ, e);
-                                  }
-                                }}
-                                className={`bg-emerald-950/40 border border-emerald-500/50 ${isEditable ? 'hover:border-emerald-400 cursor-pointer' : ''} px-3 py-2 rounded-xl flex items-center justify-between shadow-sm transition-all group`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
-                                    <Package size={13} />
-                                  </div>
-                                  <div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-emerald-400 font-sans font-black text-[0.65rem] uppercase tracking-wider block">
-                                        COLIS COLETA
-                                      </span>
-                                      {s.overrides?.colis !== undefined && s.overrides?.colis !== null && (
-                                        <span className="text-[0.55rem] font-bold text-amber-300 bg-amber-500/20 px-1 rounded border border-amber-500/30">
-                                          MANUAL
-                                        </span>
-                                      )}
-                                    </div>
-                                    <span className="text-[0.55rem] text-emerald-300/70 font-sans block">
-                                      Volume total de colis
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="flex items-baseline gap-1 font-mono">
-                                  <span className="text-emerald-300 font-black text-lg">{(s.colis ?? mix.colis ?? 0).toLocaleString('pt-BR')}</span>
-                                  <span className="text-emerald-400/80 text-[0.65rem] font-bold">COLIS</span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {/* Space-Optimized 2x2 Grid for Secondary Operational Metrics */}
-                        <div className="grid grid-cols-2 gap-3 mt-auto pt-1">
-                          {/* PROMESSA */}
-                          <div
-                            onClick={() => {
-                              if (isEditable) {
-                                setEditingMetric({ sid: s.id, field: "promessa" });
-                                setEditMetricValue(String(s.promessa));
-                              }
-                            }}
-                            className={`bg-black/20 p-3 rounded-xl border border-white/5 flex flex-col justify-between transition-all duration-200 group/prom ${
-                              isEditable ? "cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/20" : ""
-                            }`}
-                          >
-                            <span className="text-[0.55rem] font-semibold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-                              Promessa
-                              {isEditable && (
-                                <Edit3
-                                  size={8}
-                                  className="text-zinc-600 group-hover/prom:text-emerald-400 transition-colors"
-                                />
-                              )}
-                            </span>
-                            {editingMetric?.sid === s.id && editingMetric?.field === "promessa" ? (
-                              <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  value={editMetricValue}
-                                  onChange={(e) => setEditMetricValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") handleSaveInline();
-                                    if (e.key === "Escape") setEditingMetric(null);
-                                  }}
-                                  className="w-14 text-center text-xs font-mono bg-black border border-emerald-500 rounded py-0.5 text-emerald-400 focus:outline-none"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={handleSaveInline}
-                                  className="p-0.5 bg-emerald-600 text-white rounded text-[8px]"
-                                >
-                                  ✓
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-lg lg:text-xl font-black text-emerald-400 font-mono mt-0.5">
-                                {s.promessa}%
-                              </span>
-                            )}
-                          </div>
-
-                          {/* UPH */}
-                          <div
-                            onClick={() => {
-                              if (isEditable) {
-                                setEditingMetric({ sid: s.id, field: "uph" });
-                                setEditMetricValue(String(s.uph));
-                              }
-                            }}
-                            className={`bg-black/20 p-3 rounded-xl border border-white/5 flex flex-col justify-between transition-all duration-200 group/uph ${
-                              isEditable ? "cursor-pointer hover:bg-sky-500/10 hover:border-sky-500/20" : ""
-                            }`}
-                          >
-                            <span className="text-[0.55rem] font-semibold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-                              UPH
-                              {isEditable && (
-                                <Edit3
-                                  size={8}
-                                  className="text-zinc-600 group-hover/uph:text-sky-400 transition-colors"
-                                />
-                              )}
-                            </span>
-                            {editingMetric?.sid === s.id && editingMetric?.field === "uph" ? (
-                              <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="number"
-                                  value={editMetricValue}
-                                  onChange={(e) => setEditMetricValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") handleSaveInline();
-                                    if (e.key === "Escape") setEditingMetric(null);
-                                  }}
-                                  className="w-14 text-center text-xs font-mono bg-black border border-sky-500 rounded py-0.5 text-sky-400 focus:outline-none"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={handleSaveInline}
-                                  className="p-0.5 bg-sky-600 text-white rounded text-[8px]"
-                                >
-                                  ✓
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-lg lg:text-xl font-black text-sky-400 font-mono mt-0.5">
-                                {s.uph}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* BSI */}
-                          <div
-                            onClick={() => {
-                              if (isEditable) {
-                                setEditingMetric({ sid: s.id, field: "bsi" });
-                                setEditMetricValue(String(s.bsi));
-                              }
-                            }}
-                            className={`bg-black/20 p-3 rounded-xl border border-white/5 flex flex-col justify-between transition-all duration-200 group/bsi ${
-                              isEditable ? "cursor-pointer hover:bg-cyan-500/10 hover:border-cyan-500/20" : ""
-                            }`}
-                          >
-                            <span className="text-[0.55rem] font-semibold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-                              BSI
-                              {isEditable && (
-                                <Edit3
-                                  size={8}
-                                  className="text-zinc-600 group-hover/bsi:text-cyan-400 transition-colors"
-                                />
-                              )}
-                            </span>
-                            {editingMetric?.sid === s.id && editingMetric?.field === "bsi" ? (
-                              <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  value={editMetricValue}
-                                  onChange={(e) => setEditMetricValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") handleSaveInline();
-                                    if (e.key === "Escape") setEditingMetric(null);
-                                  }}
-                                  className="w-14 text-center text-xs font-mono bg-black border border-cyan-500 rounded py-0.5 text-cyan-400 focus:outline-none"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={handleSaveInline}
-                                  className="p-0.5 bg-cyan-600 text-white rounded text-[8px]"
-                                >
-                                  ✓
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-lg lg:text-xl font-black text-cyan-400 font-mono mt-0.5">
-                                {s.bsi}%
-                              </span>
-                            )}
-                          </div>
-
-                          {/* ERROS PICKING */}
-                          <div
-                            onClick={() => {
-                              if (isEditable) {
-                                setEditingMetric({ sid: s.id, field: "errosPicking" });
-                                setEditMetricValue(String(s.errosPicking));
-                              }
-                            }}
-                            className={`bg-black/20 p-3 rounded-xl border border-white/5 flex flex-col justify-between transition-all duration-200 group/err ${
-                              isEditable ? "cursor-pointer hover:bg-red-500/10 hover:border-red-500/20" : ""
-                            }`}
-                          >
-                            <span className="text-[0.55rem] font-semibold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-                              Erros Picking
-                              {isEditable && (
-                                <Edit3
-                                  size={8}
-                                  className="text-zinc-600 group-hover/err:text-red-400 transition-colors"
-                                />
-                              )}
-                            </span>
-                            {editingMetric?.sid === s.id && editingMetric?.field === "errosPicking" ? (
-                              <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  value={editMetricValue}
-                                  onChange={(e) => setEditMetricValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") handleSaveInline();
-                                    if (e.key === "Escape") setEditingMetric(null);
-                                  }}
-                                  className="w-14 text-center text-xs font-mono bg-black border border-red-500 rounded py-0.5 text-red-400 focus:outline-none"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={handleSaveInline}
-                                  className="p-0.5 bg-red-600 text-white rounded text-[8px]"
-                                >
-                                  ✓
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-lg lg:text-xl font-black text-red-400 font-mono mt-0.5">
-                                {s.errosPicking}%
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                >
+                  {log}
                 </div>
-                </div>,
-                "border-t-2 border-indigo-500"
-              );
-            }
+              ))}
+            </div>
+            <form onSubmit={handleTerminalSubmit} className="mt-3 flex items-center gap-2">
+              <span className="text-emerald-400 font-bold">&gt;_</span>
+              <input
+                type="text"
+                value={terminalInput}
+                onChange={(e) => setTerminalInput(e.target.value)}
+                placeholder="Digite um comando para calibrar setor..."
+                className="w-full bg-black/70 border border-emerald-500/30 rounded-lg px-3 py-1.5 text-emerald-200 focus:outline-none focus:border-emerald-400 font-mono text-xs"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold"
+              >
+                Executar
+              </button>
+            </form>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            case "copil":
-              return renderWidget(
-                "copil",
-                "Gestão à Vista (COPIL)",
-                <Shield size={14} className="text-emerald-400" />,
-                `Setor S${copilActiveSector} Ativo`,
-                <div className="w-full">
-                  <div className="flex items-center gap-3 mb-3 pb-2 border-b border-white/5">
-                    <span className="text-[0.65rem] font-bold text-gray-500 uppercase tracking-widest">
-                      Setor Ativo:
+      {/* ========================================================================= */}
+      {/* 👥 1. SEÇÃO ESCALA (Plantão, Liderança & Equipe Ativa) */}
+      {/* ========================================================================= */}
+      {(activeSection === "all" || activeSection === "escala") && (
+        <section className="space-y-3" id="painel-secao-escala">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
+              <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                <Users size={16} className="text-emerald-400" />
+                Escala &amp; Plantão de Liderança — Hoje ({nomeHoje})
+              </h2>
+            </div>
+            {onNavigateTab && (
+              <button
+                onClick={() => onNavigateTab("capacidade")}
+                className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-bold transition-colors"
+              >
+                <span>Gerenciar Escala Completa</span>
+                <ArrowRight size={13} />
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card Referente S87 / SB7 */}
+            <div className="bg-[#0b0f14] border border-emerald-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-emerald-500/40 transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-black text-base flex items-center justify-center shadow-inner">
+                  {(plantaoHoje?.ref87 || plantaoHoje?.referente_sb7 || "S")?.[0]?.toUpperCase()}
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block">
+                    Referente Setor 87
+                  </span>
+                  <p className="text-sm font-black text-white uppercase truncate max-w-[150px] mt-0.5">
+                    {plantaoHoje?.ref87 || plantaoHoje?.referente_sb7 || "Não Definido"}
+                  </p>
+                  <span className="text-[10px] text-zinc-500 font-mono">Liderança Ativa</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-mono font-bold text-emerald-400/90 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded-md">
+                  S87
+                </span>
+              </div>
+            </div>
+
+            {/* Card Referente Volumosos */}
+            <div className="bg-[#0b0f14] border border-cyan-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-cyan-500/40 transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 font-black text-base flex items-center justify-center shadow-inner">
+                  {(plantaoHoje?.refVol || plantaoHoje?.referente_volumosos || "V")?.[0]?.toUpperCase()}
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest block">
+                    Ref. Volumosos (S88/86/89)
+                  </span>
+                  <p className="text-sm font-black text-white uppercase truncate max-w-[150px] mt-0.5">
+                    {plantaoHoje?.refVol || plantaoHoje?.referente_volumosos || "Não Definido"}
+                  </p>
+                  <span className="text-[10px] text-zinc-500 font-mono">Liderança Volumosos</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-mono font-bold text-cyan-400/90 bg-cyan-950/40 border border-cyan-500/30 px-2 py-0.5 rounded-md">
+                  VOL
+                </span>
+              </div>
+            </div>
+
+            {/* Card Apoio do Turno */}
+            <div className="bg-[#0b0f14] border border-amber-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-amber-500/40 transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 font-black text-base flex items-center justify-center shadow-inner">
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block">
+                    Apoio &amp; Retaguarda
+                  </span>
+                  <p className="text-sm font-black text-white uppercase truncate max-w-[150px] mt-0.5">
+                    {plantaoHoje?.apoios || plantaoHoje?.apoio || "Sem Apoio Registrado"}
+                  </p>
+                  <span className="text-[10px] text-zinc-500 font-mono">Suporte e Fechamento</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-mono font-bold text-amber-400/90 bg-amber-950/40 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                  APOIO
+                </span>
+              </div>
+            </div>
+
+            {/* Card Quadro de Operadores Ativos */}
+            <div className="bg-[#0b0f14] border border-indigo-500/20 rounded-2xl p-4 flex flex-col justify-between shadow-sm hover:border-indigo-500/40 transition-colors">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
+                  Equipe em Operação
+                </span>
+                <span className="text-xs font-mono font-bold text-white bg-indigo-950/50 border border-indigo-500/30 px-2 py-0.5 rounded-md">
+                  {operadoresEmOperacao} / {totalColaboradores} ativos
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-white/5 text-[11px] font-mono">
+                <div className="flex items-center gap-1 text-emerald-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span>{operadoresEmOperacao} Separação</span>
+                </div>
+                <div className="flex items-center gap-1 text-amber-400">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                  <span>{operadoresApoio} Apoio/Reapro</span>
+                </div>
+                <div className="flex items-center gap-1 text-zinc-400">
+                  <span className="w-2 h-2 rounded-full bg-zinc-500"></span>
+                  <span>{operadoresPausa} Pausa</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 📊 2. SEÇÃO MONITOR (Monitor de Setores Ativos & Métricas em Tempo Real) */}
+      {/* ========================================================================= */}
+      {(activeSection === "all" || activeSection === "monitor") && (
+        <section className="space-y-4" id="painel-secao-monitor">
+          {/* Header do Monitor & KPIs de Resumo Operacional */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-pulse"></div>
+              <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                <Activity size={16} className="text-sky-400" />
+                Monitor de Setores Ativos &amp; Operação
+              </h2>
+            </div>
+            {/* Mini Resumo Operacional */}
+            <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+              <div className="bg-black/40 border border-white/10 px-3 py-1 rounded-xl flex items-center gap-1.5">
+                <span className="text-zinc-400">Volume Total:</span>
+                <span className="text-white font-black">{totalVolumeAtiv.toLocaleString("pt-BR")}</span>
+              </div>
+              <div className="bg-black/40 border border-white/10 px-3 py-1 rounded-xl flex items-center gap-1.5">
+                <span className="text-zinc-400">UPH Médio:</span>
+                <span className="text-sky-400 font-black">{mediaUPH}</span>
+              </div>
+              <div className="bg-black/40 border border-white/10 px-3 py-1 rounded-xl flex items-center gap-1.5">
+                <span className="text-zinc-400">SLA Médio:</span>
+                <span className="text-emerald-400 font-black">{mediaSLA}%</span>
+              </div>
+              <div className="bg-black/40 border border-amber-500/20 px-3 py-1 rounded-xl flex items-center gap-1.5">
+                <span className="text-amber-400/80">Reabastecimento:</span>
+                <span className="text-amber-300 font-black">{totalReabastecimento.toLocaleString("pt-BR")} CX</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Grid de Cards de Setores */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+            {setores.map((s, idx) => {
+              const isDanger = s.bsi < 99 || s.infracaoSeguranca;
+              const borderTopColor = isDanger ? "#ef4444" : "#6366f1";
+              const isCaixasSector = ["87", "087", "88", "088", "89", "089", "90", "090"].includes(String(s.id));
+              const unitText = isCaixasSector ? "CAIXAS" : "COLIS";
+
+              const atividadeValue = s.ativ;
+              const mix = getSectorMix(s.id, atividadeValue);
+
+              const plantaoLider =
+                s.id === "87"
+                  ? plantaoHoje?.ref87 || plantaoHoje?.referente_sb7 || s.resp || "Líder"
+                  : plantaoHoje?.refVol || plantaoHoje?.referente_volumosos || s.resp || "Líder";
+              const plantaoLiderStr = String(plantaoLider || "Líder");
+              const initialLetter = plantaoLiderStr.charAt(0).toUpperCase() || "L";
+              const plantaoPrimeiroNome = plantaoLiderStr.split(" ")[0] || "Líder";
+
+              return (
+                <div
+                  key={s.id}
+                  className={`bg-[#0c0c14] p-5 flex flex-col justify-between border-t-2 rounded-2xl space-y-3.5 shadow-md hover:border-indigo-500/30 transition-all ${
+                    isDanger ? "border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.15)]" : "border-white/5"
+                  }`}
+                  style={{ borderTopColor }}
+                >
+                  {/* Cabeçalho do Setor */}
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-xs font-black text-indigo-300">
+                        {initialLetter}
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-white uppercase tracking-wider leading-none">
+                          SETOR {s.id} &bull; {unitText}
+                        </p>
+                        <p className="text-[10px] font-bold text-indigo-300 mt-1 uppercase tracking-wider truncate max-w-[120px]">
+                          Líder: {plantaoPrimeiroNome}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isEditable && (
+                      <button
+                        type="button"
+                        onClick={() => onToggleSeguranca(idx)}
+                        className={`px-2 py-1 rounded text-[9px] font-black tracking-wider uppercase transition-colors flex items-center gap-1 ${
+                          s.infracaoSeguranca
+                            ? "bg-red-950/80 text-red-400 border border-red-800/40 animate-pulse"
+                            : "bg-emerald-950/80 text-emerald-400 border border-emerald-800/40"
+                        }`}
+                        title="Alternar status de segurança"
+                      >
+                        <Shield size={10} />
+                        <span>SEG</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* DISPLAY PRINCIPAL: ATIVIDADE */}
+                  <div
+                    onClick={() => {
+                      if (isEditable) {
+                        setEditingMetric({ sid: s.id, field: "ativ" });
+                        setEditMetricValue(String(s.ativ));
+                      }
+                    }}
+                    className={`flex flex-col items-center justify-center py-3.5 bg-black/40 border border-white/5 rounded-xl relative transition-all ${
+                      isEditable ? "cursor-pointer hover:bg-indigo-500/10 hover:border-indigo-500/30 group" : ""
+                    }`}
+                  >
+                    <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider mb-0.5 flex items-center gap-1.5">
+                      ATIVIDADE
+                      {isEditable && <Edit3 size={10} className="text-zinc-600 group-hover:text-indigo-400" />}
                     </span>
-                    <select
-                      value={copilActiveSector}
-                      onChange={(e) => setCopilActiveSector(e.target.value)}
-                      className="bg-zinc-900 border border-white/10 rounded px-2.5 py-1 text-white text-[0.65rem] font-black cursor-pointer focus:outline-none"
-                    >
-                      {setores.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          Setor {s.id} — {String(s.resp || 'Líder').split(" ")[0]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="overflow-x-auto custom-scrollbar max-h-[250px]">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 bg-[#0a0a0a] z-10">
-                        <tr className="text-[0.55rem] uppercase tracking-wider text-gray-400 border-b border-white/10">
-                          <th className="p-2 font-bold">KPI</th>
-                          <th className="p-2 font-bold text-center">Meta</th>
-                          <th className="p-2 font-bold text-center">Real</th>
-                          <th className="p-2 font-bold text-center">Nota</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-xs divide-y divide-white/5 font-mono">
-                        {Object.entries(copilData[copilActiveSector] || {}).flatMap(
-                          ([groupName, kpis]) => {
-                            return (kpis as Record<string, unknown>[]).map((kpi: Record<string, unknown>, idx: number) => {
-                              const comp = parseFloat((kpi.comp as string));
-                              const real = parseFloat((kpi.real as string));
-                              let nota = "—";
-                              if (!isNaN(comp) && !isNaN(real) && comp > 0) {
-                                nota = (kpi.inverso ? comp / real : real / comp).toFixed(2);
-                              }
-                              const nVal = parseFloat(nota);
-                              const cls =
-                                nota === "—"
-                                  ? "copil-note-unknown"
-                                  : nVal >= 1.0
-                                  ? "copil-note-A"
-                                  : nVal >= 0.8
-                                  ? "copil-note-B"
-                                  : nVal >= 0.6
-                                  ? "copil-note-C"
-                                  : "copil-note-D";
 
-                              return (
-                                <tr
-                                  key={`${groupName}-${idx}`}
-                                  className="hover:bg-white/[0.02]"
-                                >
-                                  <td className="p-2 text-zinc-300 text-[0.65rem] font-sans flex items-center gap-1.5">
-                                    {String(kpi.kpi ?? "")}
-                                    {Boolean(kpi.auto) && (
-                                      <span className="text-[8px] bg-sky-500/15 text-sky-400 px-1 py-0.2 rounded font-sans font-bold">
-                                        AUTO
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="p-2 text-center text-zinc-500">
-                                    {String(kpi.comp ?? "")}
-                                  </td>
-                                  <td className="p-2 text-center text-white font-bold">
-                                    {String(kpi.real ?? "")}
-                                  </td>
-                                  <td className={`p-2 text-center font-bold ${cls}`}>
-                                    {nota}
-                                  </td>
-                                </tr>
-                              );
-                            });
-                          }
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>,
-                "border-t-4 border-emerald-500"
-              );
-
-            case "radar":
-              return renderWidget(
-                "radar",
-                "Expedição: Radar de Lojas",
-                <Radio size={14} className="text-pink-400" />,
-                `${radar.length} Lojas Expedindo`,
-                <div className="w-full">
-                  <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/5">
-                    <p className="text-[10px] text-zinc-500 uppercase font-black">
-                      Cortes de Entrega
-                    </p>
-                    {isEditable && (
-                      <button
-                        type="button"
-                        onClick={handleRadarEditToggle}
-                        className="bg-pink-500/10 hover:bg-pink-500/20 text-pink-400 border border-pink-500/30 px-3 py-1 rounded text-xs font-bold transition-colors"
-                      >
-                        {radarEdit ? "Salvar" : "Editar Lojas"}
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">
-                    {radarEdit ? (
-                      <>
-                        {localRadar.map((l, i) => (
-                          <div
-                            key={i}
-                            className="border border-white/10 bg-black/40 rounded-xl p-3 space-y-2"
-                          >
-                            <div className="grid grid-cols-2 gap-2">
-                              <input
-                                value={l.corte}
-                                onChange={(e) => {
-                                  const copy = [...localRadar];
-                                  copy[i].corte = e.target.value;
-                                  setLocalRadar(copy);
-                                }}
-                                className="inp py-1 text-xs"
-                                placeholder="Corte"
-                              />
-                              <input
-                                type="number"
-                                value={l.prog}
-                                onChange={(e) => {
-                                  const copy = [...localRadar];
-                                  copy[i].prog = parseInt(e.target.value) || 0;
-                                  setLocalRadar(copy);
-                                }}
-                                className="inp py-1 text-xs"
-                                placeholder="Prog%"
-                              />
-                            </div>
-                            <input
-                              value={l.loja}
-                              onChange={(e) => {
-                                    const copy = [...localRadar];
-                                    copy[i].loja = e.target.value;
-                                    setLocalRadar(copy);
-                              }}
-                              className="inp py-1 text-xs"
-                              placeholder="Loja"
-                            />
-                            <div className="grid grid-cols-2 gap-2">
-                              <input
-                                type="number"
-                                value={l.vol}
-                                onChange={(e) => {
-                                  const copy = [...localRadar];
-                                  copy[i].vol = parseInt(e.target.value) || 0;
-                                  setLocalRadar(copy);
-                                }}
-                                className="inp py-1 text-xs"
-                                placeholder="Vol"
-                              />
-                              <input
-                                type="number"
-                                value={l.ativ}
-                                onChange={(e) => {
-                                  const copy = [...localRadar];
-                                  copy[i].ativ = parseInt(e.target.value) || 0;
-                                  setLocalRadar(copy);
-                                }}
-                                className="inp py-1 text-xs"
-                                placeholder="Ativ"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setLocalRadar(
-                                  localRadar.filter((_, idx) => idx !== i)
-                                );
-                              }}
-                              className="w-full bg-red-500/10 text-red-400 text-xs py-1 rounded hover:bg-red-500/20"
-                            >
-                              Remover
-                            </button>
-                          </div>
-                        ))}
+                    {editingMetric?.sid === s.id && editingMetric?.field === "ativ" ? (
+                      <div className="flex items-center gap-1 z-10" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="number"
+                          value={editMetricValue}
+                          onChange={(e) => setEditMetricValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveInline();
+                            if (e.key === "Escape") setEditingMetric(null);
+                          }}
+                          className="w-24 text-center font-black font-mono text-xl bg-black border border-indigo-500 rounded px-1.5 py-0.5 text-white focus:outline-none"
+                          autoFocus
+                        />
                         <button
-                          type="button"
-                          onClick={() =>
-                            setLocalRadar([
-                              ...localRadar,
-                              {
-                                corte: "00:00",
-                                loja: "Nova Loja",
-                                vol: 0,
-                                ativ: 0,
-                                prog: 0,
-                              },
-                            ])
-                          }
-                          className="w-full border border-dashed border-white/10 rounded-xl py-3 text-zinc-500 hover:text-white hover:border-white/20 text-xs font-bold transition"
+                          onClick={handleSaveInline}
+                          className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold"
                         >
-                          + Adicionar Loja
+                          ✓
                         </button>
-                      </>
+                        <button
+                          onClick={() => setEditingMetric(null)}
+                          className="p-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded text-[10px] font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     ) : (
-                      radar.map((l, i) => {
-                        const barColor =
-                          l.prog >= 80
-                            ? "bg-emerald-500"
-                            : l.prog >= 50
-                            ? "bg-amber-500"
-                            : "bg-red-500";
-                        const textColor =
-                          l.prog >= 80
-                            ? "text-emerald-400"
-                            : l.prog >= 50
-                            ? "text-amber-400"
-                            : "text-red-400";
-
-                        return (
-                          <div
-                            key={i}
-                            className="border border-white/5 bg-black/30 rounded-xl p-3 flex flex-col gap-2"
-                          >
-                            <div className="flex justify-between">
-                              <span className="text-[0.55rem] text-pink-400 font-bold uppercase">
-                                Corte {l.corte}
-                              </span>
-                              <span className={`text-[0.6rem] font-black ${textColor}`}>
-                                {l.prog}%
-                              </span>
-                            </div>
-                            <p className="text-xs font-bold text-white truncate">
-                              {l.loja}
-                            </p>
-                            <div className="flex gap-3 text-[0.55rem] text-zinc-500 font-mono">
-                              <span>
-                                Vol:{" "}
-                                <b className="text-white">
-                                  {(l.vol ?? 0).toLocaleString("pt-BR")}
-                                </b>
-                              </span>
-                              <span>
-                                Ativ:{" "}
-                                <b className="text-sky-400">
-                                  {(l.ativ ?? 0).toLocaleString("pt-BR")}
-                                </b>
-                              </span>
-                            </div>
-                            <div className="prog-track">
-                              <div
-                                className={`prog-fill ${barColor}`}
-                                style={{ width: `${Math.min(100, l.prog)}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>,
-                "border-l-2 border-pink-500/50 bg-pink-950/5"
-              );
-
-            case "bolsao":
-              return renderWidget(
-                "bolsao",
-                "Estratégia de Coleta (Bolsão D+1)",
-                <Layers size={14} className="text-amber-400" />,
-                `Hoje: ${bolsaoData.hojeFeito}/${bolsaoData.hojeMeta}`,
-                <div className="w-full space-y-4">
-                  <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/5">
-                    <p className="text-[10px] text-zinc-500 uppercase font-black">
-                      Meta Coletas Diárias
-                    </p>
-                    {isEditable && (
-                      <button
-                        type="button"
-                        onClick={handleBolsaoEditToggle}
-                        className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1 rounded text-xs font-bold transition-colors"
+                      <span
+                        onClick={(e) => {
+                          if (isEditable) {
+                            e.stopPropagation();
+                            handleOpenEditUniversos(s.id, atividadeValue, e);
+                          }
+                        }}
+                        className={`text-3xl lg:text-4xl font-black font-mono tracking-tight text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.05)] ${
+                          isEditable ? "cursor-pointer hover:text-indigo-300" : ""
+                        }`}
+                        title={isEditable ? "Clique para editar os parâmetros e proporções" : undefined}
                       >
-                        {bolsaoEdit ? "Salvar" : "Editar Plano"}
-                      </button>
+                        {(atividadeValue ?? 0).toLocaleString("pt-BR")}
+                      </span>
                     )}
                   </div>
-                  {bolsaoEdit ? (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-[0.6rem] font-bold text-amber-400 uppercase tracking-widest block mb-1">
-                          Hoje Meta
-                        </label>
-                        <input
-                          type="number"
-                          value={localBolsao.hojeMeta}
-                          onChange={(e) =>
-                            setLocalBolsao({
-                              ...localBolsao,
-                              hojeMeta: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="inp py-2 font-mono text-amber-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[0.6rem] font-bold text-amber-400 uppercase tracking-widest block mb-1">
-                          Hoje Feito
-                        </label>
-                        <input
-                          type="number"
-                          value={localBolsao.hojeFeito}
-                          onChange={(e) =>
-                            setLocalBolsao({
-                              ...localBolsao,
-                              hojeFeito: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="inp py-2 font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[0.6rem] font-bold text-sky-400 uppercase tracking-widest block mb-1">
-                          Amanhã Meta
-                        </label>
-                        <input
-                          type="number"
-                          value={localBolsao.amanhaMeta}
-                          onChange={(e) =>
-                            setLocalBolsao({
-                              ...localBolsao,
-                              amanhaMeta: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="inp py-2 font-mono text-sky-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[0.6rem] font-bold text-sky-400 uppercase tracking-widest block mb-1">
-                          Amanhã Feito
-                        </label>
-                        <input
-                          type="number"
-                          value={localBolsao.amanhaFeito}
-                          onChange={(e) =>
-                            setLocalBolsao({
-                              ...localBolsao,
-                              amanhaFeito: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="inp py-2 font-mono"
-                        />
+
+                  {/* UNIVERSOS DE PRODUTOS */}
+                  <div
+                    onClick={(e) => isEditable && handleOpenEditUniversos(s.id, atividadeValue, e)}
+                    className={`bg-black/30 border border-white/5 p-2.5 rounded-xl space-y-2 transition-all ${
+                      isEditable ? "cursor-pointer hover:bg-white/[0.04] hover:border-indigo-500/30 group" : ""
+                    }`}
+                  >
+                    <div className="flex justify-between items-center text-[10px] font-bold text-zinc-400">
+                      <span className="flex items-center gap-1 text-indigo-300">
+                        <PieChart size={11} />
+                        <span>UNIVERSOS</span>
+                      </span>
+                      <div className="flex items-center gap-1 font-mono">
+                        <span className="text-zinc-300">{(mix.total ?? 0).toLocaleString("pt-BR")} un</span>
+                        {isEditable && (
+                          <span className="text-[9px] text-indigo-400 font-sans font-bold group-hover:underline flex items-center gap-0.5">
+                            <Sliders size={9} /> Editar
+                          </span>
+                        )}
                       </div>
                     </div>
-                  ) : (
-                    <>
-                      <div>
-                        <div className="flex justify-between text-xs font-mono mb-1">
-                          <span className="text-amber-400 font-bold">Hoje Coleta</span>
-                          <span className="text-zinc-500">
-                            {(bolsaoData?.hojeFeito ?? 0).toLocaleString("pt-BR")} /{" "}
-                            {(bolsaoData?.hojeMeta ?? 0).toLocaleString("pt-BR")}
-                          </span>
-                        </div>
-                        <div className="prog-track">
-                          <div
-                            className="prog-fill bg-amber-500"
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                ((bolsaoData?.hojeFeito || 0) /
-                                  (bolsaoData?.hojeMeta || 1)) *
-                                  100
-                              )}%`,
-                            }}
-                          ></div>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex justify-between text-xs font-mono mb-1">
-                          <span className="text-sky-400 font-bold">
-                            Amanhã (D+1)
-                          </span>
-                          <span className="text-zinc-500">
-                            {(bolsaoData?.amanhaFeito ?? 0).toLocaleString("pt-BR")} /{" "}
-                            {(bolsaoData?.amanhaMeta ?? 0).toLocaleString("pt-BR")}
-                          </span>
-                        </div>
-                        <div className="prog-track">
-                          <div
-                            className="prog-fill bg-sky-500"
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                (bolsaoData.amanhaFeito /
-                                  (bolsaoData.amanhaMeta || 1)) *
-                                  100
-                              )}%`,
-                            }}
-                          ></div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>,
-                "border-l-2 border-amber-500/50 bg-amber-950/5"
-              );
 
-            case "reapro":
-              return renderWidget(
-                "reapro",
-                "Painel Operacional REAPRO",
-                <Boxes size={14} className="text-amber-400" />,
-                `D-ALL Total: ${totalDAllReal.toLocaleString("pt-BR")} CX • Término: ${displayTerminoPrevisao} (${tempoRestanteStr})`,
-                <div className="w-full" id="widget-reapro-panel">
-                  {/* Barra de Ações e Contexto Consciente */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-white/5">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 font-mono text-[10px] font-bold">
-                        <RotateCcw size={10} className="text-amber-400" />
-                        D-ALL CONECTADO
-                      </span>
-                      <span className="text-[10px] text-zinc-400 font-medium">
-                        Reposição de Caixas & Abastecimento Contínuo
-                      </span>
+                    {/* Barra Segmentada */}
+                    <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-black/50 border border-white/5">
+                      <div
+                        style={{ width: `${mix.alimentoPct}%` }}
+                        className="bg-amber-500 h-full"
+                        title={`Alimento: ${(mix.alimento ?? 0).toLocaleString("pt-BR")} (${mix.alimentoPct}%)`}
+                      ></div>
+                      <div
+                        style={{ width: `${mix.montanhaPct}%` }}
+                        className="bg-purple-500 h-full"
+                        title={`Montanha: ${(mix.montanha ?? 0).toLocaleString("pt-BR")} (${mix.montanhaPct}%)`}
+                      ></div>
+                      {mix.customUniversos.map((cu, cIdx) => (
+                        <div
+                          key={`mini-bar-custom-${cIdx}`}
+                          style={{ width: `${cu.pct}%` }}
+                          className="bg-cyan-500 h-full"
+                          title={`${cu.name}: ${(cu.value ?? 0).toLocaleString("pt-BR")} (${cu.pct}%)`}
+                        ></div>
+                      ))}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
-                        <Sparkles size={10} />
-                        <span>Automação Ativa ({operadoresApoio.length} op. apoio)</span>
+                    {/* Pílulas de Universos */}
+                    <div className="grid grid-cols-2 gap-1 text-[10px] font-mono">
+                      <div className="bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg flex flex-col">
+                        <span className="text-amber-400 font-sans flex items-center gap-0.5 font-bold text-[9px]">
+                          <Apple size={9} /> 🍎 Alim
+                        </span>
+                        <span className="text-white font-bold text-[10px]">
+                          {(mix.alimento ?? 0).toLocaleString("pt-BR")}{" "}
+                          <span className="text-amber-400/80 font-normal text-[8.5px]">({mix.alimentoPct}%)</span>
+                        </span>
                       </div>
-                      {isEditable && (
-                        <button
-                          id="reapro-btn-edit-toggle"
-                          type="button"
-                          onClick={handleReaproEditToggle}
-                          className="flex items-center gap-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 px-3 py-1 rounded text-xs font-bold transition-all shadow-sm active:scale-95"
-                        >
-                          <Edit3 size={11} />
-                          {reaproEdit ? "Salvar Alterações" : "Editar Parâmetros"}
-                        </button>
+
+                      <div className="bg-purple-500/10 border border-purple-500/20 px-2 py-1 rounded-lg flex flex-col">
+                        <span className="text-purple-400 font-sans flex items-center gap-0.5 font-bold text-[9px]">
+                          <Mountain size={9} /> ⛰️ Mont
+                        </span>
+                        <span className="text-white font-bold text-[10px]">
+                          {(mix.montanha ?? 0).toLocaleString("pt-BR")}{" "}
+                          <span className="text-purple-400/80 font-normal text-[8.5px]">({mix.montanhaPct}%)</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Bloco de Reabastecimento (CX) */}
+                    <div className="bg-amber-950/40 border border-amber-500/40 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <RotateCcw size={12} className="text-amber-400" />
+                        <span className="text-amber-400 font-sans font-bold text-[10px] uppercase">
+                          REABASTECIMENTO
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-1 font-mono">
+                        <span className="text-amber-300 font-black text-sm">
+                          {(s.reproTotal ?? (s.id === "87" ? 151 : 127)).toLocaleString("pt-BR")}
+                        </span>
+                        <span className="text-amber-400/80 text-[9px] font-bold">CX</span>
+                      </div>
+                    </div>
+
+                    {/* Bloco de Colis */}
+                    <div className="bg-emerald-950/40 border border-emerald-500/40 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Package size={12} className="text-emerald-400" />
+                        <span className="text-emerald-400 font-sans font-bold text-[10px] uppercase">
+                          COLIS COLETA
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-1 font-mono">
+                        <span className="text-emerald-300 font-black text-sm">
+                          {(s.colis ?? mix.colis ?? 0).toLocaleString("pt-BR")}
+                        </span>
+                        <span className="text-emerald-400/80 text-[9px] font-bold">COLIS</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 4 KPIs Operacionais (Promessa, UPH, BSI, Erros) */}
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/5">
+                    {/* PROMESSA (SLA) */}
+                    <div
+                      onClick={() => {
+                        if (isEditable) {
+                          setEditingMetric({ sid: s.id, field: "promessa" });
+                          setEditMetricValue(String(s.promessa));
+                        }
+                      }}
+                      className={`bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between ${
+                        isEditable ? "cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/30" : ""
+                      }`}
+                    >
+                      <span className="text-[9px] font-bold text-zinc-400 uppercase flex items-center justify-between">
+                        Promessa
+                        {isEditable && <Edit3 size={8} className="text-zinc-600" />}
+                      </span>
+                      {editingMetric?.sid === s.id && editingMetric?.field === "promessa" ? (
+                        <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={editMetricValue}
+                            onChange={(e) => setEditMetricValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveInline();
+                              if (e.key === "Escape") setEditingMetric(null);
+                            }}
+                            className="w-14 text-center text-xs font-mono bg-black border border-emerald-500 rounded py-0.5 text-emerald-400 focus:outline-none"
+                            autoFocus
+                          />
+                          <button onClick={handleSaveInline} className="p-0.5 bg-emerald-600 text-white rounded text-[8px]">
+                            ✓
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-base font-black text-emerald-400 font-mono">{s.promessa}%</span>
+                      )}
+                    </div>
+
+                    {/* UPH */}
+                    <div
+                      onClick={() => {
+                        if (isEditable) {
+                          setEditingMetric({ sid: s.id, field: "uph" });
+                          setEditMetricValue(String(s.uph));
+                        }
+                      }}
+                      className={`bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between ${
+                        isEditable ? "cursor-pointer hover:bg-sky-500/10 hover:border-sky-500/30" : ""
+                      }`}
+                    >
+                      <span className="text-[9px] font-bold text-zinc-400 uppercase flex items-center justify-between">
+                        UPH
+                        {isEditable && <Edit3 size={8} className="text-zinc-600" />}
+                      </span>
+                      {editingMetric?.sid === s.id && editingMetric?.field === "uph" ? (
+                        <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="number"
+                            value={editMetricValue}
+                            onChange={(e) => setEditMetricValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveInline();
+                              if (e.key === "Escape") setEditingMetric(null);
+                            }}
+                            className="w-14 text-center text-xs font-mono bg-black border border-sky-500 rounded py-0.5 text-sky-400 focus:outline-none"
+                            autoFocus
+                          />
+                          <button onClick={handleSaveInline} className="p-0.5 bg-sky-600 text-white rounded text-[8px]">
+                            ✓
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-base font-black text-sky-400 font-mono">{s.uph}</span>
+                      )}
+                    </div>
+
+                    {/* BSI */}
+                    <div
+                      onClick={() => {
+                        if (isEditable) {
+                          setEditingMetric({ sid: s.id, field: "bsi" });
+                          setEditMetricValue(String(s.bsi));
+                        }
+                      }}
+                      className={`bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between ${
+                        isEditable ? "cursor-pointer hover:bg-cyan-500/10 hover:border-cyan-500/30" : ""
+                      }`}
+                    >
+                      <span className="text-[9px] font-bold text-zinc-400 uppercase flex items-center justify-between">
+                        BSI
+                        {isEditable && <Edit3 size={8} className="text-zinc-600" />}
+                      </span>
+                      {editingMetric?.sid === s.id && editingMetric?.field === "bsi" ? (
+                        <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={editMetricValue}
+                            onChange={(e) => setEditMetricValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveInline();
+                              if (e.key === "Escape") setEditingMetric(null);
+                            }}
+                            className="w-14 text-center text-xs font-mono bg-black border border-cyan-500 rounded py-0.5 text-cyan-400 focus:outline-none"
+                            autoFocus
+                          />
+                          <button onClick={handleSaveInline} className="p-0.5 bg-cyan-600 text-white rounded text-[8px]">
+                            ✓
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-base font-black text-cyan-400 font-mono">{s.bsi}%</span>
+                      )}
+                    </div>
+
+                    {/* ERROS PICKING */}
+                    <div
+                      onClick={() => {
+                        if (isEditable) {
+                          setEditingMetric({ sid: s.id, field: "errosPicking" });
+                          setEditMetricValue(String(s.errosPicking));
+                        }
+                      }}
+                      className={`bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between ${
+                        isEditable ? "cursor-pointer hover:bg-red-500/10 hover:border-red-500/30" : ""
+                      }`}
+                    >
+                      <span className="text-[9px] font-bold text-zinc-400 uppercase flex items-center justify-between">
+                        Erros Pick.
+                        {isEditable && <Edit3 size={8} className="text-zinc-600" />}
+                      </span>
+                      {editingMetric?.sid === s.id && editingMetric?.field === "errosPicking" ? (
+                        <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={editMetricValue}
+                            onChange={(e) => setEditMetricValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveInline();
+                              if (e.key === "Escape") setEditingMetric(null);
+                            }}
+                            className="w-14 text-center text-xs font-mono bg-black border border-red-500 rounded py-0.5 text-red-400 focus:outline-none"
+                            autoFocus
+                          />
+                          <button onClick={handleSaveInline} className="p-0.5 bg-red-600 text-white rounded text-[8px]">
+                            ✓
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-base font-black text-red-400 font-mono">{s.errosPicking}%</span>
                       )}
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                    {/* Coluna Principal: Setores e KPIs de Movimentação */}
-                    <div className="lg:col-span-8 space-y-4">
-                      {/* Setores D-ALL Conectados */}
-                      <div className="bg-black/35 p-4 rounded-xl border border-amber-500/15 backdrop-blur-sm">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-amber-400/90 uppercase font-black tracking-wider">
-                              Alocação D-ALL por Setor
-                            </span>
-                            <span className="text-[10px] text-zinc-500 font-mono">
-                              ({totalDAllReal.toLocaleString("pt-BR")} caixas total)
-                            </span>
-                          </div>
-                          <span className="text-[9px] text-zinc-500 font-mono">
-                            Sincronizado com Cards de Setor
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                          {setores.map((s) => {
-                            const sectorDAll =
-                              s.reproTotal ??
-                              reaproData.setores?.[s.id]?.feitoDAll ??
-                              0;
-                            const isManual =
-                              s.overrides?.reproTotal !== undefined &&
-                              s.overrides?.reproTotal !== null;
-                            const pctCD = totalDAllReal > 0 ? Math.round((sectorDAll / totalDAllReal) * 100) : 0;
-                            const sectorLocalVal =
-                              (reaproEdit ? localReapro : reaproData).setores?.[s.id]?.feitoDAll ?? sectorDAll;
-
-                            return (
-                              <div
-                                key={s.id}
-                                id={`reapro-sector-card-${s.id}`}
-                                className="bg-zinc-950/60 p-3 rounded-lg border border-white/5 hover:border-amber-500/30 transition-colors flex flex-col justify-between"
-                              >
-                                <div className="flex items-center justify-between mb-1.5">
-                                  <span className="text-xs font-black text-amber-400 font-mono">
-                                    S{s.id}
-                                  </span>
-                                  <span
-                                    className={`text-[8px] px-1 py-0.2 rounded font-mono font-bold ${
-                                      isManual
-                                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                                        : "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/20"
-                                    }`}
-                                  >
-                                    {isManual ? "MANUAL" : "AUTO"}
-                                  </span>
-                                </div>
-
-                                {reaproEdit ? (
-                                  <div className="space-y-1 mt-1">
-                                    <div className="flex items-center gap-1">
-                                      <input
-                                        id={`reapro-input-sector-${s.id}`}
-                                        type="number"
-                                        value={sectorLocalVal}
-                                        onChange={(e) => {
-                                          const copy = { ...localReapro };
-                                          if (!copy.setores) copy.setores = {};
-                                          copy.setores[s.id] = {
-                                            feitoDAll: parseInt(e.target.value) || 0,
-                                            feitoElog: copy.setores[s.id]?.feitoElog || 0,
-                                          };
-                                          setLocalReapro(copy);
-                                        }}
-                                        className="inp py-1 px-1.5 text-xs font-mono w-full text-center bg-black/70 border-amber-500/40 text-amber-200"
-                                        placeholder="CX D-ALL"
-                                      />
-                                    </div>
-                                    <span className="text-[8px] text-zinc-500 text-center block">
-                                      Caixas D-ALL
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <div className="space-y-1.5 mt-1">
-                                    <div className="flex items-baseline justify-between">
-                                      <span className="text-[10px] text-zinc-500 font-sans">
-                                        D-ALL:
-                                      </span>
-                                      <div className="flex items-baseline gap-1 font-mono">
-                                        <b className="text-sm font-black text-white">
-                                          {sectorDAll.toLocaleString("pt-BR")}
-                                        </b>
-                                        <span className="text-[9px] text-amber-400 font-bold">
-                                          CX
-                                        </span>
-                                      </div>
-                                    </div>
-                                    {/* Barra proporcional de carga */}
-                                    <div className="w-full bg-zinc-800/80 rounded-full h-1 overflow-hidden">
-                                      <div
-                                        className="bg-amber-400 h-full rounded-full transition-all duration-500"
-                                        style={{ width: `${Math.min(100, Math.max(5, pctCD))}%` }}
-                                      />
-                                    </div>
-                                    <div className="flex justify-between items-center text-[9px] text-zinc-500 font-mono">
-                                      <span>Carga CD:</span>
-                                      <span className="text-zinc-400 font-bold">{pctCD}%</span>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Grade de 4 Indicadores Vitais do Fluxo */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {/* Preso D-ALL */}
-                        <div
-                          id="reapro-kpi-preso"
-                          className="bg-black/35 p-3.5 rounded-xl border border-white/5 flex flex-col justify-between"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider">
-                              Preso D-ALL
-                            </span>
-                            {presoDAllReal > 0 && (
-                              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                            )}
-                          </div>
-                          {reaproEdit ? (
-                            <input
-                              id="reapro-input-preso-dall"
-                              type="number"
-                              value={localReapro.indicadores?.totalPresoDAll ?? 0}
-                              onChange={(e) => {
-                                const copy = { ...localReapro };
-                                if (!copy.indicadores) copy.indicadores = {} as any;
-                                copy.indicadores.totalPresoDAll = parseInt(e.target.value) || 0;
-                                setLocalReapro(copy);
-                              }}
-                              className="inp py-1 text-xs mt-1 font-mono text-amber-300"
-                            />
-                          ) : (
-                            <div className="mt-1 flex items-baseline gap-1 font-mono">
-                              <span className={`text-xl font-black ${presoDAllReal > 0 ? "text-amber-400" : "text-zinc-400"}`}>
-                                {presoDAllReal.toLocaleString("pt-BR")}
-                              </span>
-                              <span className="text-[10px] text-zinc-500 font-bold">CX</span>
-                            </div>
-                          )}
-                          <span className="text-[9px] text-zinc-500 font-mono mt-0.5">
-                            {presoDAllReal > 0 ? "Requer liberação" : "Sem retenções"}
-                          </span>
-                        </div>
-
-                        {/* Em Curso / Coleta */}
-                        <div
-                          id="reapro-kpi-em-curso"
-                          className="bg-black/35 p-3.5 rounded-xl border border-white/5 flex flex-col justify-between"
-                        >
-                          <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider">
-                            Em Curso Coleta
-                          </span>
-                          {reaproEdit ? (
-                            <input
-                              id="reapro-input-em-curso"
-                              type="number"
-                              value={localReapro.indicadores?.emCursoColetado ?? 0}
-                              onChange={(e) => {
-                                const copy = { ...localReapro };
-                                if (!copy.indicadores) copy.indicadores = {} as any;
-                                copy.indicadores.emCursoColetado = parseInt(e.target.value) || 0;
-                                setLocalReapro(copy);
-                              }}
-                              className="inp py-1 text-xs mt-1 font-mono text-white"
-                            />
-                          ) : (
-                            <div className="mt-1 flex items-baseline gap-1 font-mono">
-                              <span className="text-xl font-black text-white">
-                                {emCursoReal.toLocaleString("pt-BR")}
-                              </span>
-                              <span className="text-[10px] text-zinc-500 font-bold">CX</span>
-                            </div>
-                          )}
-                          <span className="text-[9px] text-zinc-500 font-mono mt-0.5">
-                            Movimentação ativa
-                          </span>
-                        </div>
-
-                        {/* Em Máquina */}
-                        <div
-                          id="reapro-kpi-em-maquina"
-                          className="bg-black/35 p-3.5 rounded-xl border border-white/5 flex flex-col justify-between"
-                        >
-                          <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider">
-                            Em Máquina
-                          </span>
-                          {reaproEdit ? (
-                            <input
-                              id="reapro-input-em-maquina"
-                              type="number"
-                              value={localReapro.indicadores?.totalEmMaquina ?? 0}
-                              onChange={(e) => {
-                                const copy = { ...localReapro };
-                                if (!copy.indicadores) copy.indicadores = {} as any;
-                                copy.indicadores.totalEmMaquina = parseInt(e.target.value) || 0;
-                                setLocalReapro(copy);
-                              }}
-                              className="inp py-1 text-xs mt-1 font-mono text-sky-400"
-                            />
-                          ) : (
-                            <div className="mt-1 flex items-baseline gap-1 font-mono">
-                              <span className="text-xl font-black text-sky-400">
-                                {emMaquinaReal.toLocaleString("pt-BR")}
-                              </span>
-                              <span className="text-[10px] text-zinc-500 font-bold">CX</span>
-                            </div>
-                          )}
-                          <span className="text-[9px] text-zinc-500 font-mono mt-0.5">
-                            Em trânsito / pallets
-                          </span>
-                        </div>
-
-                        {/* Disponibilidade Operacional */}
-                        <div
-                          id="reapro-kpi-disponibilidade"
-                          className="bg-black/35 p-3.5 rounded-xl border border-white/5 flex flex-col justify-between"
-                        >
-                          <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider">
-                            Disponibilidade
-                          </span>
-                          {reaproEdit ? (
-                            <input
-                              id="reapro-input-disponibilidade"
-                              type="number"
-                              value={localReapro.indicadores?.disponibilidade ?? 100}
-                              onChange={(e) => {
-                                const copy = { ...localReapro };
-                                if (!copy.indicadores) copy.indicadores = {} as any;
-                                copy.indicadores.disponibilidade = parseInt(e.target.value) || 0;
-                                setLocalReapro(copy);
-                              }}
-                              className="inp py-1 text-xs mt-1 font-mono text-emerald-400"
-                            />
-                          ) : (
-                            <div className="mt-1 flex items-baseline gap-1 font-mono">
-                              <span
-                                className={`text-xl font-black ${
-                                  disponibilidadeCalculada >= 90
-                                    ? "text-emerald-400"
-                                    : disponibilidadeCalculada >= 75
-                                    ? "text-amber-400"
-                                    : "text-rose-400"
-                                }`}
-                              >
-                                {reaproData?.indicadores?.disponibilidade !== undefined &&
-                                reaproData.indicadores.disponibilidade !== null
-                                  ? reaproData.indicadores.disponibilidade
-                                  : disponibilidadeCalculada}
-                                %
-                              </span>
-                            </div>
-                          )}
-                          <span className="text-[9px] text-zinc-500 font-mono mt-0.5">
-                            Eficiência de fluxo
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Coluna Lateral: Automações, Projeções e Universos */}
-                    <div className="lg:col-span-4 space-y-3.5">
-                      {/* Projeção Inteligente de Término */}
-                      <div
-                        id="reapro-card-termino-previsto"
-                        className="bg-black/35 p-4 rounded-xl border border-white/5 relative overflow-hidden"
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <Clock size={12} className="text-emerald-400" />
-                            <span className="text-[10px] text-zinc-400 uppercase font-black tracking-wider">
-                              Término Previsto
-                            </span>
-                          </div>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-bold">
-                            {reaproData?.terminoPrevisao ? "MANUAL" : "AUTO PROJEÇÃO"}
-                          </span>
-                        </div>
-
-                        {reaproEdit ? (
-                          <div className="space-y-1 mt-1">
-                            <input
-                              id="reapro-input-termino"
-                              type="text"
-                              value={localReapro.terminoPrevisao || ""}
-                              placeholder="ex: 16:30 (ou deixe em branco para auto)"
-                              onChange={(e) =>
-                                setLocalReapro({
-                                  ...localReapro,
-                                  terminoPrevisao: e.target.value,
-                                })
-                              }
-                              className="inp py-1 text-sm font-mono text-emerald-300 w-full"
-                            />
-                            <span className="text-[9px] text-zinc-500 block">
-                              Deixe vazio para cálculo automático contínuo
-                            </span>
-                          </div>
-                        ) : (
-                          <div>
-                            <div className="flex items-baseline gap-2 mt-1">
-                              <span className="text-2xl font-black text-emerald-400 font-mono tracking-tight">
-                                {displayTerminoPrevisao}
-                              </span>
-                              <span className="text-xs text-zinc-400 font-mono">
-                                (~{tempoRestanteStr} restantes)
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-zinc-500 mt-1">
-                              Baseado no volume pendente e ritmo operacional da equipe.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Capacidade / Ritmo Estimado de Fechamento */}
-                      <div
-                        id="reapro-card-capacidade-fechamento"
-                        className="bg-black/35 p-4 rounded-xl border border-white/5"
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <Gauge size={12} className="text-indigo-400" />
-                            <span className="text-[10px] text-zinc-400 uppercase font-black tracking-wider">
-                              Cap. Fechamento Est.
-                            </span>
-                          </div>
-                          <span className="text-[9px] text-zinc-500 font-mono">
-                            {operadoresApoio.length > 0
-                              ? `${operadoresApoio.length} op. apoio`
-                              : "Ritmo Padrão"}
-                          </span>
-                        </div>
-
-                        {reaproEdit ? (
-                          <div className="space-y-1 mt-1">
-                            <input
-                              id="reapro-input-capacidade-est"
-                              type="number"
-                              value={localReapro.capacidadeFechamentoEst || ""}
-                              placeholder={`Auto: ${capFechamentoAuto} cx/h`}
-                              onChange={(e) =>
-                                setLocalReapro({
-                                  ...localReapro,
-                                  capacidadeFechamentoEst: parseInt(e.target.value) || 0,
-                                })
-                              }
-                              className="inp py-1 text-sm font-mono text-indigo-300 w-full"
-                            />
-                            <span className="text-[9px] text-zinc-500 block">
-                              Em caixas por hora (cx/h)
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="flex items-baseline justify-between mt-1">
-                            <div className="flex items-baseline gap-1 font-mono">
-                              <span className="text-xl font-black text-indigo-400">
-                                {capFechamentoDisplay.toLocaleString("pt-BR")}
-                              </span>
-                              <span className="text-xs text-indigo-300/80 font-bold">
-                                CX/H
-                              </span>
-                            </div>
-                            <span className="text-[10px] text-zinc-400 font-mono">
-                              ~{Math.round(capFechamentoDisplay / 60)} cx/min
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Artigos e Colis Reabastecidos */}
-                      <div
-                        id="reapro-card-artigos-colis"
-                        className="bg-black/35 p-4 rounded-xl border border-white/5 grid grid-cols-2 gap-3"
-                      >
-                        <div>
-                          <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider block mb-1">
-                            Artigos (SKUs)
-                          </span>
-                          {reaproEdit ? (
-                            <input
-                              id="reapro-input-artigos"
-                              type="number"
-                              value={localReapro.listasFechadas?.artigos ?? 0}
-                              onChange={(e) => {
-                                const copy = { ...localReapro };
-                                if (!copy.listasFechadas) copy.listasFechadas = {} as any;
-                                copy.listasFechadas.artigos = parseInt(e.target.value) || 0;
-                                setLocalReapro(copy);
-                              }}
-                              className="inp py-1 text-xs font-mono w-full text-white"
-                            />
-                          ) : (
-                            <div className="flex items-baseline gap-1 font-mono mt-0.5">
-                              <span className="text-lg font-black text-white">
-                                {(reaproData?.listasFechadas?.artigos ?? 0).toLocaleString("pt-BR")}
-                              </span>
-                              <span className="text-[9px] text-zinc-500 font-bold">UN</span>
-                            </div>
-                          )}
-                          <span className="text-[8px] text-zinc-500 mt-0.5 block">
-                            Peças alimentadas
-                          </span>
-                        </div>
-
-                        <div>
-                          <span className="text-[9px] text-zinc-400 uppercase font-black tracking-wider block mb-1">
-                            Colis Reabast.
-                          </span>
-                          {reaproEdit ? (
-                            <input
-                              id="reapro-input-colis"
-                              type="number"
-                              value={localReapro.listasFechadas?.colis ?? 0}
-                              onChange={(e) => {
-                                const copy = { ...localReapro };
-                                if (!copy.listasFechadas) copy.listasFechadas = {} as any;
-                                copy.listasFechadas.colis = parseInt(e.target.value) || 0;
-                                setLocalReapro(copy);
-                              }}
-                              className="inp py-1 text-xs font-mono w-full text-white"
-                            />
-                          ) : (
-                            <div className="flex items-baseline gap-1 font-mono mt-0.5">
-                              <span className="text-lg font-black text-white">
-                                {(reaproData?.listasFechadas?.colis ?? 0).toLocaleString("pt-BR")}
-                              </span>
-                              <span className="text-[9px] text-zinc-500 font-bold">VOL</span>
-                            </div>
-                          )}
-                          <span className="text-[8px] text-zinc-500 mt-0.5 block">
-                            Volumes gerados
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>,
-                "border-l-2 border-amber-500/60 bg-amber-950/5"
-              );
-
-            case "trend":
-              return renderWidget(
-                "trend",
-                "Tendência de Atividade Diária",
-                <BarChart2 size={14} className="text-gray-400" />,
-                "Gráfico Histórico consolidado",
-                <div className="h-[250px] w-full">
-                  <TrendLineChart data={historico} />
                 </div>
               );
+            })}
+          </div>
+        </section>
+      )}
 
-            case "terminal":
-              return renderWidget(
-                "terminal",
-                "AI COPIL LOGISTICS TERMINAL",
-                <Terminal size={14} className="text-emerald-400" />,
-                "Terminal Online",
-                <div className="flex flex-col h-[280px] w-full">
-                  <div className="flex-1 p-3 font-mono text-[10px] text-zinc-300 overflow-y-auto space-y-1.5 custom-scrollbar bg-black/40 rounded-lg border border-white/5">
+      {/* ========================================================================= */}
+      {/* 📈 3. SEÇÃO GRÁFICOS (Tendência, Produtividade UPH e Desempenho) */}
+      {/* ========================================================================= */}
+      {(activeSection === "all" || activeSection === "grafico") && (
+        <section className="space-y-4" id="painel-secao-grafico">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-1">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse"></div>
+              <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                <TrendingUp size={16} className="text-purple-400" />
+                Gráficos &amp; Tendência de Produtividade
+              </h2>
+            </div>
+
+            <div className="flex items-center bg-black/50 border border-white/10 rounded-xl p-1 text-xs">
+              <button
+                onClick={() => setChartViewMode("historico")}
+                className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                  chartViewMode === "historico"
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                Evolução Temporal
+              </button>
+              <button
+                onClick={() => setChartViewMode("uph_setores")}
+                className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                  chartViewMode === "uph_setores"
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "text-zinc-400 hover:text-white"
+                }`}
+              >
+                UPH vs Meta Setor
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* Gráfico Principal (2 Colunas) */}
+            <div className="lg:col-span-2 bg-[#0c0c14] border border-white/10 rounded-2xl p-5 shadow-lg">
+              <div className="flex justify-between items-center pb-3 mb-4 border-b border-white/5">
+                <div>
+                  <h3 className="text-xs font-black text-white uppercase tracking-wider">
+                    {chartViewMode === "historico"
+                      ? "Tendência de Atividade & Produtividade UPH"
+                      : "Comparativo de Produtividade UPH por Setor"}
+                  </h3>
+                  <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                    {chartViewMode === "historico"
+                      ? "Curva contínua de volume movimentado e rendimento"
+                      : "Desempenho em caixas/hora comparado à meta operacional"}
+                  </p>
+                </div>
+                <span className="text-[10px] font-mono font-bold text-purple-400 bg-purple-950/40 border border-purple-500/30 px-2 py-0.5 rounded-md">
+                  TEMPO REAL
+                </span>
+              </div>
+
+              <div className="h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  {chartViewMode === "historico" ? (
+                    <LineChart data={chartHistoricoData} margin={{ top: 10, right: 15, left: -10, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                      <XAxis dataKey="name" stroke="#71717a" fontSize={10} tickLine={false} />
+                      <YAxis stroke="#71717a" fontSize={10} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: "#09090b", borderColor: "#27272a", borderRadius: "12px" }}
+                        labelStyle={{ color: "#a1a1aa", fontWeight: "bold" }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
+                      <Line
+                        type="monotone"
+                        dataKey="ATIV"
+                        name="Volume Atividade"
+                        stroke="#6366f1"
+                        strokeWidth={2.5}
+                        dot={{ r: 3, fill: "#6366f1", strokeWidth: 0 }}
+                        activeDot={{ r: 6 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="UPH"
+                        name="Produtividade UPH"
+                        stroke="#38bdf8"
+                        strokeWidth={2}
+                        dot={{ r: 3, fill: "#38bdf8", strokeWidth: 0 }}
+                      />
+                    </LineChart>
+                  ) : (
+                    <BarChart data={chartSetoresUPH} margin={{ top: 10, right: 15, left: -10, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                      <XAxis dataKey="setor" stroke="#71717a" fontSize={11} tickLine={false} />
+                      <YAxis stroke="#71717a" fontSize={10} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: "#09090b", borderColor: "#27272a", borderRadius: "12px" }}
+                        labelStyle={{ color: "#a1a1aa", fontWeight: "bold" }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }} />
+                      <Bar dataKey="uph" name="UPH Real" fill="#818cf8" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="metaUph" name="Meta UPH" fill="#34d399" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  )}
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Painel Lateral de Diagnóstico de Ritmo */}
+            <div className="bg-[#0c0c14] border border-white/10 rounded-2xl p-5 shadow-lg flex flex-col justify-between space-y-4">
+              <div>
+                <h3 className="text-xs font-black text-white uppercase tracking-wider pb-2 border-b border-white/5 flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-indigo-400" />
+                  Diagnóstico de Ritmo Operacional
+                </h3>
+
+                <div className="space-y-3 mt-3">
+                  <div className="bg-black/40 border border-white/5 p-3 rounded-xl flex items-center justify-between">
                     <div>
-                      <span className="text-emerald-400 font-bold">
-                        root@volumosos:~$
-                      </span>{" "}
-                      AI COPIL V17.5 ONLINE.
-                    </div>
-                    <div className="text-zinc-500">
-                      Sintaxe permitida:{" "}
-                      <span className="text-emerald-400">
-                        "S[Setor] [parâmetro] para [Valor]"
+                      <span className="text-[10px] text-zinc-400 font-bold uppercase block">
+                        Setor Maior Produtividade
+                      </span>
+                      <span className="text-sm font-black text-emerald-400 font-mono">
+                        {(() => {
+                          const top = [...setores].sort((a, b) => b.uph - a.uph)[0];
+                          return top ? `Setor ${top.id} (${top.uph} UPH)` : "—";
+                        })()}
                       </span>
                     </div>
-                    <div className="text-zinc-500">
-                      Parâmetros:{" "}
-                      <span className="text-sky-400">produtividade</span>,{" "}
-                      <span className="text-sky-400">promessa</span>,{" "}
-                      <span className="text-sky-400">5s</span>,{" "}
-                      <span className="text-sky-400">bsi</span>,{" "}
-                      <span className="text-sky-400">ativ</span>,{" "}
-                      <span className="text-sky-400">repro</span>
-                    </div>
-                    {terminalLogs.map((log, index) => (
-                      <div key={index} className="leading-relaxed">
-                        {log.startsWith("> ") ? (
-                          <>
-                            <span className="text-emerald-400 font-bold">$ </span>
-                            {log.slice(2)}
-                          </>
-                        ) : (
-                          <span
-                            className={
-                              log.includes("Erro") || log.includes("Incorreto")
-                                ? "text-red-400"
-                                : "text-emerald-300"
-                            }
-                          >
-                            {log}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <form
-                    onSubmit={handleTerminalSubmit}
-                    className="mt-2.5 p-2.5 bg-black/50 border border-white/5 rounded-lg flex items-center gap-2"
-                  >
-                    <Cpu size={14} className="text-emerald-400" />
-                    <span className="text-emerald-400 font-mono text-xs font-bold mr-1">
-                      &gt;_
+                    <span className="text-xs text-emerald-400 font-bold bg-emerald-950/40 border border-emerald-500/30 px-2 py-1 rounded-lg">
+                      LÍDER
                     </span>
-                    <input
-                      type="text"
-                      value={terminalInput}
-                      onChange={(e) => setTerminalInput(e.target.value)}
-                      disabled={!isEditable}
-                      className="bg-transparent border-none text-emerald-100 font-mono text-xs w-full focus:outline-none placeholder-zinc-700 disabled:opacity-40"
-                      placeholder={
-                        isEditable
-                          ? "Ex: S87 promessa para 99.8"
-                          : "Login necessário para usar o terminal"
-                      }
-                    />
-                    {!isEditable && (
-                      <span className="text-zinc-500 text-[9px] uppercase font-bold tracking-wider">
-                        Bloqueado
+                  </div>
+
+                  <div className="bg-black/40 border border-white/5 p-3 rounded-xl flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-zinc-400 font-bold uppercase block">
+                        Atenção / Menor Ritmo
                       </span>
-                    )}
-                  </form>
-                </div>,
-                "border border-emerald-500/30 neon-border-green"
-              );
+                      <span className="text-sm font-black text-amber-400 font-mono">
+                        {(() => {
+                          const bottom = [...setores].filter((s) => s.uph > 0).sort((a, b) => a.uph - b.uph)[0];
+                          return bottom ? `Setor ${bottom.id} (${bottom.uph} UPH)` : "—";
+                        })()}
+                      </span>
+                    </div>
+                    <span className="text-xs text-amber-400 font-bold bg-amber-950/40 border border-amber-500/30 px-2 py-1 rounded-lg">
+                      ALERTA
+                    </span>
+                  </div>
 
-            default:
-              return null;
-          }
-        })}
-      </div>
+                  <div className="bg-black/40 border border-white/5 p-3 rounded-xl flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-zinc-400 font-bold uppercase block">
+                        Eficiência de Separação
+                      </span>
+                      <span className="text-sm font-black text-sky-400 font-mono">
+                        {mediaSLA >= 99 ? "Excelente (Acima de 99%)" : "Estável"}
+                      </span>
+                    </div>
+                    <span className="text-xs text-sky-400 font-bold bg-sky-950/40 border border-sky-500/30 px-2 py-1 rounded-lg">
+                      {mediaSLA}%
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-      {/* MODAL DE AJUSTE RÁPIDO DE UNIVERSOS (ALIMENTO, MONTANHA, COLIS, ETC.) */}
+              {onNavigateTab && (
+                <button
+                  onClick={() => onNavigateTab("produtividade")}
+                  className="w-full py-2.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                >
+                  <span>Ver Detalhes na Aba Produtividade</span>
+                  <ArrowRight size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 🛠️ MODAL DE AJUSTE RÁPIDO DE UNIVERSOS E PARÂMETROS */}
+      {/* ========================================================================= */}
       {editingSectorUniversos && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[99999] flex items-center justify-center p-4">
           <div className="bg-[#111118] border border-[#2a2a3c] rounded-2xl p-6 w-full max-w-lg shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
@@ -2514,12 +1275,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <Sliders size={20} className="text-indigo-400" />
                 <div>
                   <h3 className="text-base font-bold text-white">
-                    Parâmetros por Universo • Setor {editingSectorUniversos}
+                    Parâmetros por Universo &bull; Setor {editingSectorUniversos}
                   </h3>
-                  <p className="text-xs text-slate-400">Edição e override de parâmetros de atividade e proporções</p>
+                  <p className="text-xs text-slate-400">Edição de proporções e volumes operacionais</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setEditingSectorUniversos(null)}
                 className="p-1.5 rounded-lg hover:bg-zinc-800 text-slate-400 hover:text-white transition-colors"
               >
@@ -2554,7 +1315,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </button>
             </div>
 
-            {/* SEÇÃO 0: ATIVIDADE DO SETOR */}
+            {/* ATIVIDADE DO SETOR */}
             <div className="space-y-3 pt-2">
               <div className="flex items-center justify-between text-xs font-bold text-white uppercase tracking-wider">
                 <span className="flex items-center gap-1.5">
@@ -2566,32 +1327,22 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <div className="flex items-center justify-between text-slate-300 text-xs font-black uppercase tracking-wider mb-1">
                   <span>OVERRIDE MANUAL (OPCIONAL)</span>
                 </div>
-                <div className="relative flex items-center">
-                  <input
-                    type="number"
-                    value={editAtividade}
-                    onChange={(e) => setEditAtividade(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full text-right font-mono font-black text-xl bg-black border-2 border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400 shadow-inner"
-                    placeholder="Vazio = usa valor da planilha"
-                  />
-                </div>
-                {editAtividade === 0 && (
-                  <p className="text-[10px] text-slate-500 text-right mt-1">
-                    Atividade atual do setor:{' '}
-                    <span className="font-mono text-emerald-400">
-                      {editingSectorUniversos ? (setores.find(s => String(s.id) === String(editingSectorUniversos) || String(s.numero) === String(editingSectorUniversos))?.ativ || 0).toLocaleString('pt-BR') : '---'}
-                    </span>
-                  </p>
-                )}
+                <input
+                  type="number"
+                  value={editAtividade}
+                  onChange={(e) => setEditAtividade(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full text-right font-mono font-black text-xl bg-black border-2 border-white/20 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-400 shadow-inner"
+                  placeholder="Vazio = usa valor da planilha"
+                />
               </div>
             </div>
 
-            {/* SEÇÃO 1: UNIVERSOS DE PRODUTOS */}
+            {/* UNIVERSOS DE PRODUTOS */}
             <div className="space-y-3 pt-1">
               <div className="flex items-center justify-between text-xs font-bold text-slate-300 uppercase tracking-wider">
                 <div className="flex items-center gap-1.5">
                   <PieChart size={14} className="text-indigo-400" />
-                  <span>1. Universos de Produtos (Artigos em Separação)</span>
+                  <span>Universos de Produtos (Separação)</span>
                 </div>
                 <button
                   type="button"
@@ -2599,25 +1350,21 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     const newId = `custom-${Date.now()}`;
                     setEditCustomUniversos([
                       ...editCustomUniversos,
-                      { id: newId, name: `Novo Universo ${editCustomUniversos.length + 1}`, value: 0 }
+                      { id: newId, name: `Novo Universo ${editCustomUniversos.length + 1}`, value: 0 },
                     ]);
                   }}
                   className="px-2.5 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-colors"
                 >
                   <Plus size={13} />
-                  <span>+ Adicionar Universo</span>
+                  <span>+ Adicionar</span>
                 </button>
               </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {/* Alimento */}
                 <div className="bg-[#0b0b12] p-3 rounded-xl border border-amber-500/20 flex flex-col justify-between gap-1.5">
                   <div className="flex items-center justify-between text-amber-400 text-xs font-bold">
-                    <span className="flex items-center gap-1"><Apple size={14} /> 🍎 Alimento</span>
-                    <span className="text-[10px] text-amber-400/70 font-mono">
-                      {(() => {
-                        const tot = editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0);
-                        return tot > 0 ? `${((editAlimento / tot) * 100).toFixed(1)}%` : '0%';
-                      })()}
+                    <span className="flex items-center gap-1">
+                      <Apple size={14} /> 🍎 Alimento
                     </span>
                   </div>
                   <input
@@ -2628,15 +1375,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   />
                 </div>
 
-                {/* Montanha */}
                 <div className="bg-[#0b0b12] p-3 rounded-xl border border-purple-500/20 flex flex-col justify-between gap-1.5">
                   <div className="flex items-center justify-between text-purple-400 text-xs font-bold">
-                    <span className="flex items-center gap-1"><Mountain size={14} /> ⛰️ Montanha</span>
-                    <span className="text-[10px] text-purple-400/70 font-mono">
-                      {(() => {
-                        const tot = editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0);
-                        return tot > 0 ? `${((editMontanha / tot) * 100).toFixed(1)}%` : '0%';
-                      })()}
+                    <span className="flex items-center gap-1">
+                      <Mountain size={14} /> ⛰️ Montanha
                     </span>
                   </div>
                   <input
@@ -2648,92 +1390,66 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </div>
               </div>
 
-              {/* Universos Customizados Adicionados */}
               {editCustomUniversos.length > 0 && (
                 <div className="space-y-2 pt-2 border-t border-[#1e1e2a]/60">
                   <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
-                    <Tag size={13} /> Universos Customizados ({editCustomUniversos.length})
+                    <Tag size={13} /> Universos Customizados
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {editCustomUniversos.map((item, idx) => {
-                      const tot = editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0);
-                      const pct = tot > 0 ? ((item.value / tot) * 100).toFixed(1) : '0';
-                      return (
-                        <div 
-                          key={item.id || `edit-custom-dash-${idx}`} 
-                          className="bg-[#090912] p-3 rounded-xl border border-cyan-500/20 flex flex-col gap-2 relative group"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <input
-                              type="text"
-                              value={item.name}
-                              onChange={(e) => {
-                                const updated = [...editCustomUniversos];
-                                updated[idx].name = e.target.value;
-                                setEditCustomUniversos(updated);
-                              }}
-                              placeholder="Nome do Universo"
-                              className="w-full font-bold text-xs bg-black/60 border border-slate-700 rounded-md px-2 py-1 text-cyan-400 focus:outline-none focus:border-cyan-400"
-                            />
-                            <span className="text-[10px] font-mono text-cyan-400/80 font-bold whitespace-nowrap bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/20">
-                              {pct}%
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditCustomUniversos(editCustomUniversos.filter((_, i) => i !== idx));
-                              }}
-                              className="p-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 transition-colors"
-                              title="Remover este universo"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-slate-400 font-sans">Artigos:</span>
-                            <input
-                              type="number"
-                              value={item.value}
-                              onChange={(e) => {
-                                const updated = [...editCustomUniversos];
-                                updated[idx].value = Math.max(0, parseInt(e.target.value) || 0);
-                                setEditCustomUniversos(updated);
-                              }}
-                              className="w-full text-right font-mono font-bold text-sm bg-black border border-cyan-500/40 rounded-lg px-2.5 py-1 text-white focus:outline-none focus:border-cyan-400"
-                            />
-                          </div>
+                    {editCustomUniversos.map((item, idx) => (
+                      <div
+                        key={item.id || `edit-custom-dash-${idx}`}
+                        className="bg-[#090912] p-3 rounded-xl border border-cyan-500/20 flex flex-col gap-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => {
+                              const updated = [...editCustomUniversos];
+                              updated[idx].name = e.target.value;
+                              setEditCustomUniversos(updated);
+                            }}
+                            className="w-full font-bold text-xs bg-black/60 border border-slate-700 rounded-md px-2 py-1 text-cyan-400 focus:outline-none focus:border-cyan-400"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditCustomUniversos(editCustomUniversos.filter((_, i) => i !== idx))}
+                            className="p-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         </div>
-                      );
-                    })}
+                        <input
+                          type="number"
+                          value={item.value}
+                          onChange={(e) => {
+                            const updated = [...editCustomUniversos];
+                            updated[idx].value = Math.max(0, parseInt(e.target.value) || 0);
+                            setEditCustomUniversos(updated);
+                          }}
+                          className="w-full text-right font-mono font-bold text-sm bg-black border border-cyan-500/40 rounded-lg px-2.5 py-1 text-white focus:outline-none focus:border-cyan-400"
+                        />
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* SEÇÃO 2: FLUXO OPERACIONAL */}
+            {/* REABASTECIMENTO & COLIS */}
             <div className="space-y-3 pt-2 border-t border-[#1e1e2a]">
-              <div className="flex items-center justify-between text-xs font-bold text-amber-400 uppercase tracking-wider">
-                <span className="flex items-center gap-1.5">
-                  <RotateCcw size={15} /> 2. FLUXO OPERACIONAL
-                </span>
-                <span className="text-[10px] text-slate-400 font-normal">Reabastecimento &amp; Coleta</span>
-              </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* REABASTECIMENTO */}
-                <div className="bg-[#1a1408] p-3.5 rounded-xl border-2 border-amber-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
-                  <div className="flex items-center justify-between text-amber-400 text-xs font-black uppercase tracking-wider">
-                    <span className="flex items-center gap-1.5">
-                      <RotateCcw size={16} className="text-amber-400" /> REABASTECIMENTO
-                    </span>
-                  </div>
+                <div className="bg-[#1a1408] p-3.5 rounded-xl border-2 border-amber-500/60 flex flex-col justify-between gap-2">
+                  <span className="text-amber-400 text-xs font-black uppercase flex items-center gap-1.5">
+                    <RotateCcw size={16} /> REABASTECIMENTO
+                  </span>
                   <div className="relative flex items-center">
                     <input
                       type="number"
                       value={editReproTotal}
                       onChange={(e) => setEditReproTotal(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full text-right font-mono font-black text-xl bg-black border-2 border-amber-500/70 rounded-lg px-3 py-2 pr-12 text-amber-300 focus:outline-none focus:border-amber-400 shadow-inner"
-                      placeholder="Ex: 151"
+                      className="w-full text-right font-mono font-black text-xl bg-black border-2 border-amber-500/70 rounded-lg px-3 py-2 pr-12 text-amber-300 focus:outline-none focus:border-amber-400"
                     />
                     <span className="absolute right-3 font-mono font-bold text-amber-400/80 text-[10px] pointer-events-none">
                       CX
@@ -2741,20 +1457,16 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   </div>
                 </div>
 
-                {/* COLIS COLETA */}
-                <div className="bg-[#0b0b12] p-3.5 rounded-xl border-2 border-emerald-500/60 flex flex-col justify-between gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
-                  <div className="flex items-center justify-between text-emerald-400 text-xs font-black uppercase tracking-wider">
-                    <span className="flex items-center gap-1.5">
-                      <Package size={16} className="text-emerald-400" /> COLIS COLETA
-                    </span>
-                  </div>
+                <div className="bg-[#0b0b12] p-3.5 rounded-xl border-2 border-emerald-500/60 flex flex-col justify-between gap-2">
+                  <span className="text-emerald-400 text-xs font-black uppercase flex items-center gap-1.5">
+                    <Package size={16} /> COLIS COLETA
+                  </span>
                   <div className="relative flex items-center">
                     <input
                       type="number"
                       value={editColis}
                       onChange={(e) => setEditColis(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full text-right font-mono font-black text-xl bg-black border-2 border-emerald-500/70 rounded-lg px-3 py-2 pr-16 text-emerald-300 focus:outline-none focus:border-emerald-400 shadow-inner"
-                      placeholder="Ex: 1500"
+                      className="w-full text-right font-mono font-black text-xl bg-black border-2 border-emerald-500/70 rounded-lg px-3 py-2 pr-16 text-emerald-300 focus:outline-none focus:border-emerald-400"
                     />
                     <span className="absolute right-3 font-mono font-bold text-emerald-400/80 text-[10px] pointer-events-none">
                       COLIS
@@ -2779,31 +1491,21 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-between items-center text-xs font-mono pt-3 border-t border-[#222234] bg-[#0b0b12] px-4 py-2.5 rounded-xl border">
-              <span className="text-slate-400">Total Artigos Universos:</span>
-              <span className="text-white font-black text-base">
-                {(editAlimento + editMontanha + editCustomUniversos.reduce((s, c) => s + c.value, 0)).toLocaleString('pt-BR')} un
-              </span>
-            </div>
-
-            <div className="flex flex-wrap justify-between items-center gap-2.5 pt-2">
-              <div>
-                {onNavigateTab && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingSectorUniversos(null);
-                      onNavigateTab('override');
-                    }}
-                    className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors"
-                    title="Abrir o painel completo de Override para este setor"
-                  >
-                    <Sliders size={14} />
-                    <span>⚡ Abrir no Override Geral</span>
-                  </button>
-                )}
-              </div>
-              <div className="flex gap-2">
+            <div className="flex justify-between items-center gap-2.5 pt-3 border-t border-[#222234]">
+              {onNavigateTab && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSectorUniversos(null);
+                    onNavigateTab("override");
+                  }}
+                  className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                >
+                  <Sliders size={14} />
+                  <span>Override Geral</span>
+                </button>
+              )}
+              <div className="flex gap-2 ml-auto">
                 <button
                   onClick={() => setEditingSectorUniversos(null)}
                   className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold transition-colors"
@@ -2812,10 +1514,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 </button>
                 <button
                   onClick={handleSaveUniversos}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-lg active:scale-95"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-lg"
                 >
                   <Check size={16} />
-                  <span>Salvar &amp; Aplicar Parâmetros</span>
+                  <span>Salvar Parâmetros</span>
                 </button>
               </div>
             </div>

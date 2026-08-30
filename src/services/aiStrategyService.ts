@@ -2,7 +2,7 @@ import { AIStrategyPlan, PromiseSLA, SectorBalanceAdvice, PriorityStoreItem } fr
 import { Setor, Colaborador, StoreOperation, ColaboradorStatus } from '../types';
 import { PlanoCarregamentoRow } from '../lib/googleSheetsPublicSource';
 
-interface StrategyInputPayload {
+export interface StrategyInputPayload {
   setores: Setor[];
   colaboradores: Colaborador[];
   operations: StoreOperation[];

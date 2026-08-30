@@ -54,3 +54,7 @@ export interface CapacidadeSetor {
   abertura: number;
   fechoHora: number;
 }
+
+export type SetorData = Setor & {
+  metaHora?: number;
+};

@@ -74,11 +74,21 @@ export function useCopilMetrics() {
     };
   }, [data]);
 
+  const deleteMetric = useCallback(async (id: string) => {
+    try {
+      await SupabaseService.deleteRecord('matriz_performance', id);
+      setData((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      console.error('Falha ao excluir métrica COPIL do banco:', err);
+    }
+  }, []);
+
   return {
     metrics: data,
     loading,
     error,
     summaryStats,
     refetch: fetchMetrics,
+    deleteMetric,
   };
 }

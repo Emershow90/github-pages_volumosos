@@ -19,7 +19,11 @@ import {
   Settings,
   ShieldAlert,
   CalendarDays,
-  Activity
+  Activity,
+  Flame,
+  Wrench,
+  Award,
+  Barcode
 } from "lucide-react";
 
 interface NavigationPanelProps {
@@ -27,6 +31,7 @@ interface NavigationPanelProps {
   setActiveTab: (tab: string) => void;
   currentRole: UserRole;
   pendingUsersCount: number;
+  onOpenInsight?: () => void;
 }
 
 export const NavigationPanel: React.FC<NavigationPanelProps> = ({
@@ -34,6 +39,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
   setActiveTab,
   currentRole,
   pendingUsersCount,
+  onOpenInsight,
 }) => {
   return (
     <nav className="bg-[#07070a] border-b border-white/5 px-3 md:px-5 py-2.5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-2.5 relative z-40 shadow-[0_4px_20px_rgba(0,0,0,0.7)]">
@@ -42,11 +48,11 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
         <div className="flex items-center justify-between px-1.5 py-0.5">
           <div className="flex items-center gap-1.5 text-[10px] font-mono font-black uppercase text-indigo-400 tracking-wider">
             <Activity size={12} className="text-indigo-400" />
-            <span>Monitoramento</span>
+            <span>Torre de Comando</span>
           </div>
           <OnlineIndicator />
         </div>
-        <div className="grid grid-cols-3 gap-1">
+        <div className="grid grid-cols-4 gap-1">
           <button
             id="nav-tab-dashboard"
             onClick={() => setActiveTab("dashboard")}
@@ -55,6 +61,15 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           >
             <Layers size={12} className="text-indigo-400" />
             <span className="truncate">Painel</span>
+          </button>
+          <button
+            id="nav-tab-gargalos"
+            onClick={() => setActiveTab("gargalos")}
+            className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "gargalos" ? "active border-rose-500/50 text-rose-300 bg-rose-950/30" : "hover:border-rose-500/30 text-rose-400"}`}
+            title="Matriz de Gargalos & Diagnóstico de Causa Raiz"
+          >
+            <Flame size={12} className="text-rose-400" />
+            <span className="truncate font-bold">Gargalos</span>
           </button>
           <button
             id="nav-tab-executivo"
@@ -77,7 +92,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
         </div>
       </div>
 
-      {/* LOGÍSTICA (5 Cols on XL - Plenty of breathing room and clear icons) */}
+      {/* LOGÍSTICA & OPERAÇÃO (5 Cols on XL) */}
       <div className="xl:col-span-5 border border-cyan-500/20 bg-[#070d14] rounded-xl p-2 flex flex-col gap-1.5 shadow-sm relative overflow-hidden">
         <div className="flex items-center justify-between px-1.5 py-0.5">
           <div className="flex items-center gap-1.5 text-[10px] font-mono font-black uppercase text-cyan-400 tracking-wider">
@@ -92,7 +107,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           <button
             id="nav-tab-capacidade"
             onClick={() => setActiveTab("capacidade")}
-            className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "capacidade" ? "active border-cyan-500/50 text-cyan-300" : "hover:border-cyan-500/30"}`}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "capacidade" ? "active border-cyan-500/50 text-cyan-300" : "hover:border-cyan-500/30"}`}
             title="Escala de Capacidade & Colaboradores"
           >
             <CalendarDays size={12} className="text-cyan-400" />
@@ -101,25 +116,25 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           <button
             id="nav-tab-produtividade"
             onClick={() => setActiveTab("produtividade")}
-            className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "produtividade" ? "active border-emerald-500/50 text-emerald-300" : "hover:border-emerald-500/30"}`}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "produtividade" ? "active border-emerald-500/50 text-emerald-300" : "hover:border-emerald-500/30"}`}
             title="Cálculo e Metas de Produtividade UPH"
           >
             <TrendingUp size={12} className="text-emerald-400" />
             <span className="truncate font-semibold">Produtiv.</span>
           </button>
           <button
-            id="nav-tab-apresentacao"
-            onClick={() => setActiveTab("apresentacao")}
-            className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "apresentacao" ? "active border-indigo-500/50 text-indigo-300" : "hover:border-indigo-500/30"}`}
-            title="Console Operacional TV & Telão"
+            id="nav-tab-radar-live"
+            onClick={() => setActiveTab("radar_lojas_live")}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "radar_lojas_live" ? "active border-rose-500/50 text-rose-300 bg-rose-950/30" : "hover:border-rose-500/30"}`}
+            title="Radar de Lojas Live (Sincronizado em Tempo Real)"
           >
-            <Tv size={12} className="text-indigo-400" />
-            <span className="truncate font-semibold">Console TV</span>
+            <Radio size={12} className="text-rose-400 animate-pulse" />
+            <span className="truncate font-bold text-rose-300">Radar</span>
           </button>
           <button
             id="nav-tab-override"
             onClick={() => setActiveTab("override")}
-            className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "override" ? "active border-amber-500/50 text-amber-300" : "hover:border-amber-500/30"}`}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "override" ? "active border-amber-500/50 text-amber-300" : "hover:border-amber-500/30"}`}
             title="Override Operacional & Calibração"
           >
             <Zap size={12} className="text-amber-400 fill-amber-400/20" />
@@ -128,31 +143,49 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           <button
             id="nav-tab-copil"
             onClick={() => setActiveTab("copil")}
-            className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "copil" ? "active border-purple-500/50 text-purple-300" : "hover:border-purple-500/30"}`}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "copil" ? "active border-purple-500/50 text-purple-300" : "hover:border-purple-500/30"}`}
             title="Matriz de Pilotagem COPIL"
           >
             <Sparkles size={12} className="text-purple-400" />
             <span className="truncate font-semibold">COPIL</span>
           </button>
           <button
-            id="nav-tab-radar-live"
-            onClick={() => setActiveTab("radar_lojas_live")}
-            className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "radar_lojas_live" ? "active border-rose-500/50 text-rose-300 bg-rose-950/30" : "hover:border-rose-500/30"}`}
-            title="Radar de Lojas Live (Sincronizado em Tempo Real)"
+            id="nav-tab-apresentacao"
+            onClick={() => setActiveTab("apresentacao")}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "apresentacao" ? "active border-indigo-500/50 text-indigo-300" : "hover:border-indigo-500/30"}`}
+            title="Console Operacional TV & Telão"
           >
-            <Radio size={12} className="text-rose-400 animate-pulse" />
-            <span className="truncate font-bold text-rose-300">Radar Live</span>
+            <Tv size={12} className="text-indigo-400" />
+            <span className="truncate font-semibold">Console TV</span>
           </button>
         </div>
       </div>
 
-      {/* GESTÃO (3 Cols on XL) */}
+      {/* GESTÃO & RESULTADOS (2.5 Cols on XL) */}
       <div className="xl:col-span-2 border border-white/5 bg-[#0b0b10] rounded-xl p-2 flex flex-col gap-1.5 shadow-sm">
         <div className="flex items-center gap-1.5 px-1.5 py-0.5 text-[10px] font-mono font-black uppercase text-amber-400 tracking-wider">
           <Users size={12} className="text-amber-400" />
-          <span>Gestão</span>
+          <span>Gestão &amp; Ação</span>
         </div>
         <div className="grid grid-cols-4 gap-1">
+          <button
+            id="nav-tab-plano-acao"
+            onClick={() => setActiveTab("plano_acao")}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "plano_acao" ? "active border-amber-500/50 text-amber-300 bg-amber-950/30" : "hover:border-amber-500/30 text-amber-400"}`}
+            title="Planos de Ação 5W2H"
+          >
+            <Wrench size={12} className="text-amber-400 shrink-0" />
+            <span className="truncate font-bold">5W2H</span>
+          </button>
+          <button
+            id="nav-tab-cases"
+            onClick={() => setActiveTab("cases")}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "cases" ? "active border-purple-500/50 text-purple-300 bg-purple-950/30" : "hover:border-purple-500/30 text-purple-400"}`}
+            title="Central de Resultados & Portfólio de Melhorias"
+          >
+            <Award size={12} className="text-purple-400 shrink-0" />
+            <span className="truncate font-bold">Cases</span>
+          </button>
           <button
             id="nav-tab-equipa"
             onClick={() => setActiveTab("equipa")}
@@ -171,13 +204,34 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             <CalendarDays size={12} className="text-amber-400 shrink-0" />
             <span className="truncate font-semibold">Consolid.</span>
           </button>
+        </div>
+      </div>
+
+      {/* SISTEMA & IA (1.5 Cols on XL) */}
+      <div className="xl:col-span-2 border border-white/5 bg-[#0b0b10] rounded-xl p-2 flex flex-col gap-1.5 shadow-sm">
+        <div className="flex items-center justify-between px-1.5 py-0.5 text-[10px] font-mono font-black uppercase text-purple-400 tracking-wider">
+          <div className="flex items-center gap-1.5">
+            <Settings size={12} className="text-purple-400" />
+            <span>Sistema</span>
+          </div>
+          {onOpenInsight && (
+            <button
+              onClick={onOpenInsight}
+              className="text-[9px] font-bold text-purple-300 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 px-1.5 py-0.5 rounded flex items-center gap-1 transition-all"
+            >
+              <Sparkles size={10} />
+              <span>INSIGHT</span>
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-4 gap-1">
           <button
             id="nav-tab-historico"
             onClick={() => setActiveTab("historico")}
             className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "historico" ? "active" : ""}`}
             title="Histórico de Consolidados"
           >
-            <History size={12} className="text-amber-400 shrink-0" />
+            <History size={12} className="text-purple-400 shrink-0" />
             <span className="truncate">Logs</span>
           </button>
           <button
@@ -186,19 +240,9 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "alerts" ? "active" : ""}`}
             title="Central de Alertas Operacionais"
           >
-            <Bell size={12} className="text-amber-400 shrink-0" />
+            <Bell size={12} className="text-purple-400 shrink-0" />
             <span className="truncate">Alertas</span>
           </button>
-        </div>
-      </div>
-
-      {/* SISTEMA (2 Cols on XL) */}
-      <div className="xl:col-span-2 border border-white/5 bg-[#0b0b10] rounded-xl p-2 flex flex-col gap-1.5 shadow-sm">
-        <div className="flex items-center gap-1.5 px-1.5 py-0.5 text-[10px] font-mono font-black uppercase text-purple-400 tracking-wider">
-          <Settings size={12} className="text-purple-400" />
-          <span>Sistema</span>
-        </div>
-        <div className="grid grid-cols-4 gap-1">
           <button
             id="nav-tab-audit"
             onClick={() => setActiveTab("audit")}
@@ -212,24 +256,6 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
                 {pendingUsersCount}
               </span>
             )}
-          </button>
-          <button
-            id="nav-tab-relatorios"
-            onClick={() => setActiveTab("relatorios")}
-            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "relatorios" ? "active" : ""}`}
-            title="Relatórios & Handovers"
-          >
-            <FileText size={12} className="text-purple-400 shrink-0" />
-            <span className="truncate">Relatos</span>
-          </button>
-          <button
-            id="nav-tab-config"
-            onClick={() => setActiveTab("config")}
-            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "config" ? "active" : ""}`}
-            title="Ajustes do Sistema"
-          >
-            <Settings size={12} className="text-purple-400 shrink-0" />
-            <span className="truncate">Ajustes</span>
           </button>
           <button
             id="nav-tab-conexoes"

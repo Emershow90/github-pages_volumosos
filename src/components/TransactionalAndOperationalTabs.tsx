@@ -14,6 +14,7 @@ import {
 } from "../types";
 import { CopilBarChart, ProdHorasHorizontalBar } from "./CommandCharts";
 import { OverrideOperacionalModal } from "./OverrideOperacionalModal";
+import { CollaboratorCarousel } from "./CollaboratorCarousel";
 import { Minimize2, Plus, RefreshCw, FileText, Upload, ShieldAlert, Sparkles, Sliders, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 
 // ==========================================
@@ -280,6 +281,9 @@ export const ProdutividadeTab: React.FC<ProdutividadeTabProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Carrossel de Colaboradores Alimentado pela Store (Setores 87-90) */}
+      <CollaboratorCarousel activeSectorId={activeS.id} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Horas da Equipe (Micro) */}

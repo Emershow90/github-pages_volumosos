@@ -30,7 +30,9 @@ import {
   Columns,
   Maximize2,
   Minimize2,
+  Trash2,
 } from "lucide-react";
+import { useUndoableDelete, DeleteUndoToast } from "./DeleteUndoToast";
 
 interface CopilTabProps {
   setores: Setor[];
@@ -62,7 +64,8 @@ export const CopilTab: React.FC<CopilTabProps> = ({
   activeSectorId,
   setActiveSectorId,
 }) => {
-  const { metrics: matrizData, loading: isLoading, summaryStats, refetch } = useCopilMetrics();
+  const { metrics: matrizData, loading: isLoading, summaryStats, refetch, deleteMetric } = useCopilMetrics();
+  const { pending, requestDelete, undo, windowMs } = useUndoableDelete((id) => deleteMetric(id));
 
   const [selectedSector, setSelectedSector] = useState<string>(activeSectorId || "todos");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -148,6 +151,7 @@ export const CopilTab: React.FC<CopilTabProps> = ({
   // Filtragem e ordenação estrita dos dados
   const filteredData = useMemo(() => {
     const filtered = matrizData.filter((item) => {
+      if (pending?.id && item.id === pending.id) return false;
       const matchSetor = selectedSector === "todos" || 
         String(item.setor).toLowerCase() === String(selectedSector).toLowerCase() ||
         String(item.setor) === `S${selectedSector}` ||
@@ -179,7 +183,7 @@ export const CopilTab: React.FC<CopilTabProps> = ({
       const numB = Number(valB) || 0;
       return sortDirection === "asc" ? numA - numB : numB - numA;
     });
-  }, [matrizData, selectedSector, selectedSemana, searchQuery, sortField, sortDirection]);
+  }, [matrizData, selectedSector, selectedSemana, searchQuery, sortField, sortDirection, pending]);
 
   // Cálculos consolidados para a linha de Totais (tfoot)
   const totals = useMemo(() => {
@@ -693,6 +697,9 @@ export const CopilTab: React.FC<CopilTabProps> = ({
                   <th className="py-2.5 px-3 text-center whitespace-nowrap">
                     <span>Nota COPIL</span>
                   </th>
+                  <th className="py-2.5 px-3 text-center whitespace-nowrap w-12">
+                    <span>Ação</span>
+                  </th>
                 </tr>
               </thead>
 
@@ -802,6 +809,18 @@ export const CopilTab: React.FC<CopilTabProps> = ({
                           {notaUph.grade} ({notaUph.scorePct}%)
                         </span>
                       </td>
+
+                      {/* Ação: Excluir com Undo */}
+                      <td className="py-2.5 px-3 text-center">
+                        <button
+                          id={`btn-delete-copil-${row.id || idx}`}
+                          onClick={() => requestDelete(row.id, `Setor S${row.setor} (Sem ${row.semana})`)}
+                          className="p-1 text-zinc-500 hover:text-rose-400 transition-colors rounded hover:bg-rose-500/10 cursor-pointer"
+                          title="Excluir este registro com desfazer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -888,6 +907,7 @@ export const CopilTab: React.FC<CopilTabProps> = ({
                       {totals.notaGeral.grade} ({totals.notaGeral.scorePct}%)
                     </span>
                   </td>
+                  <td></td>
                 </tr>
               </tfoot>
             </table>
@@ -956,6 +976,7 @@ export const CopilTab: React.FC<CopilTabProps> = ({
           </div>
         </div>
       </div>
+      <DeleteUndoToast pending={pending} onUndo={undo} windowMs={windowMs} />
     </div>
   );
 };

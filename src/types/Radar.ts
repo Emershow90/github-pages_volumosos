@@ -1,4 +1,5 @@
 import { StoreOperation } from './Store';
+export type { StoreOperation };
 
 export interface RadarFilterConfig {
   setor: string;

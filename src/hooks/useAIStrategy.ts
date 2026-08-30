@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 import { useSectorStore } from '../stores/useSectorStore';
 import { useCollaboratorStore } from '../stores/useCollaboratorStore';
 import { useStoreOperations } from '../stores/useStoreOperations';
 import { usePlanoCarregamentoRisk } from './usePlanoCarregamentoRisk';
-import { fetchAIStrategyPlan, generateLocalStrategyPlan } from '../services/aiStrategyService';
-import { AIStrategyPlan } from '../types/AIStrategy';
+import { useAIStrategyStore } from '../stores/useAIStrategyStore';
 
 export function useAIStrategy() {
   const { setores } = useSectorStore();
@@ -12,49 +11,40 @@ export function useAIStrategy() {
   const operationsRecord = useStoreOperations((state) => state.operations);
   const { planoCarregamento } = usePlanoCarregamentoRisk();
 
-  const operations = Object.values(operationsRecord);
+  const strategy = useAIStrategyStore((state) => state.strategy);
+  const isLoading = useAIStrategyStore((state) => state.isLoading);
+  const isModalOpen = useAIStrategyStore((state) => state.isModalOpen);
+  const setIsModalOpen = useAIStrategyStore((state) => state.setIsModalOpen);
+  const refreshStrategyStore = useAIStrategyStore((state) => state.refreshStrategy);
+  const initializeBaseline = useAIStrategyStore((state) => state.initializeBaseline);
 
-  const [strategy, setStrategy] = useState<AIStrategyPlan | null>(() => {
-    // Generate instant baseline to avoid blank initial states
-    return generateLocalStrategyPlan({
+  const operations = useMemo(() => Object.values(operationsRecord), [operationsRecord]);
+
+  const payload = useMemo(
+    () => ({
       setores,
       colaboradores,
-      operations: Object.values(operationsRecord),
+      operations,
       planoCarregamento,
-    });
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+    }),
+    [setores, colaboradores, operations, planoCarregamento]
+  );
 
-  const refreshStrategy = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const plan = await fetchAIStrategyPlan({
-        setores,
-        colaboradores,
-        operations,
-        planoCarregamento,
-      });
-      setStrategy(plan);
-    } catch (err) {
-      console.warn('[useAIStrategy] Erro ao recalcular estratégia:', err);
-      setStrategy(
-        generateLocalStrategyPlan({
-          setores,
-          colaboradores,
-          operations,
-          planoCarregamento,
-        })
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [setores, colaboradores, operations, planoCarregamento]);
-
-  // Recalculate whenever key dependencies change (e.g. sectors or operations load)
+  // Initial baseline calculation if not yet set
   useEffect(() => {
-    refreshStrategy();
-  }, [setores.length, operations.length, colaboradores.length, refreshStrategy]);
+    initializeBaseline(payload);
+  }, [initializeBaseline, payload]);
+
+  // Manual refresh wrapper (forces API call, bypassing 30s TTL cache)
+  const refreshStrategy = useCallback(
+    (force = true) => refreshStrategyStore(payload, force),
+    [refreshStrategyStore, payload]
+  );
+
+  // Trigger strategy sync (store handles 30s TTL cache and request deduplication across component instances)
+  useEffect(() => {
+    refreshStrategyStore(payload, false);
+  }, [setores.length, operations.length, colaboradores.length, refreshStrategyStore, payload]);
 
   return {
     strategy,

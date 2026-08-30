@@ -40,6 +40,7 @@ import { SupabaseService as FirebaseService, isOnline } from "../lib/supabaseSer
 import { StoreOperation, ParsedProgramRow, StoreMaster, RadarLoja } from "../types";
 import { useSectorStore } from "../stores/useSectorStore";
 import { ModalConfirmacao } from "./ModalConfirmacao";
+import { useUndoableDelete, DeleteUndoToast } from "./DeleteUndoToast";
 import { usePlanoCarregamentoRisk, RiskLevel } from "../hooks/usePlanoCarregamentoRisk";
 import { useAIStrategy } from "../hooks/useAIStrategy";
 import { AIStrategyBanner } from "./AIStrategyBanner";
@@ -56,6 +57,16 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
   const operations = useStoreOperations((state) => state.operations);
   const upsertOperation = useStoreOperations((state) => state.upsertOperation);
   const removeOperation = useStoreOperations((state) => state.removeOperation);
+
+  const { pending, requestDelete, undo, windowMs } = useUndoableDelete(async (id) => {
+    try {
+      await FirebaseService.deleteRecord('store_operations', id);
+      removeOperation(id);
+      triggerFeedback("Rota excluída permanentemente.");
+    } catch {
+      triggerFeedback("Falha ao excluir rota do banco.", true);
+    }
+  });
   
   const currentUser = useUserStore((state) => state.currentUser);
   const currentRole = useUserStore((state) => state.currentRole);
@@ -396,6 +407,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
 
   // Filtragem de operações
   const filteredRiskOps = riskOperations.filter(({ op, plano }) => {
+    if (pending?.id && op.id === pending.id) return false;
     const term = searchQuery.toLowerCase();
     const matchSearch = 
       op.lojaId.toLowerCase().includes(term) ||
@@ -737,18 +749,28 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
                           {renderRiskBadge(risk)}
                         </td>
 
-                        {/* Botão Expedição */}
+                        {/* Botão Expedição + Excluir com Undo */}
                         <td className="py-2.5 px-3 text-right">
-                          <button
-                            onClick={() => handleUpdateOperationalStep(op, 'expedicao')}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer transition ${
-                              op.statusExpedicao !== 'Pendente'
-                                ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                                : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-500'
-                            }`}
-                          >
-                            {op.statusExpedicao !== 'Pendente' ? 'Despachada' : 'Expedir'}
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleUpdateOperationalStep(op, 'expedicao')}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer transition ${
+                                op.statusExpedicao !== 'Pendente'
+                                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                                  : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-500'
+                              }`}
+                            >
+                              {op.statusExpedicao !== 'Pendente' ? 'Despachada' : 'Expedir'}
+                            </button>
+                            <button
+                              id={`btn-delete-radar-${op.id}`}
+                              onClick={() => requestDelete(op.id, `Loja ${op.lojaId} (${op.nomeLoja})`)}
+                              className="p-1 text-zinc-500 hover:text-rose-400 transition-colors rounded hover:bg-rose-500/10 cursor-pointer"
+                              title="Excluir rota com desfazer"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -768,7 +790,17 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
                         </div>
                         <span className="text-[10px] text-indigo-400 font-mono">Setor {op.setor}</span>
                       </div>
-                      {renderRiskBadge(risk)}
+                      <div className="flex items-center gap-2">
+                        {renderRiskBadge(risk)}
+                        <button
+                          id={`btn-delete-radar-card-${op.id}`}
+                          onClick={() => requestDelete(op.id, `Loja ${op.lojaId} (${op.nomeLoja})`)}
+                          className="p-1 text-zinc-500 hover:text-rose-400 transition-colors rounded hover:bg-rose-500/10 cursor-pointer"
+                          title="Excluir rota com desfazer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-3 gap-1.5 text-center pt-2 border-t border-white/5">
@@ -1126,6 +1158,9 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
           onCancel={() => setIsConfirmModalOpen(false)}
         />
       )}
+
+      {/* TOAST DE EXCLUSÃO COM DESFAZER (UNDO) */}
+      <DeleteUndoToast pending={pending} onUndo={undo} windowMs={windowMs} />
     </div>
   );
 }

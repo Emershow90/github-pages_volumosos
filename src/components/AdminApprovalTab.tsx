@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { useUserStore } from "../stores/useUserStore";
 import { UserCheck, Clock, ShieldAlert, CheckCircle, Mail, User } from "lucide-react";
+import ConfirmActionCode from "./ConfirmActionCode";
+import { UserRole } from "../types";
 
 export const AdminApprovalTab: React.FC = () => {
   const { pendingUsers, loadPendingUsers, approveUser, currentUser, addToast } = useUserStore();
   const [loading, setLoading] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [confirmAdminUser, setConfirmAdminUser] = useState<{ uid: string; nome: string } | null>(null);
 
   useEffect(() => {
     const fetchPending = async () => {
@@ -16,7 +19,15 @@ export const AdminApprovalTab: React.FC = () => {
     fetchPending();
   }, [loadPendingUsers]);
 
-  const handleApprove = async (uid: string, nome: string) => {
+  const handleApprove = async (uid: string, nome: string, role?: UserRole) => {
+    if (role === UserRole.Admin) {
+      setConfirmAdminUser({ uid, nome });
+      return;
+    }
+    await executeApproval(uid, nome);
+  };
+
+  const executeApproval = async (uid: string, nome: string) => {
     try {
       setApprovingId(uid);
       await approveUser(uid, currentUser);
@@ -25,11 +36,20 @@ export const AdminApprovalTab: React.FC = () => {
       addToast(`Falha ao aprovar usuário: ${(err as Error).message || err}`, "error");
     } finally {
       setApprovingId(null);
+      setConfirmAdminUser(null);
     }
   };
 
   return (
     <div className="glass-card p-6 border border-white/10 bg-zinc-950/40 max-w-4xl mx-auto rounded-[20px] shadow-2xl" id="admin-approval-tab">
+      {confirmAdminUser && (
+        <ConfirmActionCode
+          actionLabel={`Promover ${confirmAdminUser.nome} para Admin`}
+          severity="carmine"
+          onConfirm={() => executeApproval(confirmAdminUser.uid, confirmAdminUser.nome)}
+          onCancel={() => setConfirmAdminUser(null)}
+        />
+      )}
       <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-6">
         <div>
           <h2 className="text-xl font-black text-white uppercase tracking-widest flex items-center gap-2">
@@ -102,7 +122,7 @@ export const AdminApprovalTab: React.FC = () => {
               <div className="flex items-center gap-3 w-full sm:w-auto self-end sm:self-auto justify-end">
                 <button
                   id={`btn-approve-${user.uid}`}
-                  onClick={() => user.uid && handleApprove(user.uid, user.nome)}
+                  onClick={() => user.uid && handleApprove(user.uid, user.nome, user.role)}
                   disabled={approvingId === user.uid}
                   className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800/40 text-white font-bold text-xs rounded-lg shadow-sm hover:shadow transition-all w-full sm:w-auto uppercase cursor-pointer"
                 >

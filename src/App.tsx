@@ -44,6 +44,12 @@ import {
   ConfigTab,
 } from "./components/AdminAndSupportTabs";
 import { ConsolidationPanel } from "./components/ConsolidationPanel.v2";
+import { GargalosTab } from "./components/GargalosTab";
+import { PlanoAcaoTab } from "./components/PlanoAcaoTab";
+import { CasesMelhoriaTab } from "./components/CasesMelhoriaTab";
+import { InsightIaModal } from "./components/InsightIaModal";
+import { DiagnosticoGargalo } from "./types/Gargalo";
+import { useActionPlanStore } from "./stores/useActionPlanStore";
 import { useMidnightConsolidation } from "./hooks/useMidnightConsolidation";
 import { useUserStore } from "./stores/useUserStore";
 import RadarLojasTab from "./components/RadarLojasTab";
@@ -68,6 +74,7 @@ import { ToastContainer } from "./components/ToastContainer";
 import { OperationToastContainer } from "./components/OperationToastContainer";
 import { useOperationNotifications } from "./hooks/useOperationNotifications";
 import { ScreensaverOverlay } from "./components/ScreensaverOverlay";
+import { TabBarBead } from "./components/TabBarBead";
 
 // Utils & Helpers
 import { calcCopilNota as calcCopilNotaUtil } from "./utils/copilCalculator";
@@ -358,6 +365,14 @@ function App() {
       setRadar(mapped);
     }
   }, [operations, currentSite, setRadar]);
+
+  // Torre de Comando - Estados de Gestão
+  const [selectedGargaloForPlan, setSelectedGargaloForPlan] = useState<DiagnosticoGargalo | null>(null);
+  const [insightModalOpen, setInsightModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    useActionPlanStore.getState().carregarDados();
+  }, []);
 
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
 
@@ -782,6 +797,23 @@ function App() {
 
   const handleMarkAlertLido = (id: string) => {
     setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, lido: true } : a)));
+  };
+
+  const handleClearAudit = () => {
+    setAudit([]);
+    if (authLoading || !fbUser) return;
+    SupabaseService.deleteRecord("audit_logs", {})
+      .then(() => {
+        addAudit(currentUser, "Limpar Auditoria", "Todos", "Apagados");
+      })
+      .catch((err) => console.error("Failed to clear audit logs on DB:", err));
+  };
+
+  const handleDeleteAuditLog = (id: string) => {
+    setAudit((prev) => prev.filter((a) => a.id !== id));
+    if (authLoading || !fbUser) return;
+    SupabaseService.deleteRecord("audit_logs", id)
+      .catch((err) => console.error("Failed to delete audit log from DB:", err));
   };
 
   const handleGravarTurno = () => {
@@ -1215,6 +1247,7 @@ function App() {
         setActiveTab={setActiveTab}
         currentRole={currentRole}
         pendingUsersCount={pendingUsers.length}
+        onOpenInsight={() => setInsightModalOpen(true)}
       />
 
       {/* CORE WRAPPER */}
@@ -1222,6 +1255,63 @@ function App() {
         {/* CONTENT STAGE */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar pb-24">
           <ErrorBoundary fallbackTitle="Erro ao carregar o módulo">
+          {activeTab === "gargalos" && (
+            <ProtectedRoute
+              userRole={currentRole}
+              allowedRoles={[
+                UserRole.Admin,
+                UserRole.Coordenador,
+                UserRole.Referente,
+                UserRole.Operador,
+                UserRole.Operacao,
+              ]}
+            >
+              <GargalosTab
+                setores={setores}
+                operacoes={operations}
+                onCriarPlanoAcao={(gargalo) => {
+                  setSelectedGargaloForPlan(gargalo);
+                  setActiveTab("plano_acao");
+                }}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "plano_acao" && (
+            <ProtectedRoute
+              userRole={currentRole}
+              allowedRoles={[
+                UserRole.Admin,
+                UserRole.Coordenador,
+                UserRole.Referente,
+                UserRole.Operador,
+                UserRole.Operacao,
+              ]}
+            >
+              <PlanoAcaoTab
+                initialGargalo={selectedGargaloForPlan}
+                onClearInitialGargalo={() => setSelectedGargaloForPlan(null)}
+                currentUserNome={currentUser}
+              />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "cases" && (
+            <ProtectedRoute
+              userRole={currentRole}
+              allowedRoles={[
+                UserRole.Admin,
+                UserRole.Coordenador,
+                UserRole.Referente,
+                UserRole.Operador,
+                UserRole.Operacao,
+                UserRole.Consulta,
+              ]}
+            >
+              <CasesMelhoriaTab />
+            </ProtectedRoute>
+          )}
+
           {activeTab === "radar_lojas_live" && (
             <ProtectedRoute
               userRole={currentRole}
@@ -1466,7 +1556,11 @@ function App() {
 
           {activeTab === "audit" && (
             <ProtectedRoute userRole={currentRole} allowedRoles={[UserRole.Admin]}>
-              <AuditoriaTab audit={audit} />
+              <AuditoriaTab
+                audit={audit}
+                onClearAudit={handleClearAudit}
+                onDeleteAuditLog={handleDeleteAuditLog}
+              />
             </ProtectedRoute>
           )}
 
@@ -1649,6 +1743,17 @@ function App() {
         timeState={timeState}
         currentUser={currentUser}
       />
+
+      {/* ASSISTENTE IA INSIGHT MODAL */}
+      <InsightIaModal
+        isOpen={insightModalOpen}
+        onClose={() => setInsightModalOpen(false)}
+        setores={setores}
+        operacoes={Object.values(operations)}
+      />
+
+      {/* DOCK FLUTUANTE DE NAVEGAÇÃO RÁPIDA (BEAD) */}
+      <TabBarBead />
     </div>
   );
 }

@@ -101,11 +101,66 @@ CREATE POLICY "Allow all store_operations for authenticated" ON store_operations
 -- Adicionar updated_at em audit_logs para evitar fallback duplo
 ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
 
--- Corrigir user_id em sync_logs para aceitar null ou string
-DO $$ 
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'sync_logs' AND column_name = 'user_id') THEN
-    ALTER TABLE sync_logs ALTER COLUMN user_id DROP NOT NULL;
-  END IF;
-END $$;
+-- =========================================================
+-- Tabela de Planos de Ação 5W2H e Cases de Melhoria
+-- =========================================================
+CREATE TABLE IF NOT EXISTS planos_acao (
+  id TEXT PRIMARY KEY,
+  gargalo_id TEXT,
+  problema TEXT NOT NULL,
+  causa TEXT NOT NULL,
+  what TEXT NOT NULL,
+  why TEXT NOT NULL,
+  "where" TEXT NOT NULL,
+  "when" TEXT NOT NULL,
+  "who" TEXT NOT NULL,
+  "how" TEXT NOT NULL,
+  how_much TEXT,
+  indicador TEXT NOT NULL,
+  unidade TEXT NOT NULL,
+  valor_antes NUMERIC NOT NULL,
+  meta_esperada NUMERIC NOT NULL,
+  valor_depois NUMERIC,
+  percentual_ganho NUMERIC,
+  meta_atingida BOOLEAN DEFAULT FALSE,
+  impacto_descricao TEXT,
+  status TEXT NOT NULL DEFAULT 'Aberto',
+  padronizado BOOLEAN DEFAULT FALSE,
+  padronizacao_descricao TEXT,
+  criado_por TEXT,
+  data_criacao TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  data_conclusao TIMESTAMP WITH TIME ZONE,
+  observacoes TEXT
+);
+
+ALTER TABLE planos_acao ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all planos_acao for authenticated" ON planos_acao;
+CREATE POLICY "Allow all planos_acao for authenticated" ON planos_acao
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS cases_melhoria (
+  id TEXT PRIMARY KEY,
+  plano_acao_id TEXT REFERENCES planos_acao(id) ON DELETE SET NULL,
+  titulo TEXT NOT NULL,
+  categoria TEXT NOT NULL,
+  setor TEXT NOT NULL,
+  problema TEXT NOT NULL,
+  analise_causa TEXT NOT NULL,
+  acao_implementada TEXT NOT NULL,
+  responsavel TEXT NOT NULL,
+  data_inicio DATE NOT NULL,
+  data_fim DATE NOT NULL,
+  valor_antes NUMERIC NOT NULL,
+  valor_depois NUMERIC NOT NULL,
+  unidade TEXT NOT NULL,
+  ganho_percentual NUMERIC NOT NULL,
+  impacto_operacional TEXT NOT NULL,
+  aprendizados TEXT NOT NULL,
+  status_padronizacao TEXT NOT NULL DEFAULT 'Padronizado no POP'
+);
+
+ALTER TABLE cases_melhoria ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all cases_melhoria for authenticated" ON cases_melhoria;
+CREATE POLICY "Allow all cases_melhoria for authenticated" ON cases_melhoria
+  FOR ALL TO authenticated USING (true) WITH CHECK (true);
 

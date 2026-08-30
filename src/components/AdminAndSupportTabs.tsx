@@ -7,6 +7,7 @@ import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { useUserStore } from "../stores/useUserStore";
 import { AdminApprovalTab } from "./AdminApprovalTab";
+import ConfirmActionCode from "./ConfirmActionCode";
 import {
   Colaborador,
   Setor,
@@ -727,13 +728,17 @@ export const AlertasTab: React.FC<AlertasTabProps> = ({
 // ==========================================
 interface AuditoriaTabProps {
   audit: AuditLog[];
+  onClearAudit?: () => void;
+  onDeleteAuditLog?: (id: string) => void;
 }
 
-export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
+export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit, onClearAudit, onDeleteAuditLog }) => {
   const [subTab, setSubTab] = useState<"logs" | "aprovacoes" | "sync_logs">("logs");
   const [filterUser, setFilterUser] = useState("");
   const [filterField, setFilterField] = useState("");
   const [filterAction, setFilterAction] = useState("");
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Sync logs states
   const [syncLogs, setSyncLogs] = useState<any[]>([]);
@@ -884,6 +889,30 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
 
       {subTab === "logs" && (
         <div className="space-y-6">
+          {confirmClearAll && (
+            <ConfirmActionCode
+              actionLabel="Excluir Todos os Logs de Auditoria"
+              severity="carmine"
+              onConfirm={() => {
+                onClearAudit?.();
+                setConfirmClearAll(false);
+              }}
+              onCancel={() => setConfirmClearAll(false)}
+            />
+          )}
+
+          {confirmDeleteId && (
+            <ConfirmActionCode
+              actionLabel="Excluir Registro de Auditoria"
+              severity="carmine"
+              onConfirm={() => {
+                onDeleteAuditLog?.(confirmDeleteId);
+                setConfirmDeleteId(null);
+              }}
+              onCancel={() => setConfirmDeleteId(null)}
+            />
+          )}
+
           <div className="flex flex-wrap justify-between items-center gap-4 border-b border-white/5 pb-3">
             <div>
               <h2 className="text-xl font-black text-white uppercase tracking-widest">Trilha de Auditoria</h2>
@@ -917,6 +946,17 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
               >
                 Exportar CSV
               </button>
+              {onClearAudit && audit.length > 0 && (
+                <button
+                  id="btn-clear-audit-logs"
+                  onClick={() => setConfirmClearAll(true)}
+                  className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 px-3 py-1.5 rounded text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1.5"
+                  title="Excluir todos os registros de auditoria"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Limpar Trilha
+                </button>
+              )}
             </div>
           </div>
 
@@ -932,11 +972,12 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
                     <th className="p-3 font-bold text-red-400">Valor Anterior</th>
                     <th className="p-3 font-bold text-emerald-400">Novo Valor</th>
                     <th className="p-3 font-bold text-right">Dispositivo</th>
+                    {onDeleteAuditLog && <th className="p-3 font-bold text-center w-12">Ação</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5 font-mono text-zinc-300">
                   {[...filtered].reverse().map((a, i) => (
-                    <tr key={i} className="hover:bg-white/[0.01]">
+                    <tr key={a.id || i} className="hover:bg-white/[0.01]">
                       <td className="p-3 text-zinc-400">
                         {new Date(a.data).toLocaleString("pt-BR")}
                       </td>
@@ -946,11 +987,23 @@ export const AuditoriaTab: React.FC<AuditoriaTabProps> = ({ audit }) => {
                       <td className="p-3 text-red-400">{String(a.valorAnterior ?? "—")}</td>
                       <td className="p-3 text-emerald-400 font-bold">{String(a.valorNovo ?? "—")}</td>
                       <td className="p-3 text-right text-[10px] text-zinc-600 font-sans uppercase">{a.dispositivo}</td>
+                      {onDeleteAuditLog && (
+                        <td className="p-3 text-center">
+                          <button
+                            id={`btn-delete-audit-${a.id || i}`}
+                            onClick={() => setConfirmDeleteId(a.id || `${i}`)}
+                            className="p-1 text-zinc-500 hover:text-rose-400 transition-colors rounded hover:bg-rose-500/10 cursor-pointer"
+                            title="Excluir este registro"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center py-16 text-zinc-500 italic">
+                      <td colSpan={onDeleteAuditLog ? 8 : 7} className="text-center py-16 text-zinc-500 italic">
                         Nenhum registro de auditoria encontrado.
                       </td>
                     </tr>
