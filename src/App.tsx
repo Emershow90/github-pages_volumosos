@@ -43,6 +43,8 @@ import {
   RelatoriosTab,
   ConfigTab,
 } from "./components/AdminAndSupportTabs";
+import { ConsolidationPanel } from "./components/ConsolidationPanel.v2";
+import { useMidnightConsolidation } from "./hooks/useMidnightConsolidation";
 import { useUserStore } from "./stores/useUserStore";
 import RadarLojasTab from "./components/RadarLojasTab";
 import { useStoreOperations } from "./stores/useStoreOperations";
@@ -52,7 +54,7 @@ import { useCollaboratorStore } from "./stores/useCollaboratorStore";
 import { useUIStore } from "./stores/useUIStore";
 import { useNotificationStore } from "./stores/useNotificationStore";
 import { realtimeSync } from "./services/realtimeSyncService";
-import { SupabaseService as FirebaseService } from "./lib/supabaseService";
+import { SupabaseService } from "./lib/supabaseService";
 import { StoreService } from "./services/storeService";
 import { googleSheetsService } from "./services/googleSheetsService";
 
@@ -203,73 +205,12 @@ function App() {
     }
   }, [fbUser?.uid, startListeningUserStatus, setCurrentUserUid]);
 
-  // Load pending users for Admin on startup/role-change
+    // Load pending users for Admin on startup/role-change
   useEffect(() => {
     if (currentRole === UserRole.Admin) {
       loadPendingUsers();
     }
   }, [currentRole, loadPendingUsers]);
-
-  // Daily Automations: 23:59 Google Sheets Export
-  useEffect(() => {
-    // Only run automation if user is authenticated (assuming the UI is kept open in a dispatch terminal)
-    if (!fbUser?.uid) return;
-
-    let timeoutId: NodeJS.Timeout;
-
-    const setupMidnightTimer = () => {
-      const now = new Date();
-      const target = new Date(now);
-      target.setHours(23, 59, 0, 0);
-
-      // If it's already past 23:59, schedule for tomorrow
-      if (now.getTime() > target.getTime()) {
-        target.setDate(target.getDate() + 1);
-      }
-
-      const msUntilMidnight = target.getTime() - now.getTime();
-      
-      console.log(`[Automação Diária] Próxima exportação agendada para daqui a ${Math.round(msUntilMidnight / 1000 / 60)} minutos.`);
-
-      timeoutId = setTimeout(async () => {
-        console.log("[Automação Diária] Executando exportação programada das 23:59...");
-        
-        // Exemplo: ID da planilha fictícia
-        const SPREADSHEET_ID = "YOUR_SPREADSHEET_ID_HERE";
-        
-        const success = await googleSheetsService.exportarHistoricoDiario(SPREADSHEET_ID, useHistoryStore.getState().historico);
-        
-        if (success) {
-          useUIStore.getState().setNotifications([...useUIStore.getState().notifications, {
-            id: Date.now().toString(),
-            title: "Exportação Automática",
-            desc: "Relatório Diário exportado com sucesso (Automação 23:59)",
-            time: new Date().toLocaleTimeString('pt-BR').slice(0, 5),
-            type: "info",
-            read: false
-          }]);
-        } else {
-          useUIStore.getState().setNotifications([...useUIStore.getState().notifications, {
-            id: Date.now().toString(),
-            title: "Exportação Falhou",
-            desc: "Falha na exportação automática do relatório. Verifique o console.",
-            time: new Date().toLocaleTimeString('pt-BR').slice(0, 5),
-            type: "danger",
-            read: false
-          }]);
-        }
-
-        // Setup the next day's timer
-        setupMidnightTimer();
-      }, msUntilMidnight);
-    };
-
-    setupMidnightTimer();
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [fbUser?.uid]); // No longer depends on historico directly
 
   // Zustand Stores
   const {
@@ -349,10 +290,21 @@ function App() {
   // Zustand Operations Store for Radar live sync
   const operations = useStoreOperations((state) => state.operations);
 
+  // Hook de consolidação e exportação diária automática às 23:59 (com retry de 5min)
+  useMidnightConsolidation({
+    historico,
+    setores,
+    colaboradores,
+    supabase: SupabaseService.supabase,
+    spreadsheetId: "YOUR_SPREADSHEET_ID_HERE",
+    googleSheetsService,
+    addToast: useNotificationStore.getState().addToast,
+  });
+
   // Registrar handler de erros de sincronização offline e inicializar lojas master
   useEffect(() => {
     StoreService.initMasterStores();
-    const unsub = FirebaseService.onSyncError((alertLog) => {
+    const unsub = SupabaseService.onSyncError((alertLog) => {
       useHistoryStore.getState().setAlerts([alertLog, ...useHistoryStore.getState().alerts]);
     });
     return () => unsub();
@@ -487,7 +439,7 @@ function App() {
       prev.map((s) => {
         if (s.id === sid) {
           const updated = { ...s, [field]: val };
-          FirebaseService.upsertRecord("setores", updated).catch((err) =>
+          SupabaseService.upsertRecord("setores", updated).catch((err) =>
             console.error("Failed to upsert sector:", err)
           );
           return updated;
@@ -509,69 +461,78 @@ function App() {
       });
     }, 1000);
 
-    const simulationInt = setInterval(() => {
-      if (!setores || setores.length === 0) return;
-      const s = setores[Math.floor(Math.random() * setores.length)];
+    // Background alerts simulation (only runs in DEV or when explicitly enabled in localStorage)
+    const isSimEnabled =
+      typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        localStorage.getItem("radar_enable_simulation") === "true");
 
-      if (Math.random() > 0.85) {
-        const isSla = Math.random() > 0.5;
-        const newAlert: AlertLog = {
-          id: `alt-${Date.now()}`,
-          titulo: isSla ? "Oscilação de SLA" : "Status de Segurança",
-          descricao: isSla
-            ? `Setor S${s.id} com flutuação de promessa de entrega.`
-            : `Auditoria BSI ativa em S${s.id} — mantenha o padrão 5S.`,
-          setor: s.id,
-          prioridade: isSla ? "alta" : "media",
-          lido: false,
-          hora: new Date().toISOString(),
-        };
-        setAlerts((a) => [newAlert, ...a]);
-      }
+    let simulationInt: NodeJS.Timeout | null = null;
+    if (isSimEnabled) {
+      simulationInt = setInterval(() => {
+        if (!setores || setores.length === 0) return;
+        const s = setores[Math.floor(Math.random() * setores.length)];
 
-      if (Math.random() > 0.85) {
-        const types: ("info" | "success" | "warning" | "danger")[] = [
-          "info",
-          "success",
-          "warning",
-          "danger",
-        ];
-        const notifType = types[Math.floor(Math.random() * types.length)];
-        let notifTitle = "Atualização de Setor";
-        let notifDesc = `Novas coletas concluídas no Setor S${s.id}.`;
-        if (notifType === "warning") {
-          notifTitle = "Meta sob Risco";
-          notifDesc = `Atenção: Setor S${s.id} está operando abaixo da meta recomendada.`;
-        } else if (notifType === "danger") {
-          notifTitle = "Divergência de Estoque";
-          notifDesc = `Variação financeira identificada no Setor S${s.id}.`;
-        } else if (notifType === "success") {
-          notifTitle = "KPI Alcançado";
-          notifDesc = `Excelente! Setor S${s.id} estabilizou SLA em 100%.`;
+        if (Math.random() > 0.85) {
+          const isSla = Math.random() > 0.5;
+          const newAlert: AlertLog = {
+            id: `alt-${Date.now()}`,
+            titulo: isSla ? "Oscilação de SLA" : "Status de Segurança",
+            descricao: isSla
+              ? `Setor S${s.id} com flutuação de promessa de entrega.`
+              : `Auditoria BSI ativa em S${s.id} — mantenha o padrão 5S.`,
+            setor: s.id,
+            prioridade: isSla ? "alta" : "media",
+            lido: false,
+            hora: new Date().toISOString(),
+          };
+          setAlerts((a) => [newAlert, ...a]);
         }
 
-        const now = new Date();
-        const formattedTime = now.toLocaleTimeString("pt-BR").slice(0, 5);
-        setNotifications((prev) => {
-          const updated = [
-            {
-              id: Math.random().toString(),
-              title: notifTitle,
-              desc: notifDesc,
-              time: formattedTime,
-              type: notifType,
-              read: false,
-            },
-            ...prev,
-          ].slice(0, 25);
-          return updated;
-        });
-      }
-    }, 15000);
+        if (Math.random() > 0.85) {
+          const types: ("info" | "success" | "warning" | "danger")[] = [
+            "info",
+            "success",
+            "warning",
+            "danger",
+          ];
+          const notifType = types[Math.floor(Math.random() * types.length)];
+          let notifTitle = "Atualização de Setor";
+          let notifDesc = `Novas coletas concluídas no Setor S${s.id}.`;
+          if (notifType === "warning") {
+            notifTitle = "Meta sob Risco";
+            notifDesc = `Atenção: Setor S${s.id} está operando abaixo da meta recomendada.`;
+          } else if (notifType === "danger") {
+            notifTitle = "Divergência de Estoque";
+            notifDesc = `Variação financeira identificada no Setor S${s.id}.`;
+          } else if (notifType === "success") {
+            notifTitle = "KPI Alcançado";
+            notifDesc = `Excelente! Setor S${s.id} estabilizou SLA em 100%.`;
+          }
+
+          const now = new Date();
+          const formattedTime = now.toLocaleTimeString("pt-BR").slice(0, 5);
+          setNotifications((prev) => {
+            const updated = [
+              {
+                id: Math.random().toString(),
+                title: notifTitle,
+                desc: notifDesc,
+                time: formattedTime,
+                type: notifType,
+                read: false,
+              },
+              ...prev,
+            ].slice(0, 25);
+            return updated;
+          });
+        }
+      }, 15000);
+    }
 
     return () => {
       clearInterval(clockInt);
-      clearInterval(simulationInt);
+      if (simulationInt) clearInterval(simulationInt);
     };
   }, [setores, setAlerts, setNotifications]);
 
@@ -673,14 +634,31 @@ function App() {
 
 
   // CORE DISPATCHERS & STATE WRITERS
+  const SENSITIVE_AUDIT_FIELDS = ["password", "senha", "token", "apiKey", "secret", "authorization", "auth", "key"];
+
+  const sanitizeAuditValue = (field: string, val: any): any => {
+    if (val === undefined || val === null) return null;
+    const lowerField = (field || "").toLowerCase();
+    const isSensitive = SENSITIVE_AUDIT_FIELDS.some((s) => lowerField.includes(s));
+    if (isSensitive) return "***REDACTED***";
+    if (typeof val === "object") {
+      try {
+        return JSON.stringify(val);
+      } catch {
+        return String(val);
+      }
+    }
+    return val;
+  };
+
   const addAudit = (user: string, action: string, field: string, nVal: any, pVal?: any) => {
     const logData = {
       data: new Date().toISOString(),
       usuario: user || "Sistema",
       acao: action,
       campo: field,
-      valorAnterior: pVal !== undefined ? pVal : null,
-      valorNovo: nVal !== undefined ? nVal : null,
+      valorAnterior: sanitizeAuditValue(field, pVal),
+      valorNovo: sanitizeAuditValue(field, nVal),
       dispositivo: "TOWER_OS_CONSOLE",
     };
 
@@ -691,7 +669,7 @@ function App() {
     setAudit((prev) => [...prev, newLog]);
 
     if (authLoading || !fbUser) return;
-    FirebaseService.upsert("audit_logs", newLog).catch((err) =>
+    SupabaseService.upsert("audit_logs", newLog).catch((err) =>
       console.error("Failed to automatically save audit log to DB:", err)
     );
   };
@@ -716,7 +694,7 @@ function App() {
         if (s.id === sid) {
           addAudit(currentUser, "Apontamento Prod", `${sid}.${field}`, value, (s as any)[field]);
           const updated = { ...s, [field]: value };
-          FirebaseService.upsertRecord("setores", updated).catch((err) =>
+          SupabaseService.upsertRecord("setores", updated).catch((err) =>
             console.error("Failed to upsert sector:", err)
           );
           return updated;
@@ -734,7 +712,7 @@ function App() {
       const updated = { ...copy[index], status };
       copy[index] = updated;
       addAudit(currentUser, "Status Colaborador", copy[index].nome, status, prevVal);
-      FirebaseService.upsertRecord("colaboradores", updated).catch((err) =>
+      SupabaseService.upsertRecord("colaboradores", updated).catch((err) =>
         console.error("Failed to upsert collaborator:", err)
       );
       return copy;
@@ -749,7 +727,7 @@ function App() {
       const updated = { ...copy[index], horas };
       copy[index] = updated;
       addAudit(currentUser, "Horas DKT", copy[index].nome, horas, prevVal);
-      FirebaseService.upsertRecord("colaboradores", updated).catch((err) =>
+      SupabaseService.upsertRecord("colaboradores", updated).catch((err) =>
         console.error("Failed to upsert collaborator:", err)
       );
       return copy;
@@ -759,7 +737,7 @@ function App() {
   const handleAddColaborador = (col: Colaborador) => {
     setColaboradores((prev) => [...prev, col]);
     addAudit(currentUser, "Criar Colaborador", col.nome, col.setor);
-    FirebaseService.upsertRecord("colaboradores", col).catch((err) =>
+    SupabaseService.upsertRecord("colaboradores", col).catch((err) =>
       console.error("Failed to upsert collaborator:", err)
     );
   };
@@ -769,7 +747,7 @@ function App() {
       const copy = [...prev];
       copy[index] = col;
       addAudit(currentUser, "Editar Colaborador", col.nome, col.setor);
-      FirebaseService.upsertRecord("colaboradores", col).catch((err) =>
+      SupabaseService.upsertRecord("colaboradores", col).catch((err) =>
         console.error("Failed to upsert collaborator:", err)
       );
       return copy;
@@ -780,7 +758,7 @@ function App() {
     const col = colaboradores[index];
     setColaboradores((prev) => prev.filter((_, i) => i !== index));
     addAudit(currentUser, "Remover Colaborador", col.nome, "Apagado");
-    FirebaseService.deleteRecord("colaboradores", col.id).catch((err) =>
+    SupabaseService.deleteRecord("colaboradores", col.id).catch((err) =>
       console.error("Failed to delete collaborator:", err)
     );
   };
@@ -788,7 +766,7 @@ function App() {
   const handleSetColaboradores = async (cols: Colaborador[]) => {
     setColaboradores(cols);
     for (const col of cols) {
-      FirebaseService.upsertRecord("colaboradores", col).catch((err) =>
+      SupabaseService.upsertRecord("colaboradores", col).catch((err) =>
         console.error("Failed to batch upsert collaborator:", err)
       );
     }
@@ -829,7 +807,7 @@ function App() {
       return;
     }
 
-    FirebaseService.upsert("historico_consolidado", newReg)
+    SupabaseService.upsert("historico_consolidado", newReg)
       .then(() => {
         addAudit(currentUser, "Consolidação Turno", `Setor ${s.id}`, s.ativ);
         alert(`Turno S${s.id} gravado no histórico com sucesso!`);
@@ -976,7 +954,7 @@ function App() {
         const calculatedNota = calcCopilNota(newKpiObj);
 
         if (authLoading || !fbUser) return;
-        FirebaseService.upsert("historico_consolidado", {
+        SupabaseService.upsert("historico_consolidado", {
           data: recordDate,
           hora: new Date().toLocaleTimeString("pt-BR"),
           semana: recordSemana,
@@ -1003,7 +981,7 @@ function App() {
       const updated = { ...copy[index], infracaoSeguranca: !prevVal };
       copy[index] = updated;
       addAudit(currentUser, "Segurança Setor", copy[index].id, !prevVal, prevVal);
-      FirebaseService.upsertRecord("setores", updated).catch((err) =>
+      SupabaseService.upsertRecord("setores", updated).catch((err) =>
         console.error("Failed to upsert sector safety:", err)
       );
       return copy;
@@ -1052,11 +1030,17 @@ function App() {
         setTerminalLogs((prev) => [...prev, `[Erro] Setor S${sid} não cadastrado.`]);
       }
     } else if (alertMatch) {
-      const msg = alertMatch[1];
+      const rawMsg = alertMatch[1] || "";
+      // Sanitize against HTML tags and script injections
+      const sanitizedMsg = rawMsg
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+        .replace(/<[^>]+>/g, "")
+        .trim();
+
       const newAlert: AlertLog = {
         id: `alt-${Date.now()}`,
         titulo: "Mensagem do Console",
-        descricao: msg,
+        descricao: sanitizedMsg || "Alerta manual via terminal",
         setor: activeSectorId,
         prioridade: "critica",
         lido: false,
@@ -1433,6 +1417,23 @@ function App() {
             </ProtectedRoute>
           )}
 
+          {activeTab === "consolidacao" && (
+            <ProtectedRoute
+              userRole={currentRole}
+              allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Referente, UserRole.Lider]}
+            >
+              <ConsolidationPanel
+                historico={historico}
+                setores={setores}
+                colaboradores={colaboradores}
+                currentRole={currentRole}
+                spreadsheetId="YOUR_SPREADSHEET_ID_HERE"
+                googleSheetsService={googleSheetsService}
+                addToast={useNotificationStore.getState().addToast}
+              />
+            </ProtectedRoute>
+          )}
+
           {activeTab === "historico" && (
             <ProtectedRoute userRole={currentRole} allowedRoles={[UserRole.Admin]}>
               <HistoricoTab
@@ -1440,7 +1441,7 @@ function App() {
                 onClearHistorico={() => {
                   setHistorico([]);
                   if (authLoading || !fbUser) return;
-                  FirebaseService.deleteRecord("historico_consolidado", {})
+                  SupabaseService.deleteRecord("historico_consolidado", {})
                     .then(() => {
                       addAudit(currentUser, "Limpar Histórico", "Todos", "Apagados");
                     })
@@ -1502,7 +1503,7 @@ function App() {
                   setReferentesSemana((prev) => {
                     const copy = [...prev];
                     copy[idx] = { ...copy[idx], [field]: val };
-                    FirebaseService.upsertRecord("escalas_referentes", copy[idx] as any, "dia" as any)
+                    SupabaseService.upsertRecord("escalas_referentes", copy[idx] as any, "dia" as any)
                       .catch((err) => console.error("Failed to persist referente:", err));
                     return copy;
                   });
@@ -1510,7 +1511,7 @@ function App() {
                 onAddReferente={() => {
                   setReferentesSemana((prev) => {
                     const newRec = { dia: "segunda", ref87: "Novo Líder", refVol: "Apoio Volumoso" };
-                    FirebaseService.upsertRecord("escalas_referentes", newRec as any, "dia" as any)
+                    SupabaseService.upsertRecord("escalas_referentes", newRec as any, "dia" as any)
                       .catch((err) => console.error("Failed to persist new referente:", err));
                     return [...prev, newRec];
                   });
@@ -1519,7 +1520,7 @@ function App() {
                   setReferentesSemana((prev) => {
                     const rec = prev[idx];
                     if (rec && rec.dia) {
-                      FirebaseService.deleteRecord("escalas_referentes", rec.dia, "dia")
+                      SupabaseService.deleteRecord("escalas_referentes", rec.dia, "dia")
                         .catch((err) => console.error("Failed to delete referente:", err));
                     }
                     return prev.filter((_, i) => i !== idx);
@@ -1554,9 +1555,9 @@ function App() {
                   // Atomic insert for both Setor and Capacidade via Supabase 
                   // using 'setor' as the unique conflict target for Capacidade
                   try {
-                    await FirebaseService.upsertRecord('setores', newSec, 'id');
+                    await SupabaseService.upsertRecord('setores', newSec, 'id');
                     const newCap = { id, setor: id, abertura: 0, fechoHora: 0 };
-                    await FirebaseService.upsertRecord('capacidade', newCap, 'setor');
+                    await SupabaseService.upsertRecord('capacidade', newCap, 'setor');
                     
                     // Optimistic update
                     setSetores((prev) => [...prev, newSec]);

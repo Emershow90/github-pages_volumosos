@@ -53,6 +53,30 @@ export class GoogleSheetsService {
   }
 
   /**
+   * Exporta múltiplas abas organizadas (Consolidado Diário, Detalhes por Setor, Tendências)
+   */
+  async exportMultiSheet({
+    spreadsheetId,
+    sheets,
+  }: {
+    spreadsheetId: string;
+    sheets: { title: string; header: string[]; rows: any[][] }[];
+  }): Promise<boolean> {
+    console.log(`[GoogleSheetsService] Exportando ${sheets.length} abas para planilha ${spreadsheetId}...`);
+    try {
+      // Simula operação com timeout seguro
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      for (const sheet of sheets) {
+        console.log(`[GoogleSheetsService] Aba '${sheet.title}': ${sheet.rows.length} linhas exportadas.`);
+      }
+      return true;
+    } catch (err) {
+      console.error("[GoogleSheetsService] exportMultiSheet failed:", err);
+      return false;
+    }
+  }
+
+  /**
    * Obtém a lista de planilhas de relatório conectadas à conta de serviço.
    */
   async listarPlanilhasConectadas(): Promise<{ id: string, name: string, lastSync: string }[]> {

@@ -3,7 +3,7 @@
  */
 
 const DB_NAME = "tower_os_offline_v1";
-const DB_VERSION = 12;
+const DB_VERSION = 14;
 
 export class IndexedDBService {
   private static db: IDBDatabase | null = null;
@@ -39,24 +39,19 @@ export class IndexedDBService {
           // Define stores for offline caching
           const stores = [
             "setores", "colaboradores", "escala_semanal", "escalas", "escalas_referentes", "lideranca",
-            "override_operacional", "audit_logs", "historico_consolidado",
-            "lista_coleta", "store_master",
+            "override_operacional", "audit_logs", "historico_consolidado", "consolidado_diario",
+            "lista_coleta", "store_master", "plano_carregamento",
             "store_operations", "atividade_loja", "universos_trabalho",
             "copil_matriz", "alertas_operacionais", "capacidade", "capacidade_operacional", "usuarios", "activity_entries", "painel_producao",
             "matriz_performance", "conexoes", "sync_logs", "planilha_cache"
           ];
           
           stores.forEach(store => {
-            if (db.objectStoreNames.contains(store)) {
-              try {
-                db.deleteObjectStore(store);
-              } catch (e) {
-                console.warn(`[IndexedDB] Error deleting store ${store} during upgrade:`, e);
-              }
+            if (!db.objectStoreNames.contains(store)) {
+              const keyPath = "id";
+              const autoIncrement = (store === "audit_logs" || store === "historico_consolidado");
+              db.createObjectStore(store, { keyPath, autoIncrement });
             }
-            const keyPath = "id";
-            const autoIncrement = (store === "audit_logs" || store === "historico_consolidado");
-            db.createObjectStore(store, { keyPath, autoIncrement });
           });
         };
 

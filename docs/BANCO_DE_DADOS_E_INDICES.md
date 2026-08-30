@@ -78,9 +78,9 @@ Os índices a seguir eliminam full table scans e reduzem a latência em até 95%
 -- TORRE DE COMANDO VOLUMOSOS - SCRIPT DDL DE ÍNDICES (80/20)
 -- =========================================================
 
--- 1. O(1) Upsert e busca instantânea do monitor de setores por data e setor
-CREATE UNIQUE INDEX IF NOT EXISTS idx_painel_producao_sector_date 
-ON painel_producao (sector_id, upload_date);
+-- 1. O(1) Upsert e busca instantânea do monitor de setores por data, setor e turno
+CREATE UNIQUE INDEX IF NOT EXISTS idx_painel_producao_sector_date_turno 
+ON painel_producao (sector_id, upload_date, COALESCE(turno, '1'));
 
 -- 2. Elimina full table scans no Radar Live durante filtragem por setor e janela de corte
 CREATE INDEX IF NOT EXISTS idx_store_operations_setor_status 

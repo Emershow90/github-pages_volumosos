@@ -83,7 +83,7 @@ Para garantir resiliência e proteção contra sobrecargas ou ataques DoS:
   - `Retry-After` (quando status `429 Too Many Requests`).
 
 ### 3.2. Chaves de API Protegidas
-- O cliente React **nunca** tem acesso direto à `GEMINI_API_KEY`. Todas as chamadas para o modelo `gemini-3.7-flash` passam exclusivamente pelo backend Node/Express (`/api/ai/strategy` e `/api/ai/forecast`).
+- O cliente React **nunca** tem acesso direto à `GEMINI_API_KEY`. Todas as chamadas para o modelo `gemini-2.5-flash` passam exclusivamente pelo backend Node/Express (`/api/ai/strategy` e `/api/ai/forecast`).
 
 ### 3.3. Dupla Validação de Acesso (RBAC)
 Ao verificar autorizações no sistema, valida-se simultaneamente:

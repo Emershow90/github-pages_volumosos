@@ -146,38 +146,47 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
         </div>
       </div>
 
-      {/* GESTÃO (2 Cols on XL) */}
+      {/* GESTÃO (3 Cols on XL) */}
       <div className="xl:col-span-2 border border-white/5 bg-[#0b0b10] rounded-xl p-2 flex flex-col gap-1.5 shadow-sm">
         <div className="flex items-center gap-1.5 px-1.5 py-0.5 text-[10px] font-mono font-black uppercase text-amber-400 tracking-wider">
           <Users size={12} className="text-amber-400" />
           <span>Gestão</span>
         </div>
-        <div className="grid grid-cols-3 gap-1">
+        <div className="grid grid-cols-4 gap-1">
           <button
             id="nav-tab-equipa"
             onClick={() => setActiveTab("equipa")}
-            className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "equipa" ? "active" : ""}`}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "equipa" ? "active" : ""}`}
             title="Equipe & Volumosos"
           >
-            <Users size={12} className="text-amber-400" />
+            <Users size={12} className="text-amber-400 shrink-0" />
             <span className="truncate">Equipe</span>
+          </button>
+          <button
+            id="nav-tab-consolidacao"
+            onClick={() => setActiveTab("consolidacao")}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "consolidacao" ? "active border-amber-500/50 text-amber-300" : ""}`}
+            title="Consolidação Diária e Exportação"
+          >
+            <CalendarDays size={12} className="text-amber-400 shrink-0" />
+            <span className="truncate font-semibold">Consolid.</span>
           </button>
           <button
             id="nav-tab-historico"
             onClick={() => setActiveTab("historico")}
-            className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "historico" ? "active" : ""}`}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "historico" ? "active" : ""}`}
             title="Histórico de Consolidados"
           >
-            <History size={12} className="text-amber-400" />
+            <History size={12} className="text-amber-400 shrink-0" />
             <span className="truncate">Logs</span>
           </button>
           <button
             id="nav-tab-alerts"
             onClick={() => setActiveTab("alerts")}
-            className={`nav-btn py-1.5 px-1 text-[10px] ${activeTab === "alerts" ? "active" : ""}`}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "alerts" ? "active" : ""}`}
             title="Central de Alertas Operacionais"
           >
-            <Bell size={12} className="text-amber-400" />
+            <Bell size={12} className="text-amber-400 shrink-0" />
             <span className="truncate">Alertas</span>
           </button>
         </div>

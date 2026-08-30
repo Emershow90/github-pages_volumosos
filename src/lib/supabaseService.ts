@@ -87,6 +87,8 @@ const TABLE_COLUMNS: Record<string, string[]> = {
 };
 
 export class SupabaseService {
+  public static readonly supabase = supabase;
+
   public static async checkConnection(): Promise<boolean> {
     if (isStaticBuild) return false;
     if (!navigator.onLine) return false;

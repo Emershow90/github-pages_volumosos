@@ -1,6 +1,6 @@
 # Torre de Comando - Operação de Volumosos
 
-Sistema de gestão operacional e monitoramento em tempo real de alta performance para Centro de Distribuição Logístico de Volumosos, com integração ao Supabase, Google Sheets, IndexedDB e Copiloto de Inteligência Artificial Gemini 3.7.
+Sistema de gestão operacional e monitoramento em tempo real de alta performance para Centro de Distribuição Logístico de Volumosos, com integração ao Supabase, Google Sheets, IndexedDB e Copiloto de Inteligência Artificial Gemini 2.5.
 
 ---
 
@@ -88,7 +88,7 @@ O projeto adota os princípios de **Clean Architecture**, dividindo responsabili
 - **Frontend**: React 18, TypeScript, Tailwind CSS, Lucide React, Recharts.
 - **Gerenciamento de Estado**: Zustand (Stores desacopladas e reativas).
 - **Backend**: Node.js com Express 5, `tsx`, `esbuild`.
-- **Inteligência Artificial**: Google GenAI SDK (`@google/genai`) com modelo `gemini-3.7-flash`.
+- **Inteligência Artificial**: Google GenAI SDK (`@google/genai`) com modelo `gemini-2.5-flash`.
 - **Banco de Dados & Persistência**: Supabase (PostgreSQL), IndexedDB (`idb`), Google Sheets API.
 - **Performance & Resiliência**: Rate Limiter por IP em memória, Guardas de recursão/loops, Catálogo de índices SQL 80/20.
 

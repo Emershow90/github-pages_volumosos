@@ -18,11 +18,11 @@ export interface DatabaseIndexDefinition {
 export const RECOMMENDED_DB_INDEXES: DatabaseIndexDefinition[] = [
   {
     tableName: 'painel_producao',
-    indexName: 'idx_painel_producao_sector_date',
-    columns: ['sector_id', 'upload_date'],
+    indexName: 'idx_painel_producao_sector_date_turno',
+    columns: ['sector_id', 'upload_date', 'turno'],
     isUnique: true,
-    purpose: 'O(1) upsert e busca instantânea do monitor de setores por data e setor',
-    sql: 'CREATE UNIQUE INDEX IF NOT EXISTS idx_painel_producao_sector_date ON painel_producao (sector_id, upload_date);'
+    purpose: 'O(1) upsert e busca instantânea do monitor de setores por data, setor e turno',
+    sql: 'CREATE UNIQUE INDEX IF NOT EXISTS idx_painel_producao_sector_date_turno ON painel_producao (sector_id, upload_date, COALESCE(turno, \'1\'));'
   },
   {
     tableName: 'store_operations',
@@ -65,6 +65,34 @@ export const RECOMMENDED_DB_INDEXES: DatabaseIndexDefinition[] = [
     columns: ['created_at'],
     purpose: 'Paginação e exportação de logs de auditoria ordenados por tempo',
     sql: 'CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs (created_at DESC);'
+  },
+  {
+    tableName: 'audit_logs',
+    indexName: 'idx_audit_logs_usuario',
+    columns: ['usuario', 'created_at'],
+    purpose: 'Filtragem rápida de logs de auditoria por operador / usuário',
+    sql: 'CREATE INDEX IF NOT EXISTS idx_audit_logs_usuario ON audit_logs (usuario, created_at DESC);'
+  },
+  {
+    tableName: 'consolidado_diario',
+    indexName: 'idx_consolidado_data',
+    columns: ['data'],
+    purpose: 'Busca rápida de registros diários em ordem cronológica reversa',
+    sql: 'CREATE INDEX IF NOT EXISTS idx_consolidado_data ON consolidado_diario(data DESC);'
+  },
+  {
+    tableName: 'consolidado_diario',
+    indexName: 'idx_consolidado_semana',
+    columns: ['semana', 'data'],
+    purpose: 'Filtragem de consolidados por semana operacional',
+    sql: 'CREATE INDEX IF NOT EXISTS idx_consolidado_semana ON consolidado_diario(semana, data DESC);'
+  },
+  {
+    tableName: 'consolidado_diario',
+    indexName: 'idx_consolidado_status',
+    columns: ['status_geral', 'data'],
+    purpose: 'Agrupamento estatístico por status de qualidade operacional',
+    sql: 'CREATE INDEX IF NOT EXISTS idx_consolidado_status ON consolidado_diario(status_geral, data DESC);'
   }
 ];
 

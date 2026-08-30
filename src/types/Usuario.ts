@@ -1,6 +1,7 @@
 export enum UserRole {
   Guest = "guest",
   Operador = "operador",
+  Lider = "lider",
   Coordenador = "coordenador",
   Admin = "admin",
   Referente = "referente",
