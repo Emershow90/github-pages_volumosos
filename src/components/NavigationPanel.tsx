@@ -224,7 +224,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
             </button>
           )}
         </div>
-        <div className="grid grid-cols-4 gap-1">
+        <div className="grid grid-cols-5 gap-1">
           <button
             id="nav-tab-historico"
             onClick={() => setActiveTab("historico")}
@@ -265,6 +265,15 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           >
             <Link2 size={12} className="text-purple-400 shrink-0" />
             <span className="truncate font-bold text-purple-300">Conexões</span>
+          </button>
+          <button
+            id="nav-tab-config"
+            onClick={() => setActiveTab("config")}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "config" ? "active border-purple-500/50 text-purple-300" : ""}`}
+            title="Ajustes & Configurações"
+          >
+            <Settings size={12} className="text-purple-400 shrink-0" />
+            <span className="truncate font-bold text-purple-300">Ajustes</span>
           </button>
         </div>
       </div>

@@ -14,6 +14,8 @@
 6. [Estratégia de Coleta (Bolsão D+1)](#estratégia-de-coleta-bolsão-d1)
 7. [Conexões com Banco de Dados](#conexões-com-banco-de-dados)
 8. [Fluxo de Dados e Sincronização](#fluxo-de-dados-e-sincronização)
+9. [Módulo de Ajustes e Configurações (RBAC/Segurança)](/docs/AJUSTES_CONFIGURACOES.md)
+10. [Painéis Operacionais e Relatórios](/docs/DASHBOARDS_PAINEIS.md)
 
 ---
 

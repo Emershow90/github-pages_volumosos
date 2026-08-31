@@ -51,3 +51,28 @@ Qualquer alteração ou correção no sistema, por menor que seja, deve seguir o
 
 ## 📡 6. Radar Live & Módulo Operacional
 A documentação da arquitetura, cruzamentos com plano de carga, gestão de estado, tabelas (store_operations) e regras de negócio da máquina de estado da aba Radar Live está documentada e versionada no arquivo `docs/RADAR_LIVE.md`. Qualquer alteração nesta funcionalidade ou hooks relacionados (ex: `usePlanoCarregamentoRisk`) exige a leitura prévia deste artefato para evitar quebras silenciosas.
+
+---
+
+## 🚦 7. Princípio de Integração e Observabilidade (Congelado)
+A Torre de Comando Volumosos segue estritamente as seguintes diretrizes operacionais de fluxos e limites:
+
+*   **Fluxo Unidirecional de Configuração:**
+    ```text
+                        AJUSTES (Configuração / Escrita)
+                                       │
+                                       ▼
+                         SUPABASE / FIRESTORE (Banco)
+                                       │
+                                       ▼
+                       ZUSTAND STORES (Sincronização / Realtime)
+                                       │
+                                       ▼
+                        PAINEL / MONITOR (Observabilidade)
+    ```
+*   **Painel como Consumidor Puro:** Toda alteração de metas, universos, mixes, ou status de segurança do setor **deve obrigatoriamente** nascer no módulo **Ajustes**, ser persistida na nuvem e propagada via Zustand de forma reativa. O Painel principal (`DashboardTab`) é estritamente **read-only** e não possui estados de escrita ou mutação locais paralelos.
+*   **Princípio de Integração:** É expressamente proibida a criação de módulos, tabelas, stores ou fontes de verdade paralelas quando já houver uma estrutura equivalente ativa. O foco do desenvolvimento é a conexão de ponta a ponta.
+*   **Reforço de Segurança (RBAC):**
+    *   **Dupla Validação Estrita:** Se um setor ou recurso específico for informado e o perfil do usuário não for global (como Administrador ou Coordenador), o acesso **obrigatoriamente exige** o vínculo explícito do setor na lista `setoresAutorizados` do usuário. Se a lista estiver vazia ou não contiver o setor, a permissão é **negada imediatamente** (bloqueio por padrão).
+    *   **Ações Desconhecidas:** Qualquer requisição de ação não mapeada na máquina de regras do RBAC é negada por padrão (`fail-closed` retornando `false`) e disparará um alerta de log `[RBAC_UNKNOWN_ACTION]` em desenvolvimento.
+

@@ -1382,6 +1382,7 @@ export const RelatoriosTab: React.FC<RelatoriosTabProps> = ({
 // CONFIG TAB
 // ==========================================
 interface ConfigTabProps {
+  userRole: UserRole;
   setores: Setor[];
   colaboradores: Colaborador[];
   referentesSemana: ReferenteSemana[];
@@ -1405,6 +1406,7 @@ interface ConfigTabProps {
 }
 
 export const ConfigTab: React.FC<ConfigTabProps> = ({
+  userRole,
   setores,
   colaboradores,
   referentesSemana,
@@ -1426,6 +1428,22 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   onLogout,
   onSaveRadar,
 }) => {
+  const isAdmin = userRole === UserRole.Admin;
+  const isCoordinator = userRole === UserRole.Coordenador;
+  const isLeader = userRole === UserRole.Lider;
+  const isOperator = userRole === UserRole.Operador;
+
+  // Let's define checks for specific actions:
+  const canEditLeadership = isAdmin || isCoordinator;
+  const canEditReferents = isAdmin || isCoordinator || isLeader;
+  const canManageSectors = isAdmin;
+  const canEditSectorParams = isAdmin || isCoordinator || isLeader;
+  const canManageStores = isAdmin || isCoordinator;
+  const canImportData = isAdmin || isCoordinator;
+  const canDeleteAllData = isAdmin;
+  const canImportBackup = isAdmin;
+  const canConfigureScreensaver = isAdmin || isCoordinator;
+
   const [subCat, setSubCat] = useState(initialSubCat || "geral");
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [totalImportedCount, setTotalImportedCount] = useState(0);
@@ -2517,6 +2535,16 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
       {/* Configuration Contents */}
       <div className="lg:col-span-3 min-w-0 space-y-4">
+        {!isAdmin && (
+          <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 p-3.5 rounded-xl text-[11px] font-mono flex items-start gap-2.5 shadow-sm">
+            <span className="text-sm mt-0.5">🔒</span>
+            <div>
+              <p className="font-bold uppercase tracking-wider text-amber-300">Nível de Permissão: {userRole.toUpperCase()}</p>
+              <p className="text-zinc-400 mt-1">Algumas ações operacionais e bancos de dados mestres estão protegidos contra alteração.</p>
+            </div>
+          </div>
+        )}
+
         {/* Modern Toast-style Feedback Banner */}
         <AnimatePresence>
           {feedback && (
@@ -2552,8 +2580,9 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                   <label className="text-[0.65rem] text-zinc-500 uppercase block mb-2 font-bold">Nome Coordenador</label>
                   <select
                     value={coordNome}
+                    disabled={!canEditLeadership}
                     onChange={(e) => setCoordNome(e.target.value)}
-                    className="inp py-2 text-sm focus:outline-none cursor-pointer"
+                    className="inp py-2 text-sm focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     required
                   >
                     <option value="">Selecione...</option>
@@ -2572,14 +2601,16 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                   <input
                     type="url"
                     value={coordFoto}
+                    disabled={!canEditLeadership}
                     onChange={(e) => setCoordFoto(e.target.value)}
-                    className="inp py-2 text-sm focus:outline-none"
+                    className="inp py-2 text-sm focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
               <button
                 type="submit"
-                className="mt-4 bg-indigo-600 hover:bg-indigo-500 text-white py-2 px-6 rounded-lg text-xs font-bold uppercase transition-colors cursor-pointer"
+                disabled={!canEditLeadership}
+                className="mt-4 bg-indigo-600 hover:bg-indigo-500 text-white py-2 px-6 rounded-lg text-xs font-bold uppercase transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Salvar Liderança
               </button>
@@ -2590,7 +2621,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                 <h3 className="text-sm font-black text-fuchsia-400 uppercase tracking-widest">Escala: Referentes Semanais</h3>
                 <button
                   onClick={onAddReferente}
-                  className="bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 px-3 py-1 rounded text-xs font-bold transition"
+                  disabled={!canEditReferents}
+                  className="bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/10 px-3 py-1 rounded text-xs font-bold transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Adicionar Linha
                 </button>
@@ -2603,8 +2635,9 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                       <label className="text-[0.5rem] text-zinc-500 uppercase block mb-1">Dia da Semana</label>
                       <select
                         value={r.dia}
+                        disabled={!canEditReferents}
                         onChange={(e) => onUpdateReferente(i, "dia", e.target.value)}
-                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer"
+                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {DIAS_OPTS.map((d) => (
                           <option key={d} value={d}>
@@ -2617,8 +2650,9 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                       <label className="text-[0.5rem] text-zinc-500 uppercase block mb-1">Ref. S87</label>
                       <select
                         value={r.ref87}
+                        disabled={!canEditReferents}
                         onChange={(e) => onUpdateReferente(i, "ref87", e.target.value)}
-                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer"
+                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <option value="">Selecione...</option>
                         {colaboradores.map(c => (
@@ -2633,8 +2667,9 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                       <label className="text-[0.5rem] text-zinc-500 uppercase block mb-1">Ref. Volumosos</label>
                       <select
                         value={r.refVol}
+                        disabled={!canEditReferents}
                         onChange={(e) => onUpdateReferente(i, "refVol", e.target.value)}
-                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer"
+                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <option value="">Selecione...</option>
                         {colaboradores.map(c => (
@@ -2649,8 +2684,9 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                       <label className="text-[0.5rem] text-zinc-500 uppercase block mb-1">Apoios</label>
                       <select
                         value={r.apoios || ""}
+                        disabled={!canEditReferents}
                         onChange={(e) => onUpdateReferente(i, "apoios", e.target.value)}
-                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer"
+                        className="inp py-1.5 text-xs focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <option value="">Nenhum...</option>
                         {colaboradores.map(c => (
@@ -2663,7 +2699,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                     </div>
                     <button
                       onClick={() => onRemoveReferente(i)}
-                      className="text-red-400 hover:text-red-300 p-2 font-bold"
+                      disabled={!canEditReferents}
+                      className="text-red-400 hover:text-red-300 p-2 font-bold disabled:opacity-20 disabled:cursor-not-allowed"
                     >
                       ✕
                     </button>
@@ -2692,7 +2729,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                 </div>
                 <button
                   onClick={handleOpenNewSetor}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 px-4 rounded-lg uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md"
+                  disabled={!canManageSectors}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 px-4 rounded-lg uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Plus size={14} />
                   Cadastrar Setor
@@ -2711,10 +2749,20 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                         <p className="text-[10px] text-zinc-400 mt-0.5">Nº {setor.numero} • Meta Global: {setor.meta} UPH</p>
                       </div>
                       <div className="flex gap-1">
-                        <button onClick={() => handleOpenEditSetor(setor)} className="text-zinc-400 hover:text-white p-1 rounded hover:bg-white/10 transition cursor-pointer" title="Editar Setor">
+                        <button
+                          onClick={() => handleOpenEditSetor(setor)}
+                          disabled={!canEditSectorParams}
+                          className="text-zinc-400 hover:text-white p-1 rounded hover:bg-white/10 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Editar Setor"
+                        >
                           <Edit2 size={14} />
                         </button>
-                        <button onClick={() => handleDeleteSetor(setor.id)} className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10 transition cursor-pointer" title="Excluir Setor">
+                        <button
+                          onClick={() => handleDeleteSetor(setor.id)}
+                          disabled={!canManageSectors}
+                          className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Excluir Setor"
+                        >
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -2723,7 +2771,11 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                     <div className="pt-2 border-t border-white/5">
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-[10px] font-black text-zinc-500 uppercase">Universos (Mix)</span>
-                        <button onClick={() => handleOpenNewUniverso(setor.id)} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 uppercase transition">
+                        <button
+                          onClick={() => handleOpenNewUniverso(setor.id)}
+                          disabled={!canEditSectorParams}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 uppercase transition disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
                           <Plus size={12} /> Adicionar
                         </button>
                       </div>
@@ -2737,8 +2789,20 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                               <div className="flex items-center gap-3">
                                 <span className="text-[9px] text-zinc-500 font-mono">Meta: {u.meta}</span>
                                 <div className="flex gap-1">
-                                  <button onClick={() => handleOpenEditUniverso(setor.id, i, u)} className="text-zinc-400 hover:text-indigo-400 transition cursor-pointer"><Edit2 size={10} /></button>
-                                  <button onClick={() => handleDeleteUniverso(setor.id, i)} className="text-zinc-400 hover:text-red-400 transition cursor-pointer"><Trash2 size={10} /></button>
+                                  <button
+                                    onClick={() => handleOpenEditUniverso(setor.id, i, u)}
+                                    disabled={!canEditSectorParams}
+                                    className="text-zinc-400 hover:text-indigo-400 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
+                                    <Edit2 size={10} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteUniverso(setor.id, i)}
+                                    disabled={!canEditSectorParams}
+                                    className="text-zinc-400 hover:text-red-400 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
+                                    <Trash2 size={10} />
+                                  </button>
                                 </div>
                               </div>
                             </div>
@@ -2770,7 +2834,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleOpenNewStore}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 px-4 rounded-lg uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md"
+                    disabled={!canManageStores}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 px-4 rounded-lg uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Plus size={14} />
                     Cadastrar Nova Loja
@@ -2869,7 +2934,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                           <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition">
                             <button
                               onClick={() => handleOpenEditStore(st)}
-                              className="text-zinc-400 hover:text-white p-1 rounded hover:bg-white/10 transition cursor-pointer"
+                              disabled={!canManageStores}
+                              className="text-zinc-400 hover:text-white p-1 rounded hover:bg-white/10 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                               title="Editar Loja"
                             >
                               <Edit2 size={12} />
@@ -2879,7 +2945,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                                 setStoreToDelete(st);
                                 setIsDeleteStoreConfirmOpen(true);
                               }}
-                              className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10 transition cursor-pointer"
+                              disabled={!canManageStores}
+                              className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                               title="Excluir Loja"
                             >
                               <Trash2 size={12} />
@@ -2931,7 +2998,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                   </div>
                   <button
                     onClick={() => setIsConfirmModalOpen(true)}
-                    className="ml-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg py-1.5 px-3 text-[10px] font-bold font-mono uppercase transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0"
+                    disabled={!canDeleteAllData}
+                    className="ml-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg py-1.5 px-3 text-[10px] font-bold font-mono uppercase transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <span>🗑️</span> Apagar Todos os Dados
                   </button>
@@ -3073,14 +3141,14 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                       </div>
 
                       {/* File Upload drag/drop area */}
-                      <div className="bg-zinc-950/40 p-5 rounded-xl border border-dashed border-white/10 text-center relative hover:border-indigo-500/40 transition">
-                        <label className="cursor-pointer flex flex-col items-center gap-2">
+                      <div className={`bg-zinc-950/40 p-5 rounded-xl border border-dashed border-white/10 text-center relative hover:border-indigo-500/40 transition ${!canImportData ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <label className={`cursor-pointer flex flex-col items-center gap-2 ${!canImportData ? 'cursor-not-allowed' : ''}`}>
                           <span className="text-2xl">📊</span>
                           <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">
                             {fileSelectedName ? `Arquivo Carregado: ${fileSelectedName}` : "Arraste ou selecione um arquivo (.xlsx, .xls, .csv, .json)"}
                           </span>
                           <span className="text-[9px] text-zinc-500">O leitor mapeia as colunas e atualiza a área de texto interativa</span>
-                          <input type="file" accept=".xlsx,.xls,.csv,.json" onChange={handlePlanilhaFileChange} className="hidden" />
+                          <input type="file" accept=".xlsx,.xls,.csv,.json" disabled={!canImportData} onChange={handlePlanilhaFileChange} className="hidden" />
                         </label>
                         {fileSelectedName && (
                           <button
@@ -3100,8 +3168,9 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                         <textarea
                           placeholder='Cole o código JSON ou registros estruturados aqui... Ex: [{"lista": "L101", "loja": "2722 - FLORIPA", "setor": 87, "corte": "07:00", "carregamento": "07:30", "volumes": 120, "enderecos": 14}]'
                           value={jsonInput}
+                          disabled={!canImportData}
                           onChange={(e) => setJsonInput(e.target.value)}
-                          className="inp font-mono text-[11px] h-64 bg-black/60 p-4 border border-white/5 rounded-xl w-full leading-relaxed"
+                          className="inp font-mono text-[11px] h-64 bg-black/60 p-4 border border-white/5 rounded-xl w-full leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                         {jsonInput && (
                           <div className="flex justify-end">
@@ -3176,7 +3245,7 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
 
                         {/* Action buttons */}
                         <button
-                          disabled={jsonPreview.valid.length === 0}
+                          disabled={jsonPreview.valid.length === 0 || !canImportData}
                           onClick={handleJsonImportSubmit}
                           className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white py-3 rounded-xl text-xs font-black uppercase tracking-wider shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
                         >
@@ -3269,13 +3338,13 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
                   {/* Left Column: Upload and RAW text */}
                   <div className="lg:col-span-5 space-y-4">
-                    <div className="bg-black/40 p-6 rounded-xl border border-white/5 text-center">
-                      <label className="cursor-pointer flex flex-col items-center gap-3">
+                    <div className={`bg-black/40 p-6 rounded-xl border border-white/5 text-center ${!canImportData ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <label className={`cursor-pointer flex flex-col items-center gap-3 ${!canImportData ? 'cursor-not-allowed' : ''}`}>
                         <div className="bg-amber-500/10 p-3 rounded-full text-amber-400 animate-pulse">
                           <Image size={28} />
                         </div>
                         <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Arraste ou Selecione Relatório de Picking (Imagem)</span>
-                        <input type="file" accept="image/*" onChange={handleOcrFileChange} className="hidden" />
+                        <input type="file" accept="image/*" disabled={!canImportData} onChange={handleOcrFileChange} className="hidden" />
                       </label>
 
                       {ocrLoading && (
@@ -3339,7 +3408,8 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                                 alert(`Sucesso! ${parsedPreview.length} lojas do OCR foram enviadas e sincronizadas com o Radar de Lojas na aba Operacional!`);
                               }
                             }}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] py-1.5 px-4 rounded uppercase tracking-wider transition cursor-pointer"
+                            disabled={!canImportData}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] py-1.5 px-4 rounded uppercase tracking-wider transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Sincronizar com o Radar
                           </button>
@@ -3542,9 +3612,9 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                   </h4>
                   <p className="text-[10px] text-zinc-500">Substitua as informações do sistema a partir de um arquivo JSON previamente salvo.</p>
                 </div>
-                <label className="mt-4 w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white py-2 rounded text-xs font-bold uppercase transition block text-center cursor-pointer">
+                <label className={`mt-4 w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white py-2 rounded text-xs font-bold uppercase transition block text-center ${!canDeleteAllData ? 'opacity-30 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}>
                   Importar JSON
-                  <input type="file" accept=".json" onChange={handleImportBackupFile} className="hidden" />
+                  <input type="file" accept=".json" disabled={!canDeleteAllData} onChange={handleImportBackupFile} className="hidden" />
                 </label>
               </div>
             </div>
@@ -3568,14 +3638,15 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
         {subCat === "screensaver" && (
           <div className="glass-card p-6 border-l-2 border-indigo-500/50">
             <h3 className="text-sm font-black text-indigo-400 uppercase tracking-widest mb-6">🖥️ Configurações da Tela de Descanso (Inatividade)</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-xs">
               <div className="bg-black/30 p-4 rounded-xl border border-white/5 flex items-center justify-between">
                 <span className="text-xs font-bold text-white">Ativar Tela de Descanso</span>
                 <input
                   type="checkbox"
                   checked={ssEnabled}
+                  disabled={!canEditSectorParams}
                   onChange={(e) => setSsEnabled(e.target.checked)}
-                  className="w-5 h-5 accent-indigo-500 rounded cursor-pointer"
+                  className="w-5 h-5 accent-indigo-500 rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
               <div className="bg-black/30 p-4 rounded-xl border border-white/5">
@@ -3583,8 +3654,9 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                 <input
                   type="number"
                   value={ssTimeout}
+                  disabled={!canEditSectorParams}
                   onChange={(e) => setSsTimeout(parseInt(e.target.value) || 120)}
-                  className="inp py-1.5 font-mono focus:outline-none"
+                  className="inp py-1.5 font-mono focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
               <div className="bg-black/30 p-4 rounded-xl border border-white/5">
@@ -3592,8 +3664,9 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                 <input
                   type="number"
                   value={ssDuration}
+                  disabled={!canEditSectorParams}
                   onChange={(e) => setSsDuration(parseInt(e.target.value) || 30)}
-                  className="inp py-1.5 font-mono focus:outline-none"
+                  className="inp py-1.5 font-mono focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
               <div className="bg-black/30 p-4 rounded-xl border border-white/5">
@@ -3601,16 +3674,18 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                 <input
                   type="url"
                   value={ssImage}
+                  disabled={!canEditSectorParams}
                   onChange={(e) => setSsImage(e.target.value)}
                   placeholder="https://exemplo.com/aviso.png"
-                  className="inp py-1.5 focus:outline-none text-xs"
+                  className="inp py-1.5 focus:outline-none text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
             <div className="flex justify-end pt-4 border-t border-white/5">
               <button
                 onClick={handleScreensaverSave}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg text-xs uppercase tracking-widest cursor-pointer"
+                disabled={!canEditSectorParams}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg text-xs uppercase tracking-widest cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Salvar Definições
               </button>

@@ -63,6 +63,7 @@ import {
 import { useSectorStore } from "../stores/useSectorStore";
 import { useUserStore } from "../stores/useUserStore";
 import { exportToGoogleSheets, initGoogleIdentity } from "../services/googleSheetsExportService";
+import { can } from "../lib/rbac";
 
 interface DashboardTabProps {
   setores: Setor[];
@@ -107,17 +108,20 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [terminalInput, setTerminalInput] = useState("");
   const [chartViewMode, setChartViewMode] = useState<"historico" | "uph_setores" | "volume_mix">("historico");
 
-  // Inline editing states for Monitor de Setores
-  const [editingMetric, setEditingMetric] = useState<{ sid: string; field: string } | null>(null);
-  const [editMetricValue, setEditMetricValue] = useState<string>("");
-
   // Store & User Access
-  const { activityEntries, updateActivityUniversosBatch, updateSectorOverride } = useSectorStore();
+  const { activityEntries } = useSectorStore();
   const { currentUser, currentUserUid } = useUserStore();
   const todayStr = new Date().toISOString().split("T")[0];
 
-  const isEditable =
-    currentRole === UserRole.Admin || currentRole === UserRole.Coordenador || currentRole === UserRole.Referente;
+  const currentUserProfile = useMemo(() => {
+    const cached = localStorage.getItem(`cached_profile_${currentUserUid}`);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return { role: currentRole, setoresAutorizados: [] };
+  }, [currentUserUid, currentRole]);
 
   useEffect(() => {
     const tId = setTimeout(() => {
@@ -125,6 +129,25 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     }, 1500);
     return () => clearTimeout(tId);
   }, []);
+
+  // Dummy definitions to avoid compiler errors from commented out/disabled modal
+  const editingSectorUniversos = null;
+  const setEditingSectorUniversos = (_val: any) => {};
+  const handleSaveUniversos = () => {};
+  const editAlimento = 0;
+  const setEditAlimento = (_val: any) => {};
+  const editMontanha = 0;
+  const setEditMontanha = (_val: any) => {};
+  const editCustomUniversos: any[] = [];
+  const setEditCustomUniversos = (_val: any) => {};
+  const editAtividade = 0;
+  const setEditAtividade = (_val: any) => {};
+  const editReproTotal = 0;
+  const setEditReproTotal = (_val: any) => {};
+  const editColis = 0;
+  const setEditColis = (_val: any) => {};
+  const editElog = "";
+  const setEditElog = (_val: any) => {};
 
   const handleExportSheets = async () => {
     setIsExporting(true);
@@ -272,90 +295,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       colisPct: Math.round((colisVal / (base || 1)) * 100),
       total: base,
     };
-  };
-
-  // Edição inline rápida
-  const handleSaveInline = () => {
-    if (!editingMetric || !onUpdateSetor) return;
-    const { sid, field } = editingMetric;
-    const numValue = parseFloat(editMetricValue) || 0;
-    onUpdateSetor(sid, field, numValue);
-    setEditingMetric(null);
-  };
-
-  // Modal / Edição rápida de universos
-  const [editingSectorUniversos, setEditingSectorUniversos] = useState<string | null>(null);
-  const [editAlimento, setEditAlimento] = useState<number>(0);
-  const [editMontanha, setEditMontanha] = useState<number>(0);
-  const [editCustomUniversos, setEditCustomUniversos] = useState<{ id: string; name: string; value: number }[]>([]);
-  const [editReproTotal, setEditReproTotal] = useState<number>(0);
-  const [editColis, setEditColis] = useState<number>(0);
-  const [editAtividade, setEditAtividade] = useState<number>(0);
-  const [editElog, setEditElog] = useState<string>("");
-
-  const handleOpenEditUniversos = (sid: string, ativTotal: number, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    const mix = getSectorMix(sid, ativTotal);
-    const entry =
-      activityEntries.find((ent) => ent.sectorId === sid && ent.activityDate === todayStr) ||
-      activityEntries.find((ent) => ent.sectorId === sid);
-    const sectorObj = setores.find((s) => String(s.id) === String(sid) || String(s.numero) === String(sid));
-    const currentRepro = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || 151);
-    const currentColis = sectorObj?.colis ?? entry?.colis ?? mix.colis ?? 0;
-    const currentAtiv = sectorObj?.ativ ?? entry?.atividade ?? ativTotal;
-
-    setEditingSectorUniversos(sid);
-    setEditAlimento(mix.alimento);
-    setEditMontanha(mix.montanha);
-    setEditCustomUniversos(mix.customUniversos.map((c) => ({ id: c.id, name: c.name, value: c.value })));
-    setEditReproTotal(currentRepro);
-    setEditColis(currentColis);
-    setEditAtividade(currentAtiv);
-    setEditElog(entry?.elog || "");
-  };
-
-  const handleSaveUniversos = async () => {
-    if (!editingSectorUniversos) return;
-    try {
-      const uId = currentUserUid || currentUser || "system";
-      const customObj: Record<string, number> = {};
-      editCustomUniversos.forEach((item) => {
-        if (item.name.trim()) {
-          customObj[item.name.trim()] = item.value;
-        }
-      });
-
-      await updateActivityUniversosBatch(editingSectorUniversos, todayStr, uId, {
-        alimento: editAlimento,
-        montanha: editMontanha,
-        l7Mochila: 0,
-        adhocCategories: customObj,
-        colis: editColis,
-        atividade: editAtividade,
-        elog: editElog,
-        reapro: `${editReproTotal} CX`,
-      });
-
-      await updateSectorOverride(
-        editingSectorUniversos,
-        {
-          ...(editAtividade > 0 ? { ativ: editAtividade } : {}),
-          reproTotal: editReproTotal,
-          colis: editColis,
-        },
-        uId
-      );
-
-      if (onUpdateSetor) {
-        if (editAtividade > 0) onUpdateSetor(editingSectorUniversos, "ativ", editAtividade);
-        onUpdateSetor(editingSectorUniversos, "reproTotal", editReproTotal);
-        onUpdateSetor(editingSectorUniversos, "colis", editColis);
-      }
-      setEditingSectorUniversos(null);
-    } catch (err) {
-      console.error("[DashboardTab] Erro ao salvar universos:", err);
-      setEditingSectorUniversos(null);
-    }
   };
 
   const handleTerminalSubmit = (e: React.FormEvent) => {
@@ -742,91 +681,31 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       </div>
                     </div>
 
-                    {isEditable && (
-                      <button
-                        type="button"
-                        onClick={() => onToggleSeguranca(idx)}
-                        className={`px-2 py-1 rounded text-[9px] font-black tracking-wider uppercase transition-colors flex items-center gap-1 ${
-                          s.infracaoSeguranca
-                            ? "bg-red-950/80 text-red-400 border border-red-800/40 animate-pulse"
-                            : "bg-emerald-950/80 text-emerald-400 border border-emerald-800/40"
-                        }`}
-                        title="Alternar status de segurança"
-                      >
-                        <Shield size={10} />
-                        <span>SEG</span>
-                      </button>
-                    )}
+                    <div
+                      className={`px-2 py-1 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 ${
+                        s.infracaoSeguranca
+                          ? "bg-red-950/80 text-red-400 border border-red-800/40 animate-pulse"
+                          : "bg-emerald-950/80 text-emerald-400 border border-emerald-800/40"
+                      }`}
+                      title={s.infracaoSeguranca ? "Infração de segurança ativa" : "Sem infrações de segurança"}
+                    >
+                      <Shield size={10} />
+                      <span>{s.infracaoSeguranca ? "INFRAÇÃO" : "OK"}</span>
+                    </div>
                   </div>
-
+ 
                   {/* DISPLAY PRINCIPAL: ATIVIDADE */}
-                  <div
-                    onClick={() => {
-                      if (isEditable) {
-                        setEditingMetric({ sid: s.id, field: "ativ" });
-                        setEditMetricValue(String(s.ativ));
-                      }
-                    }}
-                    className={`flex flex-col items-center justify-center py-3.5 bg-black/40 border border-white/5 rounded-xl relative transition-all ${
-                      isEditable ? "cursor-pointer hover:bg-indigo-500/10 hover:border-indigo-500/30 group" : ""
-                    }`}
-                  >
+                  <div className="flex flex-col items-center justify-center py-3.5 bg-black/40 border border-white/5 rounded-xl relative">
                     <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider mb-0.5 flex items-center gap-1.5">
                       ATIVIDADE
-                      {isEditable && <Edit3 size={10} className="text-zinc-600 group-hover:text-indigo-400" />}
                     </span>
-
-                    {editingMetric?.sid === s.id && editingMetric?.field === "ativ" ? (
-                      <div className="flex items-center gap-1 z-10" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="number"
-                          value={editMetricValue}
-                          onChange={(e) => setEditMetricValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleSaveInline();
-                            if (e.key === "Escape") setEditingMetric(null);
-                          }}
-                          className="w-24 text-center font-black font-mono text-xl bg-black border border-indigo-500 rounded px-1.5 py-0.5 text-white focus:outline-none"
-                          autoFocus
-                        />
-                        <button
-                          onClick={handleSaveInline}
-                          className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold"
-                        >
-                          ✓
-                        </button>
-                        <button
-                          onClick={() => setEditingMetric(null)}
-                          className="p-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded text-[10px] font-bold"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <span
-                        onClick={(e) => {
-                          if (isEditable) {
-                            e.stopPropagation();
-                            handleOpenEditUniversos(s.id, atividadeValue, e);
-                          }
-                        }}
-                        className={`text-3xl lg:text-4xl font-black font-mono tracking-tight text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.05)] ${
-                          isEditable ? "cursor-pointer hover:text-indigo-300" : ""
-                        }`}
-                        title={isEditable ? "Clique para editar os parâmetros e proporções" : undefined}
-                      >
-                        {(atividadeValue ?? 0).toLocaleString("pt-BR")}
-                      </span>
-                    )}
+                    <span className="text-3xl lg:text-4xl font-black font-mono tracking-tight text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
+                      {(atividadeValue ?? 0).toLocaleString("pt-BR")}
+                    </span>
                   </div>
-
+ 
                   {/* UNIVERSOS DE PRODUTOS */}
-                  <div
-                    onClick={(e) => isEditable && handleOpenEditUniversos(s.id, atividadeValue, e)}
-                    className={`bg-black/30 border border-white/5 p-2.5 rounded-xl space-y-2 transition-all ${
-                      isEditable ? "cursor-pointer hover:bg-white/[0.04] hover:border-indigo-500/30 group" : ""
-                    }`}
-                  >
+                  <div className="bg-black/30 border border-white/5 p-2.5 rounded-xl space-y-2">
                     <div className="flex justify-between items-center text-[10px] font-bold text-zinc-400">
                       <span className="flex items-center gap-1 text-indigo-300">
                         <PieChart size={11} />
@@ -834,11 +713,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       </span>
                       <div className="flex items-center gap-1 font-mono">
                         <span className="text-zinc-300">{(mix.total ?? 0).toLocaleString("pt-BR")} un</span>
-                        {isEditable && (
-                          <span className="text-[9px] text-indigo-400 font-sans font-bold group-hover:underline flex items-center gap-0.5">
-                            <Sliders size={9} /> Editar
-                          </span>
-                        )}
                       </div>
                     </div>
 
@@ -923,158 +797,35 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   {/* 4 KPIs Operacionais (Promessa, UPH, BSI, Erros) */}
                   <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/5">
                     {/* PROMESSA (SLA) */}
-                    <div
-                      onClick={() => {
-                        if (isEditable) {
-                          setEditingMetric({ sid: s.id, field: "promessa" });
-                          setEditMetricValue(String(s.promessa));
-                        }
-                      }}
-                      className={`bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between ${
-                        isEditable ? "cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/30" : ""
-                      }`}
-                    >
+                    <div className="bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between">
                       <span className="text-[9px] font-bold text-zinc-400 uppercase flex items-center justify-between">
                         Promessa
-                        {isEditable && <Edit3 size={8} className="text-zinc-600" />}
                       </span>
-                      {editingMetric?.sid === s.id && editingMetric?.field === "promessa" ? (
-                        <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={editMetricValue}
-                            onChange={(e) => setEditMetricValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSaveInline();
-                              if (e.key === "Escape") setEditingMetric(null);
-                            }}
-                            className="w-14 text-center text-xs font-mono bg-black border border-emerald-500 rounded py-0.5 text-emerald-400 focus:outline-none"
-                            autoFocus
-                          />
-                          <button onClick={handleSaveInline} className="p-0.5 bg-emerald-600 text-white rounded text-[8px]">
-                            ✓
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-base font-black text-emerald-400 font-mono">{s.promessa}%</span>
-                      )}
+                      <span className="text-base font-black text-emerald-400 font-mono">{s.promessa}%</span>
                     </div>
 
                     {/* UPH */}
-                    <div
-                      onClick={() => {
-                        if (isEditable) {
-                          setEditingMetric({ sid: s.id, field: "uph" });
-                          setEditMetricValue(String(s.uph));
-                        }
-                      }}
-                      className={`bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between ${
-                        isEditable ? "cursor-pointer hover:bg-sky-500/10 hover:border-sky-500/30" : ""
-                      }`}
-                    >
+                    <div className="bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between">
                       <span className="text-[9px] font-bold text-zinc-400 uppercase flex items-center justify-between">
                         UPH
-                        {isEditable && <Edit3 size={8} className="text-zinc-600" />}
                       </span>
-                      {editingMetric?.sid === s.id && editingMetric?.field === "uph" ? (
-                        <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="number"
-                            value={editMetricValue}
-                            onChange={(e) => setEditMetricValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSaveInline();
-                              if (e.key === "Escape") setEditingMetric(null);
-                            }}
-                            className="w-14 text-center text-xs font-mono bg-black border border-sky-500 rounded py-0.5 text-sky-400 focus:outline-none"
-                            autoFocus
-                          />
-                          <button onClick={handleSaveInline} className="p-0.5 bg-sky-600 text-white rounded text-[8px]">
-                            ✓
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-base font-black text-sky-400 font-mono">{s.uph}</span>
-                      )}
+                      <span className="text-base font-black text-sky-400 font-mono">{s.uph}</span>
                     </div>
 
                     {/* BSI */}
-                    <div
-                      onClick={() => {
-                        if (isEditable) {
-                          setEditingMetric({ sid: s.id, field: "bsi" });
-                          setEditMetricValue(String(s.bsi));
-                        }
-                      }}
-                      className={`bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between ${
-                        isEditable ? "cursor-pointer hover:bg-cyan-500/10 hover:border-cyan-500/30" : ""
-                      }`}
-                    >
+                    <div className="bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between">
                       <span className="text-[9px] font-bold text-zinc-400 uppercase flex items-center justify-between">
                         BSI
-                        {isEditable && <Edit3 size={8} className="text-zinc-600" />}
                       </span>
-                      {editingMetric?.sid === s.id && editingMetric?.field === "bsi" ? (
-                        <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={editMetricValue}
-                            onChange={(e) => setEditMetricValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSaveInline();
-                              if (e.key === "Escape") setEditingMetric(null);
-                            }}
-                            className="w-14 text-center text-xs font-mono bg-black border border-cyan-500 rounded py-0.5 text-cyan-400 focus:outline-none"
-                            autoFocus
-                          />
-                          <button onClick={handleSaveInline} className="p-0.5 bg-cyan-600 text-white rounded text-[8px]">
-                            ✓
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-base font-black text-cyan-400 font-mono">{s.bsi}%</span>
-                      )}
+                      <span className="text-base font-black text-cyan-400 font-mono">{s.bsi}%</span>
                     </div>
 
                     {/* ERROS PICKING */}
-                    <div
-                      onClick={() => {
-                        if (isEditable) {
-                          setEditingMetric({ sid: s.id, field: "errosPicking" });
-                          setEditMetricValue(String(s.errosPicking));
-                        }
-                      }}
-                      className={`bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between ${
-                        isEditable ? "cursor-pointer hover:bg-red-500/10 hover:border-red-500/30" : ""
-                      }`}
-                    >
+                    <div className="bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between">
                       <span className="text-[9px] font-bold text-zinc-400 uppercase flex items-center justify-between">
                         Erros Pick.
-                        {isEditable && <Edit3 size={8} className="text-zinc-600" />}
                       </span>
-                      {editingMetric?.sid === s.id && editingMetric?.field === "errosPicking" ? (
-                        <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={editMetricValue}
-                            onChange={(e) => setEditMetricValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSaveInline();
-                              if (e.key === "Escape") setEditingMetric(null);
-                            }}
-                            className="w-14 text-center text-xs font-mono bg-black border border-red-500 rounded py-0.5 text-red-400 focus:outline-none"
-                            autoFocus
-                          />
-                          <button onClick={handleSaveInline} className="p-0.5 bg-red-600 text-white rounded text-[8px]">
-                            ✓
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-base font-black text-red-400 font-mono">{s.errosPicking}%</span>
-                      )}
+                      <span className="text-base font-black text-red-400 font-mono">{s.errosPicking}%</span>
                     </div>
                   </div>
                 </div>

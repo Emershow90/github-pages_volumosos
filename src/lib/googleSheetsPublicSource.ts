@@ -20,10 +20,10 @@ export interface PlanoCarregamentoRow {
 }
 
 // Planilha Específica de Atividade Total (Controladoria - Atividades por Setor)
-export const ATIVIDADE_TOTAL_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRTghosKUGfdajRIIBogZzdYcxh6G4Yrj6zIHojZFw8zHWoQiGAwz3VvNNr4zTiJWe3VeNOzFsE0dOT/pub?gid=0&single=true&output=csv';
+export const ATIVIDADE_TOTAL_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRTghosKUGfdajRIIBogZzdYcxh6G4Yrj6zIHojZFw8zHWoQiGAwz3VvNNr4zTiJWe3VeNOzFsE0dOT/pub?output=csv';
 
 // Planilha Específica do Plano de Carregamento (Logística - Programação de Carga)
-export const PLANO_CARREGAMENTO_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRTghosKUGfdajRIIBogZzdYcxh6G4Yrj6zIHojZFw8zHWoQiGAwz3VvNNr4zTiJWe3VeNOzFsE0dOT/pub?gid=1141245157&single=true&output=csv';
+export const PLANO_CARREGAMENTO_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv';
 
 const ATIVIDADE_SHEET_CSV_URLS = [
   ATIVIDADE_TOTAL_SHEET_URL,
@@ -32,7 +32,7 @@ const ATIVIDADE_SHEET_CSV_URLS = [
 
 const PLANO_SHEET_CSV_URLS = [
   PLANO_CARREGAMENTO_SHEET_URL,
-  'https://docs.google.com/spreadsheets/d/e/2PACX-1vRTghosKUGfdajRIIBogZzdYcxh6G4Yrj6zIHojZFw8zHWoQiGAwz3VvNNr4zTiJWe3VeNOzFsE0dOT/pub?gid=1141245157&single=true&output=csv'
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv'
 ];
 
 const CACHE_KEY = 'cache_public_sheet_metrics';

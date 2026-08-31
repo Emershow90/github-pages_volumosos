@@ -1584,8 +1584,9 @@ function App() {
           )}
 
           {activeTab === "config" && (
-            <ProtectedRoute userRole={currentRole} allowedRoles={[UserRole.Admin]}>
+            <ProtectedRoute userRole={currentRole} allowedRoles={[UserRole.Admin, UserRole.Coordenador, UserRole.Lider, UserRole.Operador]}>
               <ConfigTab
+                userRole={currentRole}
                 setores={setores}
                 colaboradores={colaboradores}
                 referentesSemana={referentesSemana}
