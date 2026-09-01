@@ -1,0 +1,10 @@
+        description="Você está prestes a apagar permanentemente todas as listas importadas (lista_coleta) e seus respectivos status operacionais (radar_lojas_status). Esta ação não poderá ser desfeita!"
+        confirmLabel="Sim, Apagar Tudo"
+        cancelLabel="Cancelar"
+        recordCount={totalImportedCount}
+      />
+
+      {/* MODAL SETOR */}
+      <AnimatePresence>
+        {showSetorModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">

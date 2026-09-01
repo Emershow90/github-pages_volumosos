@@ -1,0 +1,20 @@
+--- src/components/AdminAndSupportTabs.tsx
++++ src/components/AdminAndSupportTabs.tsx
+@@ -3942,6 +3942,17 @@
+         cancelLabel="Cancelar"
+         recordCount={totalImportedCount}
+       />
++      {/* CONFIRMAÇÃO DE EXCLUSÃO DE SETOR */}
++      {sectorToDelete && (
++        <ModalConfirmacao
++          isOpen={!!sectorToDelete}
++          onClose={() => setSectorToDelete(null)}
++          onConfirm={handleDeleteSetorConfirm}
++          title="EXCLUIR SETOR?"
++          description={`Deseja realmente excluir este setor e todos os seus dados? Esta ação não pode ser desfeita.`}
++          confirmLabel="Sim, Excluir Setor"
++          cancelLabel="Cancelar"
++        />
++      )}
+       {/* MODAL SETOR */}
+       <AnimatePresence>

@@ -1,0 +1,69 @@
+--- src/components/AdminAndSupportTabs.tsx
++++ src/components/AdminAndSupportTabs.tsx
+@@ -1449,6 +1449,7 @@
+   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+   const [totalImportedCount, setTotalImportedCount] = useState(0);
+ 
++  const [sectorToDelete, setSectorToDelete] = useState<string | null>(null);
+   const { setores } = useSectorStore();
+   const { universos: globUniversos, setUniversos: setGlobUniversos } = useSectorStore();
+   
+@@ -1656,18 +1657,21 @@
+     }
+   };
+ 
+-  const handleDeleteSetor = async (id: string) => {
+-    if (confirm("Tem certeza que deseja excluir este setor?")) {
+-      try {
+-        await FirebaseService.deleteRecord("setores", id, "id");
+-        
+-        // Atualiza a store local imediatamente para refletir na UI
+-        const currentSectors = useSectorStore.getState().setores;
+-        useSectorStore.getState().setSetores(currentSectors.filter(s => s.id !== id));
+-        
+-        showFeedback("Setor removido com sucesso!");
+-      } catch (err: any) {
+-        console.error(err);
+-        showFeedback(`Erro ao remover setor: ${err.message}`, "error");
+-      }
+-    }
++  const handleDeleteSetor = (id: string) => {
++    setSectorToDelete(id);
++  };
++
++  const handleDeleteSetorConfirm = async () => {
++    if (!sectorToDelete) return;
++    try {
++      await FirebaseService.deleteRecord("setores", sectorToDelete, "id");
++      
++      const currentSectors = useSectorStore.getState().setores;
++      useSectorStore.getState().setSetores(currentSectors.filter(s => s.id !== sectorToDelete));
++      
++      showFeedback("Setor removido com sucesso!");
++    } catch (err: any) {
++      console.error(err);
++      showFeedback(`Erro ao remover setor: ${err.message}`, "error");
++    } finally {
++      setSectorToDelete(null);
++    }
+   };
+ 
+   const handleOpenNewUniverso = (setorId: string) => {
+@@ -3938,6 +3942,17 @@
+         cancelLabel="Cancelar"
+         recordCount={totalImportedCount}
+       />
++      {/* CONFIRMAÇÃO DE EXCLUSÃO DE SETOR */}
++      {sectorToDelete && (
++        <ModalConfirmacao
++          isOpen={!!sectorToDelete}
++          onClose={() => setSectorToDelete(null)}
++          onConfirm={handleDeleteSetorConfirm}
++          title="EXCLUIR SETOR?"
++          description={`Deseja realmente excluir este setor e todos os seus dados? Esta ação não pode ser desfeita.`}
++          confirmLabel="Sim, Excluir Setor"
++          cancelLabel="Cancelar"
++        />
++      )}
+ 
+       {/* MODAL SETOR */}

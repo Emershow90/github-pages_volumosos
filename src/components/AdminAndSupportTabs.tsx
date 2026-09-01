@@ -1448,6 +1448,8 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
   const [subCat, setSubCat] = useState(initialSubCat || "geral");
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [totalImportedCount, setTotalImportedCount] = useState(0);
+  const [sectorToDelete, setSectorToDelete] = useState<string | null>(null);
+  const [universoToDelete, setUniversoToDelete] = useState<{setorId: string, idx: number} | null>(null);
 
   // Store Sector Master UI State
   const { universos: globUniversos, setUniversos: setGlobUniversos } = useSectorStore();
@@ -1655,20 +1657,24 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
     }
   };
 
-  const handleDeleteSetor = async (id: string) => {
-    if (confirm("Tem certeza que deseja excluir este setor?")) {
-      try {
-        await FirebaseService.deleteRecord("setores", id, "id");
-        
-        // Atualiza a store local imediatamente para refletir na UI
-        const currentSectors = useSectorStore.getState().setores;
-        useSectorStore.getState().setSetores(currentSectors.filter(s => s.id !== id));
-        
-        showFeedback("Setor removido com sucesso!");
-      } catch (err: any) {
-        console.error(err);
-        showFeedback(`Erro ao remover setor: ${err.message}`, "error");
-      }
+  const handleDeleteSetor = (id: string) => {
+    setSectorToDelete(id);
+  };
+
+  const handleDeleteSetorConfirm = async () => {
+    if (!sectorToDelete) return;
+    try {
+      await FirebaseService.deleteRecord("setores", sectorToDelete, "id");
+      
+      const currentSectors = useSectorStore.getState().setores;
+      useSectorStore.getState().setSetores(currentSectors.filter(s => s.id !== sectorToDelete));
+      
+      showFeedback("Setor removido com sucesso!");
+    } catch (err: any) {
+      console.error(err);
+      showFeedback(`Erro ao remover setor: ${err.message}`, "error");
+    } finally {
+      setSectorToDelete(null);
     }
   };
 
@@ -1736,26 +1742,32 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
     setShowUniversoModal(false);
   };
 
-  const handleDeleteUniverso = async (setorId: string, idx: number) => {
-    if (confirm("Tem certeza que deseja excluir este universo?")) {
-      const currentUnivs = globUniversos[setorId] || [];
-      const toDelete = currentUnivs[idx];
-      const nextUnivs = currentUnivs.filter((_, i) => i !== idx);
-      
-      try {
-        if (toDelete && toDelete.id) {
-          await FirebaseService.deleteRecord("universos_trabalho", toDelete.id, "id");
-        }
-      } catch (err) {
-        console.error("Failed to delete universo:", err);
-      }
+  const handleDeleteUniverso = (setorId: string, idx: number) => {
+    setUniversoToDelete({ setorId, idx });
+  };
 
-      setGlobUniversos({
-        ...globUniversos,
-        [setorId]: nextUnivs
-      });
-      showFeedback("Universo removido com sucesso!");
+  const handleDeleteUniversoConfirm = async () => {
+    if (!universoToDelete) return;
+    const { setorId, idx } = universoToDelete;
+    const currentUnivs = globUniversos[setorId] || [];
+    const toDelete = currentUnivs[idx];
+    const nextUnivs = currentUnivs.filter((_, i) => i !== idx);
+    
+    try {
+      if (toDelete && toDelete.id) {
+        await FirebaseService.deleteRecord("universos_trabalho", toDelete.id, "id");
+      }
+    } catch (err: any) {
+      console.error("Failed to delete universo:", err);
+      showFeedback(`Erro ao remover universo: ${err.message}`, "error");
     }
+
+    setGlobUniversos({
+      ...globUniversos,
+      [setorId]: nextUnivs
+    });
+    showFeedback("Universo removido com sucesso!");
+    setUniversoToDelete(null);
   };
 
 
@@ -3936,6 +3948,32 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
         cancelLabel="Cancelar"
         recordCount={totalImportedCount}
       />
+
+      {/* CONFIRMAÇÃO DE EXCLUSÃO DE SETOR */}
+      {sectorToDelete && (
+        <ModalConfirmacao
+          isOpen={!!sectorToDelete}
+          onClose={() => setSectorToDelete(null)}
+          onConfirm={handleDeleteSetorConfirm}
+          title="EXCLUIR SETOR?"
+          description={`Deseja realmente excluir este setor e todos os seus dados? Esta ação não pode ser desfeita.`}
+          confirmLabel="Sim, Excluir Setor"
+          cancelLabel="Cancelar"
+        />
+      )}
+
+      {/* CONFIRMAÇÃO DE EXCLUSÃO DE UNIVERSO */}
+      {universoToDelete && (
+        <ModalConfirmacao
+          isOpen={!!universoToDelete}
+          onClose={() => setUniversoToDelete(null)}
+          onConfirm={handleDeleteUniversoConfirm}
+          title="EXCLUIR UNIVERSO?"
+          description={`Deseja realmente excluir este universo? Esta ação não pode ser desfeita.`}
+          confirmLabel="Sim, Excluir Universo"
+          cancelLabel="Cancelar"
+        />
+      )}
 
       {/* MODAL SETOR */}
       <AnimatePresence>
