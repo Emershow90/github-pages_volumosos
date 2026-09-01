@@ -84,7 +84,7 @@ interface SectorStoreState {
  * Função pura que calcula os valores finais do setor respeitando a hierarquia:
  * Valor Final = Override ?? Valor Sugerido da Planilha ?? Valor Baseline
  */
-function resolveSectorMetrics(sector: Setor): Setor {
+export function resolveSectorMetrics(sector: Setor): Setor {
   const overrides = sector.overrides || {};
   const suggested = sector.suggestedMetrics || {};
 

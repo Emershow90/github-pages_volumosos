@@ -60,7 +60,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { useSectorStore } from "../stores/useSectorStore";
+import { useSectorStore, resolveSectorMetrics } from "../stores/useSectorStore";
 import { useUserStore } from "../stores/useUserStore";
 import { exportToGoogleSheets, initGoogleIdentity } from "../services/googleSheetsExportService";
 import { can } from "../lib/rbac";
@@ -130,24 +130,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     return () => clearTimeout(tId);
   }, []);
 
-  // Dummy definitions to avoid compiler errors from commented out/disabled modal
-  const editingSectorUniversos = null;
-  const setEditingSectorUniversos = (_val: any) => {};
-  const handleSaveUniversos = () => {};
-  const editAlimento = 0;
-  const setEditAlimento = (_val: any) => {};
-  const editMontanha = 0;
-  const setEditMontanha = (_val: any) => {};
-  const editCustomUniversos: any[] = [];
-  const setEditCustomUniversos = (_val: any) => {};
-  const editAtividade = 0;
-  const setEditAtividade = (_val: any) => {};
-  const editReproTotal = 0;
-  const setEditReproTotal = (_val: any) => {};
-  const editColis = 0;
-  const setEditColis = (_val: any) => {};
-  const editElog = "";
-  const setEditElog = (_val: any) => {};
+  // Quick Sector & Universos Adjustment Modal State
+  const [editingSectorUniversos, setEditingSectorUniversos] = useState<string | null>(null);
+  const [editAtividade, setEditAtividade] = useState<number>(0);
+  const [editAlimento, setEditAlimento] = useState<number>(0);
+  const [editMontanha, setEditMontanha] = useState<number>(0);
+  const [editCustomUniversos, setEditCustomUniversos] = useState<Array<{ id: string; name: string; value: number }>>([]);
+  const [editReproTotal, setEditReproTotal] = useState<number>(0);
+  const [editColis, setEditColis] = useState<number>(0);
+  const [editElog, setEditElog] = useState<string>("");
+  const [isSavingUniversos, setIsSavingUniversos] = useState<boolean>(false);
+  const [saveFeedbackNotice, setSaveFeedbackNotice] = useState<string | null>(null);
 
   const handleExportSheets = async () => {
     setIsExporting(true);
@@ -297,6 +290,102 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     };
   };
 
+  // Helper para abrir o modal de ajuste rápido validando RBAC
+  const handleOpenEditSector = (s: Setor) => {
+    if (!can(currentUserProfile, "edit_sector_params", s.id)) {
+      alert(`Acesso negado: você não possui permissão para editar os parâmetros do Setor ${s.id}.`);
+      return;
+    }
+    const resolved = resolveSectorMetrics(s);
+    const resolvedAtiv = resolved.ativ ?? 0;
+    const mix = getSectorMix(s.id, resolvedAtiv);
+
+    setEditingSectorUniversos(s.id);
+    setEditAtividade(resolvedAtiv);
+    setEditAlimento(mix.alimento || 0);
+    setEditMontanha(mix.montanha || 0);
+    setEditCustomUniversos(
+      (mix.customUniversos || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        value: c.value || 0,
+      }))
+    );
+    setEditReproTotal(resolved.reproTotal ?? (s.id === "87" ? 151 : 127));
+    setEditColis(resolved.colis ?? mix.colis ?? 0);
+    setEditElog(mix.elog || "2J RA FALC (174)");
+  };
+
+  // Sincronização direta com o Supabase + Zustand + Audit Logs
+  const handleSaveUniversos = async () => {
+    if (!editingSectorUniversos) return;
+    if (!can(currentUserProfile, "edit_sector_params", editingSectorUniversos)) {
+      alert(`Ação não autorizada para o Setor ${editingSectorUniversos} pelo controle de acesso (RBAC).`);
+      return;
+    }
+
+    setIsSavingUniversos(true);
+    try {
+      const totalCustom = editCustomUniversos.reduce((acc, c) => acc + (c.value || 0), 0);
+      const calculatedAtividade = editAtividade > 0 ? editAtividade : editAlimento + editMontanha + totalCustom;
+
+      const adhocCategories: Record<string, number> = {};
+      editCustomUniversos.forEach((c) => {
+        if (c.name && c.name.trim()) {
+          adhocCategories[c.name.trim()] = c.value || 0;
+        }
+      });
+
+      const userName = currentUser || "system";
+
+      // 1. Atualizar overrides do Setor no Supabase (com auditoria)
+      await useSectorStore.getState().updateSectorOverride(
+        editingSectorUniversos,
+        {
+          ativ: calculatedAtividade,
+          reproTotal: editReproTotal,
+          colis: editColis,
+        },
+        userName
+      );
+
+      // 2. Atualizar atividade diária no Supabase (activity_entries)
+      await useSectorStore.getState().updateActivityUniversosBatch(
+        editingSectorUniversos,
+        todayStr,
+        currentUserUid || "system",
+        {
+          alimento: editAlimento,
+          montanha: editMontanha,
+          colis: editColis,
+          atividade: calculatedAtividade,
+          elog: editElog,
+          reapro: String(editReproTotal),
+          adhocCategories,
+        }
+      );
+
+      // 3. Notificar callback do App.tsx se existente
+      if (onUpdateSetor) {
+        onUpdateSetor(editingSectorUniversos, "atividade", calculatedAtividade);
+        onUpdateSetor(editingSectorUniversos, "alimento", editAlimento);
+        onUpdateSetor(editingSectorUniversos, "montanha", editMontanha);
+        onUpdateSetor(editingSectorUniversos, "reproTotal", editReproTotal);
+        onUpdateSetor(editingSectorUniversos, "colis", editColis);
+        onUpdateSetor(editingSectorUniversos, "elog", editElog);
+      }
+
+      setSaveFeedbackNotice(`Parâmetros do Setor ${editingSectorUniversos} sincronizados com sucesso no Supabase!`);
+      setTimeout(() => setSaveFeedbackNotice(null), 4000);
+      setEditingSectorUniversos(null);
+    } catch (err) {
+      console.error("Erro ao sincronizar parâmetros:", err);
+      alert("Erro ao persistir alterações: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsSavingUniversos(false);
+    }
+  };
+
   const handleTerminalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (terminalInput.trim()) {
@@ -325,6 +414,22 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto pb-12">
+      {/* 🔔 Feedback de Sincronização em Tempo Real */}
+      {saveFeedbackNotice && (
+        <div className="bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 p-3.5 rounded-2xl flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2 text-xs font-bold">
+            <Check size={16} className="text-emerald-400" />
+            <span>{saveFeedbackNotice}</span>
+          </div>
+          <button
+            onClick={() => setSaveFeedbackNotice(null)}
+            className="text-emerald-400 hover:text-white p-1 rounded-lg"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* 🧭 Top Bar & Seletor de Seções (Escala | Monitor | Gráfico) */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[#0a0a10] border border-white/10 p-4 rounded-2xl shadow-lg">
         <div className="flex items-center gap-3">
@@ -681,27 +786,87 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       </div>
                     </div>
 
-                    <div
-                      className={`px-2 py-1 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 ${
-                        s.infracaoSeguranca
-                          ? "bg-red-950/80 text-red-400 border border-red-800/40 animate-pulse"
-                          : "bg-emerald-950/80 text-emerald-400 border border-emerald-800/40"
-                      }`}
-                      title={s.infracaoSeguranca ? "Infração de segurança ativa" : "Sem infrações de segurança"}
-                    >
-                      <Shield size={10} />
-                      <span>{s.infracaoSeguranca ? "INFRAÇÃO" : "OK"}</span>
+                    <div className="flex items-center gap-1.5">
+                      {can(currentUserProfile, "edit_sector_params", s.id) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEditSector(s);
+                          }}
+                          className="px-2 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 text-[9px] font-bold flex items-center gap-1 transition-all shadow-sm"
+                          title={`Ajuste rápido de atividade e universos (Setor ${s.id})`}
+                        >
+                          <Edit3 size={10} />
+                          <span>Ajustar</span>
+                        </button>
+                      )}
+
+                      {can(currentUserProfile, "toggle_safety", s.id) ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleSeguranca(idx);
+                          }}
+                          className={`px-2 py-1 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 transition-all cursor-pointer shadow-sm ${
+                            s.infracaoSeguranca
+                              ? "bg-red-950/90 text-red-400 border border-red-700/60 hover:bg-red-900/80 animate-pulse"
+                              : "bg-emerald-950/80 text-emerald-400 border border-emerald-800/40 hover:bg-emerald-900/60"
+                          }`}
+                          title={`Clique para alternar alerta visual de segurança (Setor ${s.id})`}
+                        >
+                          <Shield size={10} />
+                          <span>{s.infracaoSeguranca ? "INFRAÇÃO" : "SEG: OK"}</span>
+                        </button>
+                      ) : (
+                        <div
+                          className={`px-2 py-1 rounded text-[9px] font-black tracking-wider uppercase flex items-center gap-1 ${
+                            s.infracaoSeguranca
+                              ? "bg-red-950/80 text-red-400 border border-red-800/40 animate-pulse"
+                              : "bg-emerald-950/80 text-emerald-400 border border-emerald-800/40"
+                          }`}
+                          title={s.infracaoSeguranca ? "Infração de segurança ativa" : "Sem infrações de segurança"}
+                        >
+                          <Shield size={10} />
+                          <span>{s.infracaoSeguranca ? "INFRAÇÃO" : "SEG: OK"}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
  
                   {/* DISPLAY PRINCIPAL: ATIVIDADE */}
-                  <div className="flex flex-col items-center justify-center py-3.5 bg-black/40 border border-white/5 rounded-xl relative">
+                  <div
+                    onClick={() => {
+                      if (can(currentUserProfile, "edit_sector_params", s.id)) {
+                        handleOpenEditSector(s);
+                      }
+                    }}
+                    className={`flex flex-col items-center justify-center py-3.5 bg-black/40 border border-white/5 rounded-xl relative transition-all ${
+                      can(currentUserProfile, "edit_sector_params", s.id)
+                        ? "cursor-pointer hover:border-indigo-500/40 hover:bg-indigo-950/20 group"
+                        : ""
+                    }`}
+                    title={
+                      can(currentUserProfile, "edit_sector_params", s.id)
+                        ? `Clique para ajustar a atividade e universos do Setor ${s.id}`
+                        : undefined
+                    }
+                  >
                     <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider mb-0.5 flex items-center gap-1.5">
                       ATIVIDADE
+                      {can(currentUserProfile, "edit_sector_params", s.id) && (
+                        <Edit3 size={10} className="text-indigo-400/50 group-hover:text-indigo-300 transition-colors" />
+                      )}
                     </span>
                     <span className="text-3xl lg:text-4xl font-black font-mono tracking-tight text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
                       {(atividadeValue ?? 0).toLocaleString("pt-BR")}
                     </span>
+                    {can(currentUserProfile, "edit_sector_params", s.id) && (
+                      <span className="text-[8.5px] font-semibold text-indigo-400/70 group-hover:text-indigo-300 mt-0.5 transition-colors">
+                        Ajuste Rápido
+                      </span>
+                    )}
                   </div>
  
                   {/* UNIVERSOS DE PRODUTOS */}
@@ -1040,29 +1205,40 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </div>
 
             {/* Presets Rápidos */}
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap items-center gap-2 pt-1">
               <span className="text-[11px] text-slate-400 self-center">Presets Rápidos:</span>
               <button
                 type="button"
                 onClick={() => {
-                  const total = editAlimento + editMontanha || 6000;
+                  const total = editAlimento + editMontanha || editAtividade || 6000;
                   setEditAlimento(Math.round(total * 0.65));
                   setEditMontanha(Math.round(total * 0.35));
                 }}
                 className="px-2.5 py-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold transition-colors"
               >
-                Mix Padrão (65% Alim / 35% Mont)
+                65% Alim / 35% Mont
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  const total = editAlimento + editMontanha || 6000;
+                  const total = editAlimento + editMontanha || editAtividade || 6000;
                   setEditAlimento(Math.round(total * 0.5));
                   setEditMontanha(Math.round(total * 0.5));
                 }}
                 className="px-2.5 py-1 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-semibold transition-colors"
               >
                 50% Alim / 50% Mont
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const total = editAlimento + editMontanha || editAtividade || 6000;
+                  setEditAlimento(Math.round(total * 0.4));
+                  setEditMontanha(Math.round(total * 0.6));
+                }}
+                className="px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-semibold transition-colors"
+              >
+                40% Alim / 60% Mont (S87)
               </button>
             </div>
 
@@ -1242,33 +1418,49 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </div>
             </div>
 
-            <div className="flex justify-between items-center gap-2.5 pt-3 border-t border-[#222234]">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 pt-3 border-t border-[#222234]">
               {onNavigateTab && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingSectorUniversos(null);
-                    onNavigateTab("override");
-                  }}
-                  className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors"
-                >
-                  <Sliders size={14} />
-                  <span>Override Geral</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSectorUniversos(null);
+                      onNavigateTab("override");
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <Sliders size={13} />
+                    <span>Override</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSectorUniversos(null);
+                      onNavigateTab("config");
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>Ajustes &amp; Metas</span>
+                  </button>
+                </div>
               )}
               <div className="flex gap-2 ml-auto">
                 <button
+                  type="button"
+                  disabled={isSavingUniversos}
                   onClick={() => setEditingSectorUniversos(null)}
-                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold transition-colors"
+                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-slate-300 text-xs font-semibold transition-colors disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
+                  type="button"
+                  disabled={isSavingUniversos}
                   onClick={handleSaveUniversos}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-lg"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-lg disabled:opacity-50"
                 >
                   <Check size={16} />
-                  <span>Salvar Parâmetros</span>
+                  <span>{isSavingUniversos ? "Sincronizando..." : "Salvar no Banco"}</span>
                 </button>
               </div>
             </div>

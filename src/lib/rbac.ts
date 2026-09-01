@@ -54,6 +54,7 @@ export function can(
     case "manage_sectors": // Create/delete sectors
       return isAdmin;
     case "edit_sector_params": // Metas, Universos
+    case "toggle_safety": // Alternar status de segurança visual
       return isAdmin || isCoordinator || isLeader || isReferente;
     case "manage_stores":
       return isAdmin || isCoordinator;
