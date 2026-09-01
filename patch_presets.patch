@@ -1,0 +1,57 @@
+--- src/components/DashboardTab.tsx
++++ src/components/DashboardTab.tsx
+@@ -1199,32 +1199,32 @@
+               <button
+                 type="button"
+                 onClick={() => {
+-                  const total = editAlimento + editMontanha || editAtividade || 6000;
+-                  setEditAlimento(Math.round(total * 0.65));
+-                  setEditMontanha(Math.round(total * 0.35));
++                  const total = editUniversos.reduce((acc, c) => acc + (c.value || 0), 0) || editAtividade || 6000;
++                  const next = [...editUniversos];
++                  const a = next.findIndex(u => u.name.toLowerCase().trim() === "alimento");
++                  const m = next.findIndex(u => u.name.toLowerCase().trim() === "montanha");
++                  if(a >= 0) next[a].value = Math.round(total * 0.65);
++                  if(m >= 0) next[m].value = Math.round(total * 0.35);
++                  setEditUniversos(next);
+                 }}
+                 className="px-2.5 py-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold transition-colors"
+               >
+                 65% Alim / 35% Mont
+               </button>
+               <button
+                 type="button"
+                 onClick={() => {
+-                  const total = editAlimento + editMontanha || editAtividade || 6000;
+-                  setEditAlimento(Math.round(total * 0.5));
+-                  setEditMontanha(Math.round(total * 0.5));
++                  const total = editUniversos.reduce((acc, c) => acc + (c.value || 0), 0) || editAtividade || 6000;
++                  const next = [...editUniversos];
++                  const a = next.findIndex(u => u.name.toLowerCase().trim() === "alimento");
++                  const m = next.findIndex(u => u.name.toLowerCase().trim() === "montanha");
++                  if(a >= 0) next[a].value = Math.round(total * 0.50);
++                  if(m >= 0) next[m].value = Math.round(total * 0.50);
++                  setEditUniversos(next);
+                 }}
+                 className="px-2.5 py-1 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-semibold transition-colors"
+               >
+                 50% Alim / 50% Mont
+               </button>
+               <button
+                 type="button"
+                 onClick={() => {
+-                  const total = editAlimento + editMontanha || editAtividade || 6000;
+-                  setEditAlimento(Math.round(total * 0.4));
+-                  setEditMontanha(Math.round(total * 0.6));
++                  const total = editUniversos.reduce((acc, c) => acc + (c.value || 0), 0) || editAtividade || 6000;
++                  const next = [...editUniversos];
++                  const a = next.findIndex(u => u.name.toLowerCase().trim() === "alimento");
++                  const m = next.findIndex(u => u.name.toLowerCase().trim() === "montanha");
++                  if(a >= 0) next[a].value = Math.round(total * 0.40);
++                  if(m >= 0) next[m].value = Math.round(total * 0.60);
++                  setEditUniversos(next);
+                 }}
+                 className="px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-semibold transition-colors"
+               >
+                 40% Alim / 60% Mont (S87)
+               </button>

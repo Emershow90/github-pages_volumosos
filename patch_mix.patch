@@ -1,0 +1,128 @@
+--- src/components/DashboardTab.tsx
++++ src/components/DashboardTab.tsx
+@@ -213,79 +213,63 @@
+ 
+   // Helper de mix de universos
+   const getSectorMix = (sid: string, ativTotal: number) => {
+     const entry =
+       activityEntries.find((e) => e.sectorId === sid && e.activityDate === todayStr) ||
+       activityEntries.find((e) => e.sectorId === sid);
+     const sectorObj = setores.find((s) => String(s.id) === String(sid) || String(s.numero) === String(sid));
+ 
+     const reproVal = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || (sid === "87" ? 151 : 127));
+     const colisVal = sectorObj?.colis ?? entry?.colis ?? (sid === "87" ? 1500 : 0);
+     const atividadeVal = sectorObj?.ativ ?? entry?.atividade ?? ativTotal;
++    const elogVal = sectorObj?.elog ?? entry?.elog ?? "2J RA FALC (174)";
+ 
+-    const customList: { id: string; name: string; value: number; pct: number }[] = [];
+-
+-    if (entry?.adhocCategories && typeof entry.adhocCategories === "object") {
+-      Object.entries(entry.adhocCategories).forEach(([name, val], idx) => {
+-        const numVal = typeof val === "number" ? val : parseInt(String(val)) || 0;
+-        if (numVal > 0) {
+-          customList.push({
+-            id: `custom-${idx}-${name}`,
+-            name,
+-            value: numVal,
+-            pct: 0,
+-          });
+-        }
+-      });
+-    }
+-
+-    if (entry && (entry.alimento > 0 || entry.montanha > 0 || customList.length > 0)) {
+-      const customSum = customList.reduce((acc, c) => acc + c.value, 0);
+-      const totUniversos = (entry.alimento || 0) + (entry.montanha || 0) + customSum;
+-      const safeTot = totUniversos > 0 ? totUniversos : ativTotal || 1;
+-
+-      const alim = entry.alimento || 0;
+-      const mont = entry.montanha || 0;
++    const baselineUniversos = useSectorStore.getState().universos[sid] || [];
++    const customList: { id: string; name: string; value: number; pct: number; isBaseline: boolean }[] = [];
+ 
+-      customList.forEach((c) => {
+-        c.pct = Math.round((c.value / safeTot) * 100);
++    const entryValues: Record<string, number> = {};
++    if (entry?.alimento) entryValues["Alimento"] = entry.alimento;
++    if (entry?.montanha) entryValues["Montanha"] = entry.montanha;
++    if (entry?.adhocCategories && typeof entry.adhocCategories === "object") {
++      Object.entries(entry.adhocCategories).forEach(([name, val]) => {
++        entryValues[name] = typeof val === "number" ? val : parseInt(String(val)) || 0;
+       });
+-
+-      return {
+-        alimento: alim,
+-        montanha: mont,
+-        customUniversos: customList,
+-        colis: colisVal,
+-        atividade: atividadeVal,
+-        reapro: `${reproVal} CX`,
+-        elog: entry.elog || "2J RA FALC (174)",
+-        alimentoPct: Math.round((alim / safeTot) * 100),
+-        montanhaPct: Math.round((mont / safeTot) * 100),
+-        colisPct: Math.round((colisVal / safeTot) * 100),
+-        total: totUniversos > 0 ? totUniversos : ativTotal,
+-      };
+     }
+ 
+-    const mixPadrao: Record<string, { alim: number; mont: number }> = {
+-      "88": { alim: 0.65, mont: 0.35 },
+-      "87": { alim: 0.4, mont: 0.6 },
+-      "86": { alim: 0.3, mont: 0.7 },
+-      "89": { alim: 0.6, mont: 0.4 },
+-      "85": { alim: 0.5, mont: 0.5 },
+-    };
+-
+-    const ratio = mixPadrao[sid] || { alim: 0.5, mont: 0.5 };
+-    const base = ativTotal > 0 ? ativTotal : sid === "88" ? 5965 : sid === "87" ? 15899 : 4500;
+-    const alim = Math.round(base * ratio.alim);
+-    const mont = Math.max(0, base - alim);
++    const hasEntryValues = Object.keys(entryValues).length > 0;
++    const baselineTotal = baselineUniversos.reduce((acc, u) => acc + (u.meta || 0), 0);
++
++    baselineUniversos.forEach((u, idx) => {
++      let val = 0;
++      if (hasEntryValues) {
++         const matchedKey = Object.keys(entryValues).find(k => k.toLowerCase().trim() === u.nome.toLowerCase().trim());
++         if (matchedKey) {
++           val = entryValues[matchedKey];
++           delete entryValues[matchedKey];
++         }
++      } else {
++         const pct = baselineTotal > 0 ? (u.meta || 0) / baselineTotal : (1 / baselineUniversos.length);
++         val = Math.round(atividadeVal * pct);
++      }
++      customList.push({ id: `univ-${idx}`, name: u.nome, value: val, pct: 0, isBaseline: true });
++    });
++
++    Object.entries(entryValues).forEach(([name, val], idx) => {
++      if (val > 0) {
++        customList.push({ id: `custom-${idx}`, name, value: val, pct: 0, isBaseline: false });
++      }
++    });
++
++    const customSum = customList.reduce((acc, c) => acc + c.value, 0);
++    const safeTot = customSum > 0 ? customSum : atividadeVal || 1;
++
++    customList.forEach((c) => {
++      c.pct = Math.round((c.value / safeTot) * 100);
++    });
+ 
+     return {
+-      alimento: alim,
+-      montanha: mont,
+-      customUniversos: [] as { id: string; name: string; value: number; pct: number }[],
++      universos: customList,
+       colis: colisVal,
+       atividade: atividadeVal,
+       reapro: `${reproVal} CX`,
+-      elog: "2J RA FALC (174)",
+-      alimentoPct: Math.round(ratio.alim * 100),
+-      montanhaPct: Math.round(ratio.mont * 100),
+-      colisPct: Math.round((colisVal / (base || 1)) * 100),
+-      total: base,
++      elog: elogVal,
++      colisPct: Math.round((colisVal / safeTot) * 100),
++      total: customSum,
+     };
+   };

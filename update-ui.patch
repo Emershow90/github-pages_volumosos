@@ -1,0 +1,34 @@
+--- src/components/AdminAndSupportTabs.tsx
++++ src/components/AdminAndSupportTabs.tsx
+@@ -2747,7 +2747,15 @@
+                           <span className="bg-indigo-500/20 text-indigo-400 text-[10px] px-1.5 py-0.5 rounded font-mono border border-indigo-500/20">{setor.id}</span>
+                           {setor.nome}
++                          {Object.keys(setor.overrides || {}).length > 0 && (
++                            <span className="bg-amber-500/20 text-amber-400 text-[8px] px-1 py-0.5 rounded uppercase tracking-widest border border-amber-500/30" title="Este setor possui valores sobresscritos operacionais que estão mascarando o Baseline no painel principal.">
++                              Override Ativo
++                            </span>
++                          )}
+                         </h4>
+-                        <p className="text-[10px] text-zinc-400 mt-0.5">Nº {setor.numero} • Meta Global: {setor.meta} UPH</p>
++                        <p className="text-[10px] text-zinc-400 mt-0.5">Nº {setor.numero} • Meta Baseline: {setor.meta} UPH</p>
+                       </div>
+                       <div className="flex gap-1">
++                        {Object.keys(setor.overrides || {}).length > 0 && (
++                          <button
++                            onClick={async () => {
++                              if(confirm("Deseja realmente limpar todos os overrides deste setor? Ele voltará ao comportamento Baseline.")) {
++                                try {
++                                  await FirebaseService.upsertRecord("setores", { ...setor, overrides: {} }, "id");
++                                  showFeedback("Overrides limpos. Setor retornou ao Baseline.");
++                                } catch(e: any) { showFeedback(e.message, "error"); }
++                              }
++                            }}
++                            disabled={!canEditSectorParams}
++                            className="text-amber-400 hover:text-amber-300 p-1 rounded hover:bg-amber-500/20 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
++                            title="Limpar Overrides (Reset to Baseline)"
++                          >
++                            <RotateCcw size={14} />
++                          </button>
++                        )}
+                         <button
+                           onClick={() => handleOpenEditSetor(setor)}

@@ -133,9 +133,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   // Quick Sector & Universos Adjustment Modal State
   const [editingSectorUniversos, setEditingSectorUniversos] = useState<string | null>(null);
   const [editAtividade, setEditAtividade] = useState<number>(0);
-  const [editAlimento, setEditAlimento] = useState<number>(0);
-  const [editMontanha, setEditMontanha] = useState<number>(0);
-  const [editCustomUniversos, setEditCustomUniversos] = useState<Array<{ id: string; name: string; value: number }>>([]);
+  const [editUniversos, setEditUniversos] = useState<Array<{ id: string; name: string; value: number; isBaseline: boolean }>>([]);
   const [editReproTotal, setEditReproTotal] = useState<number>(0);
   const [editColis, setEditColis] = useState<number>(0);
   const [editElog, setEditElog] = useState<string>("");
@@ -217,76 +215,69 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       activityEntries.find((e) => e.sectorId === sid && e.activityDate === todayStr) ||
       activityEntries.find((e) => e.sectorId === sid);
     const sectorObj = setores.find((s) => String(s.id) === String(sid) || String(s.numero) === String(sid));
+
     const reproVal = sectorObj?.reproTotal ?? (parseInt(entry?.reapro || "0") || (sid === "87" ? 151 : 127));
     const colisVal = sectorObj?.colis ?? entry?.colis ?? (sid === "87" ? 1500 : 0);
     const atividadeVal = sectorObj?.ativ ?? entry?.atividade ?? ativTotal;
+    const elogVal = sectorObj?.elog ?? entry?.elog ?? "2J RA FALC (174)";
 
-    const customList: { id: string; name: string; value: number; pct: number }[] = [];
+    const baselineUniversos = useSectorStore.getState().universos[sid] || [];
+    const customList: { id: string; name: string; value: number; pct: number; isBaseline: boolean }[] = [];
+
+    const entryValues: Record<string, number> = {};
+    if (entry?.alimento) entryValues["Alimento"] = entry.alimento;
+    if (entry?.montanha) entryValues["Montanha"] = entry.montanha;
     if (entry?.adhocCategories && typeof entry.adhocCategories === "object") {
-      Object.entries(entry.adhocCategories).forEach(([name, val], idx) => {
-        const numVal = typeof val === "number" ? val : parseInt(String(val)) || 0;
-        if (numVal > 0) {
-          customList.push({
-            id: `custom-${idx}-${name}`,
-            name,
-            value: numVal,
-            pct: 0,
-          });
-        }
+      Object.entries(entry.adhocCategories).forEach(([name, val]) => {
+        entryValues[name] = typeof val === "number" ? val : parseInt(String(val)) || 0;
       });
     }
 
-    if (entry && (entry.alimento > 0 || entry.montanha > 0 || customList.length > 0)) {
-      const customSum = customList.reduce((acc, c) => acc + c.value, 0);
-      const totUniversos = (entry.alimento || 0) + (entry.montanha || 0) + customSum;
-      const safeTot = totUniversos > 0 ? totUniversos : ativTotal || 1;
-      const alim = entry.alimento || 0;
-      const mont = entry.montanha || 0;
+    const hasEntryValues = Object.keys(entryValues).length > 0;
+    const baselineTotal = baselineUniversos.reduce((acc, u) => acc + (u.meta || 0), 0);
 
-      customList.forEach((c) => {
-        c.pct = Math.round((c.value / safeTot) * 100);
-      });
+    baselineUniversos.forEach((u, idx) => {
+      let val = 0;
+      if (hasEntryValues) {
+         const matchedKey = Object.keys(entryValues).find(k => k.toLowerCase().trim() === u.nome.toLowerCase().trim());
+         if (matchedKey) {
+           val = entryValues[matchedKey];
+           delete entryValues[matchedKey];
+         }
+      } else {
+         const pct = baselineTotal > 0 ? (u.meta || 0) / baselineTotal : (1 / baselineUniversos.length);
+         val = Math.round(atividadeVal * pct);
+      }
+      customList.push({ id: `univ-${idx}`, name: u.nome, value: val, pct: 0, isBaseline: true });
+    });
 
-      return {
-        alimento: alim,
-        montanha: mont,
-        customUniversos: customList,
-        colis: colisVal,
-        atividade: atividadeVal,
-        reapro: `${reproVal} CX`,
-        elog: entry.elog || "2J RA FALC (174)",
-        alimentoPct: Math.round((alim / safeTot) * 100),
-        montanhaPct: Math.round((mont / safeTot) * 100),
-        colisPct: Math.round((colisVal / safeTot) * 100),
-        total: totUniversos > 0 ? totUniversos : ativTotal,
-      };
+    Object.entries(entryValues).forEach(([name, val], idx) => {
+      if (val > 0) {
+        customList.push({ id: `custom-${idx}`, name, value: val, pct: 0, isBaseline: false });
+      }
+    });
+
+    // Se nenhum universo baseline existia e não havia custom, fallback básico
+    if (customList.length === 0) {
+      customList.push({ id: "fallback-0", name: "Alimento", value: Math.round(atividadeVal * 0.6), pct: 60, isBaseline: false });
+      customList.push({ id: "fallback-1", name: "Montanha", value: Math.round(atividadeVal * 0.4), pct: 40, isBaseline: false });
     }
 
-    const mixPadrao: Record<string, { alim: number; mont: number }> = {
-      "88": { alim: 0.65, mont: 0.35 },
-      "87": { alim: 0.4, mont: 0.6 },
-      "86": { alim: 0.3, mont: 0.7 },
-      "89": { alim: 0.6, mont: 0.4 },
-      "85": { alim: 0.5, mont: 0.5 },
-    };
+    const customSum = customList.reduce((acc, c) => acc + c.value, 0);
+    const safeTot = customSum > 0 ? customSum : atividadeVal || 1;
 
-    const ratio = mixPadrao[sid] || { alim: 0.5, mont: 0.5 };
-    const base = ativTotal > 0 ? ativTotal : sid === "88" ? 5965 : sid === "87" ? 15899 : 4500;
-    const alim = Math.round(base * ratio.alim);
-    const mont = Math.max(0, base - alim);
+    customList.forEach((c) => {
+      c.pct = Math.round((c.value / safeTot) * 100);
+    });
 
     return {
-      alimento: alim,
-      montanha: mont,
-      customUniversos: [] as { id: string; name: string; value: number; pct: number }[],
+      universos: customList,
       colis: colisVal,
       atividade: atividadeVal,
       reapro: `${reproVal} CX`,
-      elog: "2J RA FALC (174)",
-      alimentoPct: Math.round(ratio.alim * 100),
-      montanhaPct: Math.round(ratio.mont * 100),
-      colisPct: Math.round((colisVal / (base || 1)) * 100),
-      total: base,
+      elog: elogVal,
+      colisPct: Math.round((colisVal / safeTot) * 100),
+      total: customSum,
     };
   };
 
@@ -302,13 +293,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
     setEditingSectorUniversos(s.id);
     setEditAtividade(resolvedAtiv);
-    setEditAlimento(mix.alimento || 0);
-    setEditMontanha(mix.montanha || 0);
-    setEditCustomUniversos(
-      (mix.customUniversos || []).map((c) => ({
+    setEditUniversos(
+      (mix.universos || []).map((c) => ({
         id: c.id,
         name: c.name,
         value: c.value || 0,
+        isBaseline: c.isBaseline
       }))
     );
     setEditReproTotal(resolved.reproTotal ?? (s.id === "87" ? 151 : 127));
@@ -323,16 +313,25 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       alert(`Ação não autorizada para o Setor ${editingSectorUniversos} pelo controle de acesso (RBAC).`);
       return;
     }
-
     setIsSavingUniversos(true);
     try {
-      const totalCustom = editCustomUniversos.reduce((acc, c) => acc + (c.value || 0), 0);
-      const calculatedAtividade = editAtividade > 0 ? editAtividade : editAlimento + editMontanha + totalCustom;
+      const totalUniversos = editUniversos.reduce((acc, c) => acc + (c.value || 0), 0);
+      const calculatedAtividade = editAtividade > 0 ? editAtividade : totalUniversos;
 
       const adhocCategories: Record<string, number> = {};
-      editCustomUniversos.forEach((c) => {
+      let legacyAlimento = 0;
+      let legacyMontanha = 0;
+
+      editUniversos.forEach((c) => {
         if (c.name && c.name.trim()) {
-          adhocCategories[c.name.trim()] = c.value || 0;
+          const lowerName = c.name.trim().toLowerCase();
+          if (lowerName === "alimento") {
+            legacyAlimento = c.value || 0;
+          } else if (lowerName === "montanha") {
+            legacyMontanha = c.value || 0;
+          } else {
+            adhocCategories[c.name.trim()] = c.value || 0;
+          }
         }
       });
 
@@ -355,8 +354,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         todayStr,
         currentUserUid || "system",
         {
-          alimento: editAlimento,
-          montanha: editMontanha,
+          alimento: legacyAlimento,
+          montanha: legacyMontanha,
           colis: editColis,
           atividade: calculatedAtividade,
           elog: editElog,
@@ -368,8 +367,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       // 3. Notificar callback do App.tsx se existente
       if (onUpdateSetor) {
         onUpdateSetor(editingSectorUniversos, "atividade", calculatedAtividade);
-        onUpdateSetor(editingSectorUniversos, "alimento", editAlimento);
-        onUpdateSetor(editingSectorUniversos, "montanha", editMontanha);
+        onUpdateSetor(editingSectorUniversos, "alimento", legacyAlimento);
+        onUpdateSetor(editingSectorUniversos, "montanha", legacyMontanha);
         onUpdateSetor(editingSectorUniversos, "reproTotal", editReproTotal);
         onUpdateSetor(editingSectorUniversos, "colis", editColis);
         onUpdateSetor(editingSectorUniversos, "elog", editElog);
@@ -883,47 +882,41 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
                     {/* Barra Segmentada */}
                     <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-black/50 border border-white/5">
-                      <div
-                        style={{ width: `${mix.alimentoPct}%` }}
-                        className="bg-amber-500 h-full"
-                        title={`Alimento: ${(mix.alimento ?? 0).toLocaleString("pt-BR")} (${mix.alimentoPct}%)`}
-                      ></div>
-                      <div
-                        style={{ width: `${mix.montanhaPct}%` }}
-                        className="bg-purple-500 h-full"
-                        title={`Montanha: ${(mix.montanha ?? 0).toLocaleString("pt-BR")} (${mix.montanhaPct}%)`}
-                      ></div>
-                      {mix.customUniversos.map((cu, cIdx) => (
-                        <div
-                          key={`mini-bar-custom-${cIdx}`}
-                          style={{ width: `${cu.pct}%` }}
-                          className="bg-cyan-500 h-full"
-                          title={`${cu.name}: ${(cu.value ?? 0).toLocaleString("pt-BR")} (${cu.pct}%)`}
-                        ></div>
-                      ))}
+                      {mix.universos.map((u, i) => {
+                        const bgColors = ["bg-amber-500", "bg-purple-500", "bg-cyan-500", "bg-emerald-500", "bg-rose-500", "bg-blue-500"];
+                        const color = bgColors[i % bgColors.length];
+                        return (
+                          <div
+                            key={`mini-bar-${u.id}`}
+                            style={{ width: `${u.pct}%` }}
+                            className={`${color} h-full`}
+                            title={`${u.name}: ${(u.value ?? 0).toLocaleString("pt-BR")} (${u.pct}%)`}
+                          ></div>
+                        );
+                      })}
                     </div>
 
                     {/* Pílulas de Universos */}
                     <div className="grid grid-cols-2 gap-1 text-[10px] font-mono">
-                      <div className="bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg flex flex-col">
-                        <span className="text-amber-400 font-sans flex items-center gap-0.5 font-bold text-[9px]">
-                          <Apple size={9} /> 🍎 Alim
-                        </span>
-                        <span className="text-white font-bold text-[10px]">
-                          {(mix.alimento ?? 0).toLocaleString("pt-BR")}{" "}
-                          <span className="text-amber-400/80 font-normal text-[8.5px]">({mix.alimentoPct}%)</span>
-                        </span>
-                      </div>
-
-                      <div className="bg-purple-500/10 border border-purple-500/20 px-2 py-1 rounded-lg flex flex-col">
-                        <span className="text-purple-400 font-sans flex items-center gap-0.5 font-bold text-[9px]">
-                          <Mountain size={9} /> ⛰️ Mont
-                        </span>
-                        <span className="text-white font-bold text-[10px]">
-                          {(mix.montanha ?? 0).toLocaleString("pt-BR")}{" "}
-                          <span className="text-purple-400/80 font-normal text-[8.5px]">({mix.montanhaPct}%)</span>
-                        </span>
-                      </div>
+                      {mix.universos.map((u, i) => {
+                        const bgLights = ["bg-amber-500/10", "bg-purple-500/10", "bg-cyan-500/10", "bg-emerald-500/10", "bg-rose-500/10", "bg-blue-500/10"];
+                        const borders = ["border-amber-500/20", "border-purple-500/20", "border-cyan-500/20", "border-emerald-500/20", "border-rose-500/20", "border-blue-500/20"];
+                        const textColors = ["text-amber-400", "text-purple-400", "text-cyan-400", "text-emerald-400", "text-rose-400", "text-blue-400"];
+                        const bgLight = bgLights[i % bgLights.length];
+                        const border = borders[i % borders.length];
+                        const textColor = textColors[i % textColors.length];
+                        return (
+                          <div key={`pill-${u.id}`} className={`${bgLight} border ${border} px-2 py-1 rounded-lg flex flex-col`}>
+                            <span className={`${textColor} font-sans flex items-center gap-0.5 font-bold text-[9px] truncate`}>
+                              {u.name}
+                            </span>
+                            <span className="text-white font-bold text-[10px]">
+                              {(u.value ?? 0).toLocaleString("pt-BR")}{" "}
+                              <span className={`${textColor} opacity-80 font-normal text-[8.5px]`}>({u.pct}%)</span>
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Bloco de Reabastecimento (CX) */}
@@ -1210,9 +1203,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const total = editAlimento + editMontanha || editAtividade || 6000;
-                  setEditAlimento(Math.round(total * 0.65));
-                  setEditMontanha(Math.round(total * 0.35));
+                  const total = editUniversos.reduce((acc, c) => acc + (c.value || 0), 0) || editAtividade || 6000;
+                  const next = [...editUniversos];
+                  const a = next.findIndex(u => u.name.toLowerCase().trim() === "alimento");
+                  const m = next.findIndex(u => u.name.toLowerCase().trim() === "montanha");
+                  if(a >= 0) next[a].value = Math.round(total * 0.65);
+                  if(m >= 0) next[m].value = Math.round(total * 0.35);
+                  setEditUniversos(next);
                 }}
                 className="px-2.5 py-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold transition-colors"
               >
@@ -1221,9 +1218,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const total = editAlimento + editMontanha || editAtividade || 6000;
-                  setEditAlimento(Math.round(total * 0.5));
-                  setEditMontanha(Math.round(total * 0.5));
+                  const total = editUniversos.reduce((acc, c) => acc + (c.value || 0), 0) || editAtividade || 6000;
+                  const next = [...editUniversos];
+                  const a = next.findIndex(u => u.name.toLowerCase().trim() === "alimento");
+                  const m = next.findIndex(u => u.name.toLowerCase().trim() === "montanha");
+                  if(a >= 0) next[a].value = Math.round(total * 0.50);
+                  if(m >= 0) next[m].value = Math.round(total * 0.50);
+                  setEditUniversos(next);
                 }}
                 className="px-2.5 py-1 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-semibold transition-colors"
               >
@@ -1232,9 +1233,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const total = editAlimento + editMontanha || editAtividade || 6000;
-                  setEditAlimento(Math.round(total * 0.4));
-                  setEditMontanha(Math.round(total * 0.6));
+                  const total = editUniversos.reduce((acc, c) => acc + (c.value || 0), 0) || editAtividade || 6000;
+                  const next = [...editUniversos];
+                  const a = next.findIndex(u => u.name.toLowerCase().trim() === "alimento");
+                  const m = next.findIndex(u => u.name.toLowerCase().trim() === "montanha");
+                  if(a >= 0) next[a].value = Math.round(total * 0.40);
+                  if(m >= 0) next[m].value = Math.round(total * 0.60);
+                  setEditUniversos(next);
                 }}
                 className="px-2.5 py-1 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[11px] font-semibold transition-colors"
               >
@@ -1275,9 +1280,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   type="button"
                   onClick={() => {
                     const newId = `custom-${Date.now()}`;
-                    setEditCustomUniversos([
-                      ...editCustomUniversos,
-                      { id: newId, name: `Novo Universo ${editCustomUniversos.length + 1}`, value: 0 },
+                    setEditUniversos([
+                      ...editUniversos,
+                      { id: newId, name: `Novo Universo ${editUniversos.length + 1}`, value: 0, isBaseline: false },
                     ]);
                   }}
                   className="px-2.5 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 transition-colors"
@@ -1286,82 +1291,47 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   <span>+ Adicionar</span>
                 </button>
               </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div className="bg-[#0b0b12] p-3 rounded-xl border border-amber-500/20 flex flex-col justify-between gap-1.5">
-                  <div className="flex items-center justify-between text-amber-400 text-xs font-bold">
-                    <span className="flex items-center gap-1">
-                      <Apple size={14} /> 🍎 Alimento
-                    </span>
+                {editUniversos.map((item, idx) => (
+                  <div
+                    key={item.id || `edit-univ-dash-${idx}`}
+                    className={`p-3 rounded-xl border flex flex-col gap-2 ${item.isBaseline ? 'bg-[#0b0b12] border-indigo-500/20' : 'bg-[#090912] border-cyan-500/20'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <input
+                        type="text"
+                        value={item.name}
+                        disabled={item.isBaseline}
+                        onChange={(e) => {
+                          const updated = [...editUniversos];
+                          updated[idx].name = e.target.value;
+                          setEditUniversos(updated);
+                        }}
+                        className={`w-full font-bold text-xs bg-black/60 border border-slate-700 rounded-md px-2 py-1 focus:outline-none ${item.isBaseline ? 'text-indigo-400 opacity-80 cursor-not-allowed' : 'text-cyan-400 focus:border-cyan-400'}`}
+                      />
+                      {!item.isBaseline && (
+                        <button
+                          type="button"
+                          onClick={() => setEditUniversos(editUniversos.filter((_, i) => i !== idx))}
+                          className="p-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      value={item.value}
+                      onChange={(e) => {
+                        const updated = [...editUniversos];
+                        updated[idx].value = Math.max(0, parseInt(e.target.value) || 0);
+                        setEditUniversos(updated);
+                      }}
+                      className={`w-full text-right font-mono font-bold text-sm bg-black border rounded-lg px-2.5 py-1.5 text-white focus:outline-none ${item.isBaseline ? 'border-indigo-500/40 focus:border-indigo-400' : 'border-cyan-500/40 focus:border-cyan-400'}`}
+                    />
                   </div>
-                  <input
-                    type="number"
-                    value={editAlimento}
-                    onChange={(e) => setEditAlimento(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full text-right font-mono font-bold text-sm bg-black border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-400"
-                  />
-                </div>
-
-                <div className="bg-[#0b0b12] p-3 rounded-xl border border-purple-500/20 flex flex-col justify-between gap-1.5">
-                  <div className="flex items-center justify-between text-purple-400 text-xs font-bold">
-                    <span className="flex items-center gap-1">
-                      <Mountain size={14} /> ⛰️ Montanha
-                    </span>
-                  </div>
-                  <input
-                    type="number"
-                    value={editMontanha}
-                    onChange={(e) => setEditMontanha(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full text-right font-mono font-bold text-sm bg-black border border-purple-500/40 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-purple-400"
-                  />
-                </div>
+                ))}
               </div>
-
-              {editCustomUniversos.length > 0 && (
-                <div className="space-y-2 pt-2 border-t border-[#1e1e2a]/60">
-                  <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
-                    <Tag size={13} /> Universos Customizados
-                  </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {editCustomUniversos.map((item, idx) => (
-                      <div
-                        key={item.id || `edit-custom-dash-${idx}`}
-                        className="bg-[#090912] p-3 rounded-xl border border-cyan-500/20 flex flex-col gap-2"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <input
-                            type="text"
-                            value={item.name}
-                            onChange={(e) => {
-                              const updated = [...editCustomUniversos];
-                              updated[idx].name = e.target.value;
-                              setEditCustomUniversos(updated);
-                            }}
-                            className="w-full font-bold text-xs bg-black/60 border border-slate-700 rounded-md px-2 py-1 text-cyan-400 focus:outline-none focus:border-cyan-400"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setEditCustomUniversos(editCustomUniversos.filter((_, i) => i !== idx))}
-                            className="p-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                        <input
-                          type="number"
-                          value={item.value}
-                          onChange={(e) => {
-                            const updated = [...editCustomUniversos];
-                            updated[idx].value = Math.max(0, parseInt(e.target.value) || 0);
-                            setEditCustomUniversos(updated);
-                          }}
-                          className="w-full text-right font-mono font-bold text-sm bg-black border border-cyan-500/40 rounded-lg px-2.5 py-1 text-white focus:outline-none focus:border-cyan-400"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* REABASTECIMENTO & COLIS */}

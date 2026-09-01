@@ -1,0 +1,80 @@
+--- src/components/AdminAndSupportTabs.tsx
++++ src/components/AdminAndSupportTabs.tsx
+@@ -1590,39 +1590,44 @@
+ 
+   const { setSetores } = useSectorStore();
+ 
+-  const handleSaveSetorForm = (e: React.FormEvent) => {
++  const handleSaveSetorForm = async (e: React.FormEvent) => {
+     e.preventDefault();
+     if (!setorFormId || !setorFormNome) {
+       showFeedback("ID e Nome do Setor são obrigatórios.", "error");
+       return;
+     }
+ 
++    try {
+     if (editingSetorId) {
+-      setSetores(prev => prev.map(s => s.id === editingSetorId ? {
+-        ...s,
+-        id: setorFormId,
+-        numero: setorFormNumero,
+-        nome: setorFormNome,
+-        meta: setorFormMeta,
+-      } : s));
++      const currentSetor = useSectorStore.getState().setores.find(s => s.id === editingSetorId);
++      if (currentSetor) {
++        await SupabaseService.upsertRecord("setores", {
++          ...currentSetor,
++          id: setorFormId,
++          numero: setorFormNumero,
++          nome: setorFormNome,
++          meta: setorFormMeta
++        }, "id");
++      }
+       showFeedback(`Setor ${setorFormNome} atualizado com sucesso!`);
+     } else {
+-      const novoSetor: Setor = {
++      const novoSetor: any = {
+         id: setorFormId,
+         numero: setorFormNumero,
+         nome: setorFormNome,
+         meta: setorFormMeta,
+-        resp: "PENDENTE",
+-        ativ: 0,
+-        promessa: 100,
+-        varFin: 0,
+-        bsi: 100,
+-        nota5s: 100,
+-        errosPicking: 0,
+-        reproTotal: 0,
+-        infracaoSeguranca: false,
+-        horasDKT: 0,
+-        poliRec: 0,
+-        rdl: 0,
+-        poliSaid: 0,
+-        coletado: 0,
+-        uph: 0,
+-        situacao: 'Ativo'
+       };
+-      setSetores(prev => [...prev, novoSetor]);
++      await SupabaseService.upsertRecord("setores", novoSetor, "id");
+       showFeedback(`Setor ${setorFormNome} adicionado com sucesso!`);
+     }
+     setShowSetorModal(false);
++    } catch (err: any) {
++      showFeedback(`Erro ao salvar setor: ${err.message}`, "error");
++    }
+   };
+ 
+-  const handleDeleteSetor = (id: string) => {
++  const handleDeleteSetor = async (id: string) => {
+     if (confirm("Tem certeza que deseja excluir este setor?")) {
+-      setSetores(prev => prev.filter(s => s.id !== id));
++      try {
++        await SupabaseService.deleteRecord("setores", id, "id");
+       showFeedback("Setor removido com sucesso!");
++      } catch (err: any) {
++        showFeedback(`Erro ao remover setor: ${err.message}`, "error");
++      }
+     }
+   };

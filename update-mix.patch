@@ -1,0 +1,13 @@
+--- src/components/DashboardTab.tsx
++++ src/components/DashboardTab.tsx
+@@ -133,9 +133,7 @@
+   // Quick Sector & Universos Adjustment Modal State
+   const [editingSectorUniversos, setEditingSectorUniversos] = useState<string | null>(null);
+   const [editAtividade, setEditAtividade] = useState<number>(0);
+-  const [editAlimento, setEditAlimento] = useState<number>(0);
+-  const [editMontanha, setEditMontanha] = useState<number>(0);
+-  const [editCustomUniversos, setEditCustomUniversos] = useState<Array<{ id: string; name: string; value: number }>>([]);
++  const [editUniversos, setEditUniversos] = useState<Array<{ id: string; name: string; value: number; isBaseline: boolean }>>([]);
+   const [editReproTotal, setEditReproTotal] = useState<number>(0);
+   const [editColis, setEditColis] = useState<number>(0);
+   const [editElog, setEditElog] = useState<string>("");

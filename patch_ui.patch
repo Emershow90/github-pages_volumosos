@@ -1,0 +1,79 @@
+--- src/components/DashboardTab.tsx
++++ src/components/DashboardTab.tsx
+@@ -881,39 +881,36 @@
+ 
+                     {/* Barra Segmentada */}
+                     <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-black/50 border border-white/5">
+-                      <div
+-                        style={{ width: `${mix.alimentoPct}%` }}
+-                        className="bg-amber-500 h-full"
+-                        title={`Alimento: ${(mix.alimento ?? 0).toLocaleString("pt-BR")} (${mix.alimentoPct}%)`}
+-                      ></div>
+-                      <div
+-                        style={{ width: `${mix.montanhaPct}%` }}
+-                        className="bg-purple-500 h-full"
+-                        title={`Montanha: ${(mix.montanha ?? 0).toLocaleString("pt-BR")} (${mix.montanhaPct}%)`}
+-                      ></div>
+-                      {mix.customUniversos.map((cu, cIdx) => (
+-                        <div
+-                          key={`mini-bar-custom-${cIdx}`}
+-                          style={{ width: `${cu.pct}%` }}
+-                          className="bg-cyan-500 h-full"
+-                          title={`${cu.name}: ${(cu.value ?? 0).toLocaleString("pt-BR")} (${cu.pct}%)`}
+-                        ></div>
+-                      ))}
++                      {mix.universos.map((u, i) => {
++                        const bgColors = ["bg-amber-500", "bg-purple-500", "bg-cyan-500", "bg-emerald-500", "bg-rose-500", "bg-blue-500"];
++                        const color = bgColors[i % bgColors.length];
++                        return (
++                          <div
++                            key={`mini-bar-${u.id}`}
++                            style={{ width: `${u.pct}%` }}
++                            className={`${color} h-full`}
++                            title={`${u.name}: ${(u.value ?? 0).toLocaleString("pt-BR")} (${u.pct}%)`}
++                          ></div>
++                        );
++                      })}
+                     </div>
+ 
+                     {/* Pílulas de Universos */}
+                     <div className="grid grid-cols-2 gap-1 text-[10px] font-mono">
+-                      <div className="bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg flex flex-col">
+-                        <span className="text-amber-400 font-sans flex items-center gap-0.5 font-bold text-[9px]">
+-                          <Apple size={9} /> 🍎 Alim
+-                        </span>
+-                        <span className="text-white font-bold text-[10px]">
+-                          {(mix.alimento ?? 0).toLocaleString("pt-BR")}{" "}
+-                          <span className="text-amber-400/80 font-normal text-[8.5px]">({mix.alimentoPct}%)</span>
+-                        </span>
+-                      </div>
+-                      <div className="bg-purple-500/10 border border-purple-500/20 px-2 py-1 rounded-lg flex flex-col">
+-                        <span className="text-purple-400 font-sans flex items-center gap-0.5 font-bold text-[9px]">
+-                          <Mountain size={9} /> ⛰️ Mont
+-                        </span>
+-                        <span className="text-white font-bold text-[10px]">
+-                          {(mix.montanha ?? 0).toLocaleString("pt-BR")}{" "}
+-                          <span className="text-purple-400/80 font-normal text-[8.5px]">({mix.montanhaPct}%)</span>
+-                        </span>
+-                      </div>
++                      {mix.universos.map((u, i) => {
++                        const bgLights = ["bg-amber-500/10", "bg-purple-500/10", "bg-cyan-500/10", "bg-emerald-500/10", "bg-rose-500/10", "bg-blue-500/10"];
++                        const borders = ["border-amber-500/20", "border-purple-500/20", "border-cyan-500/20", "border-emerald-500/20", "border-rose-500/20", "border-blue-500/20"];
++                        const textColors = ["text-amber-400", "text-purple-400", "text-cyan-400", "text-emerald-400", "text-rose-400", "text-blue-400"];
++                        const bgLight = bgLights[i % bgLights.length];
++                        const border = borders[i % borders.length];
++                        const textColor = textColors[i % textColors.length];
++                        return (
++                          <div key={`pill-${u.id}`} className={`${bgLight} border ${border} px-2 py-1 rounded-lg flex flex-col`}>
++                            <span className={`${textColor} font-sans flex items-center gap-0.5 font-bold text-[9px] truncate`}>
++                              {u.name}
++                            </span>
++                            <span className="text-white font-bold text-[10px]">
++                              {(u.value ?? 0).toLocaleString("pt-BR")}{" "}
++                              <span className={`${textColor} opacity-80 font-normal text-[8.5px]`}>({u.pct}%)</span>
++                            </span>
++                          </div>
++                        );
++                      })}
+                     </div>
+ 

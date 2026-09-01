@@ -49,6 +49,7 @@ import {
   MapPin,
   Edit2,
   ChevronDown,
+  RotateCcw
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -1590,55 +1591,68 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
   const { setSetores } = useSectorStore();
 
-  const handleSaveSetorForm = (e: React.FormEvent) => {
+  const handleSaveSetorForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!setorFormId || !setorFormNome) {
       showFeedback("ID e Nome do Setor são obrigatórios.", "error");
       return;
     }
 
-    if (editingSetorId) {
-      setSetores(prev => prev.map(s => s.id === editingSetorId ? {
-        ...s,
-        id: setorFormId,
-        numero: setorFormNumero,
-        nome: setorFormNome,
-        meta: setorFormMeta,
-      } : s));
-      showFeedback(`Setor ${setorFormNome} atualizado com sucesso!`);
-    } else {
-      const novoSetor: Setor = {
-        id: setorFormId,
-        numero: setorFormNumero,
-        nome: setorFormNome,
-        meta: setorFormMeta,
-        resp: "PENDENTE",
-        ativ: 0,
-        promessa: 100,
-        varFin: 0,
-        bsi: 100,
-        nota5s: 100,
-        errosPicking: 0,
-        reproTotal: 0,
-        infracaoSeguranca: false,
-        horasDKT: 0,
-        poliRec: 0,
-        rdl: 0,
-        poliSaid: 0,
-        coletado: 0,
-        uph: 0,
-        situacao: 'Ativo'
-      };
-      setSetores(prev => [...prev, novoSetor]);
-      showFeedback(`Setor ${setorFormNome} adicionado com sucesso!`);
+    try {
+      if (editingSetorId) {
+        const currentSetor = useSectorStore.getState().setores.find(s => s.id === editingSetorId);
+        if (currentSetor) {
+          await FirebaseService.upsertRecord("setores", {
+            ...currentSetor,
+            id: setorFormId,
+            numero: setorFormNumero,
+            nome: setorFormNome,
+            meta: setorFormMeta,
+          }, "id");
+        }
+        showFeedback(`Setor ${setorFormNome} atualizado com sucesso!`);
+      } else {
+        const novoSetor: Setor = {
+          id: setorFormId,
+          numero: setorFormNumero,
+          nome: setorFormNome,
+          meta: setorFormMeta,
+          resp: "PENDENTE",
+          ativ: 0,
+          promessa: 100,
+          varFin: 0,
+          bsi: 100,
+          nota5s: 100,
+          errosPicking: 0,
+          reproTotal: 0,
+          infracaoSeguranca: false,
+          horasDKT: 0,
+          poliRec: 0,
+          rdl: 0,
+          poliSaid: 0,
+          coletado: 0,
+          uph: 0,
+          situacao: 'Ativo'
+        };
+        await FirebaseService.upsertRecord("setores", novoSetor, "id");
+        showFeedback(`Setor ${setorFormNome} adicionado com sucesso!`);
+      }
+      setShowSetorModal(false);
+    } catch (err: any) {
+      console.error(err);
+      showFeedback(`Erro ao salvar setor: ${err.message}`, "error");
     }
-    setShowSetorModal(false);
   };
 
-  const handleDeleteSetor = (id: string) => {
+  const handleDeleteSetor = async (id: string) => {
     if (confirm("Tem certeza que deseja excluir este setor?")) {
-      setSetores(prev => prev.filter(s => s.id !== id));
-      showFeedback("Setor removido com sucesso!");
+      try {
+        await FirebaseService.deleteRecord("setores", id, "id");
+        showFeedback("Setor removido com sucesso!");
+      } catch (err: any) {
+        console.error(err);
+        showFeedback(`Erro ao remover setor: ${err.message}`, "error");
+      }
     }
   };
 
@@ -2745,10 +2759,32 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                         <h4 className="text-sm font-bold text-white flex items-center gap-2">
                           <span className="bg-indigo-500/20 text-indigo-400 text-[10px] px-1.5 py-0.5 rounded font-mono border border-indigo-500/20">{setor.id}</span>
                           {setor.nome}
+                          {Object.keys(setor.overrides || {}).length > 0 && (
+                            <span className="bg-amber-500/20 text-amber-400 text-[8px] px-1.5 py-0.5 rounded uppercase tracking-widest border border-amber-500/30 font-black" title="Este setor possui valores sobresscritos operacionais (Override) que estão mascarando o Baseline no painel principal.">
+                              Override Ativo
+                            </span>
+                          )}
                         </h4>
-                        <p className="text-[10px] text-zinc-400 mt-0.5">Nº {setor.numero} • Meta Global: {setor.meta} UPH</p>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">Nº {setor.numero} • Meta Baseline: {setor.meta} UPH</p>
                       </div>
                       <div className="flex gap-1">
+                        {Object.keys(setor.overrides || {}).length > 0 && (
+                          <button
+                            onClick={async () => {
+                              if(confirm("Deseja realmente limpar todos os overrides deste setor? Ele voltará ao comportamento Baseline.")) {
+                                try {
+                                  await FirebaseService.upsertRecord("setores", { ...setor, overrides: {} }, "id");
+                                  showFeedback("Overrides limpos. Setor retornou ao Baseline.");
+                                } catch(e: any) { showFeedback(e.message, "error"); }
+                              }
+                            }}
+                            disabled={!canEditSectorParams}
+                            className="text-amber-400 hover:text-amber-300 p-1 rounded hover:bg-amber-500/20 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Limpar Overrides (Reset to Baseline)"
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleOpenEditSetor(setor)}
                           disabled={!canEditSectorParams}
@@ -3891,7 +3927,7 @@ L101;2722 - FLORIPA;87;07:00;07:30;1200;45;JADLOG;Picking`}
                   <input type="text" required value={setorFormNome} onChange={(e) => setSetorFormNome(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Meta Global (UPH)</label>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1" title="Esta é a meta base do setor. Pode ser sobreposta temporariamente pelo Override no Painel.">Meta Global (Baseline UPH)</label>
                   <input type="number" required value={setorFormMeta} onChange={(e) => setSetorFormMeta(parseInt(e.target.value) || 0)} className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500/50" />
                 </div>
                 <div className="flex justify-end gap-2 pt-4 border-t border-white/5">
