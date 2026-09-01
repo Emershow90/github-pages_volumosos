@@ -83,9 +83,11 @@ import { calcCopilNota as calcCopilNotaUtil } from "./utils/copilCalculator";
 import { auth, getUserProfile, ensureUserProfile, logoutUser } from "./lib/supabaseAuth";
 import LoginScreen from "./components/LoginScreen";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { useRealtimeSyncStatus } from "./hooks/useRealtimeSyncStatus";
 
 function App() {
   useOperationNotifications();
+  const { isOnline: supabaseOnline, isChecking: checkingSupabase, checkConnection: verifySupabaseConnection } = useRealtimeSyncStatus(30000);
   // Global States from Zustand (Unified User and Auth states)
   const {
     currentUser,
@@ -106,44 +108,6 @@ function App() {
   const [fbUser, setFbUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-
-  // Supabase connection tracking states
-  const [supabaseOnline, setSupabaseOnline] = useState<boolean | null>(null);
-  const [checkingSupabase, setCheckingSupabase] = useState(false);
-
-  const verifySupabaseConnection = async () => {
-    setCheckingSupabase(true);
-    try {
-      const { supabase, isStaticBuild } = await import("./lib/supabase");
-      if (isStaticBuild || !supabase) {
-        setSupabaseOnline(false);
-        setCheckingSupabase(false);
-        return;
-      }
-
-      const checkPromise = supabase.from("usuarios").select("id").limit(1);
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), 4000)
-      );
-
-      await Promise.race([checkPromise, timeoutPromise]);
-      setSupabaseOnline(true);
-      console.log("✅ [Supabase Connection Log] Supabase está acessível e online.");
-    } catch (err) {
-      console.warn("❌ [Supabase Connection Log] Erro ou timeout ao conectar com o Supabase:", err);
-      setSupabaseOnline(false);
-    } finally {
-      setCheckingSupabase(false);
-    }
-  };
-
-  useEffect(() => {
-    if (fbUser?.uid) {
-      verifySupabaseConnection();
-    } else {
-      setSupabaseOnline(null);
-    }
-  }, [fbUser?.uid]);
 
   // Sync with Supabase Auth state
   useEffect(() => {

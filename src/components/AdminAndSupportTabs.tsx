@@ -1597,18 +1597,26 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
       showFeedback("ID e Nome do Setor são obrigatórios.", "error");
       return;
     }
-
+    
     try {
+      const currentState = useSectorStore.getState().setores;
+      
       if (editingSetorId) {
-        const currentSetor = useSectorStore.getState().setores.find(s => s.id === editingSetorId);
+        const currentSetor = currentState.find(s => s.id === editingSetorId);
         if (currentSetor) {
-          await FirebaseService.upsertRecord("setores", {
+          const updatedSetor = {
             ...currentSetor,
             id: setorFormId,
             numero: setorFormNumero,
             nome: setorFormNome,
             meta: setorFormMeta,
-          }, "id");
+          };
+          
+          await FirebaseService.upsertRecord("setores", updatedSetor, "id");
+          
+          useSectorStore.getState().setSetores(
+            currentState.map(s => (s.id === editingSetorId ? updatedSetor : s))
+          );
         }
         showFeedback(`Setor ${setorFormNome} atualizado com sucesso!`);
       } else {
@@ -1634,7 +1642,10 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
           uph: 0,
           situacao: 'Ativo'
         };
+        
         await FirebaseService.upsertRecord("setores", novoSetor, "id");
+        
+        useSectorStore.getState().setSetores([...currentState, novoSetor]);
         showFeedback(`Setor ${setorFormNome} adicionado com sucesso!`);
       }
       setShowSetorModal(false);
@@ -1648,6 +1659,11 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
     if (confirm("Tem certeza que deseja excluir este setor?")) {
       try {
         await FirebaseService.deleteRecord("setores", id, "id");
+        
+        // Atualiza a store local imediatamente para refletir na UI
+        const currentSectors = useSectorStore.getState().setores;
+        useSectorStore.getState().setSetores(currentSectors.filter(s => s.id !== id));
+        
         showFeedback("Setor removido com sucesso!");
       } catch (err: any) {
         console.error(err);
@@ -1672,7 +1688,7 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
     setShowUniversoModal(true);
   };
 
-  const handleSaveUniversoForm = (e: React.FormEvent) => {
+  const handleSaveUniversoForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeSetorForUniverso || !universoFormNome) {
       showFeedback("Nome do universo é obrigatório.", "error");
@@ -1681,22 +1697,36 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
 
     const currentUnivs = globUniversos[activeSetorForUniverso] || [];
     let nextUnivs = [...currentUnivs];
+    let recordToSave: any = null;
 
     if (editingUniversoIdx !== null) {
-      nextUnivs[editingUniversoIdx] = {
-        ...nextUnivs[editingUniversoIdx],
+      const existing = nextUnivs[editingUniversoIdx];
+      const updated = {
+        ...existing,
+        id: existing.id || `univ_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         nome: universoFormNome,
         meta: universoFormMeta
       };
+      nextUnivs[editingUniversoIdx] = updated;
+      recordToSave = updated;
       showFeedback("Universo atualizado com sucesso!");
     } else {
-      nextUnivs.push({
+      const newUniv = {
+        id: `univ_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         setor_id: activeSetorForUniverso,
         nome: universoFormNome,
         meta: universoFormMeta,
         feito: 0
-      });
+      };
+      nextUnivs.push(newUniv);
+      recordToSave = newUniv;
       showFeedback("Universo adicionado com sucesso!");
+    }
+
+    try {
+      await FirebaseService.upsertRecord("universos_trabalho", recordToSave, "id");
+    } catch (err) {
+      console.error("Failed to save universo:", err);
     }
 
     setGlobUniversos({
@@ -1706,10 +1736,20 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
     setShowUniversoModal(false);
   };
 
-  const handleDeleteUniverso = (setorId: string, idx: number) => {
+  const handleDeleteUniverso = async (setorId: string, idx: number) => {
     if (confirm("Tem certeza que deseja excluir este universo?")) {
       const currentUnivs = globUniversos[setorId] || [];
+      const toDelete = currentUnivs[idx];
       const nextUnivs = currentUnivs.filter((_, i) => i !== idx);
+      
+      try {
+        if (toDelete && toDelete.id) {
+          await FirebaseService.deleteRecord("universos_trabalho", toDelete.id, "id");
+        }
+      } catch (err) {
+        console.error("Failed to delete universo:", err);
+      }
+
       setGlobUniversos({
         ...globUniversos,
         [setorId]: nextUnivs
