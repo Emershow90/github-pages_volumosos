@@ -23,7 +23,8 @@ import {
   Flame,
   Wrench,
   Award,
-  Barcode
+  Barcode,
+  Clock
 } from "lucide-react";
 
 interface NavigationPanelProps {
@@ -167,7 +168,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           <Users size={12} className="text-amber-400" />
           <span>Gestão &amp; Ação</span>
         </div>
-        <div className="grid grid-cols-4 gap-1">
+        <div className="grid grid-cols-5 gap-1">
           <button
             id="nav-tab-plano-acao"
             onClick={() => setActiveTab("plano_acao")}
@@ -194,6 +195,15 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           >
             <Users size={12} className="text-amber-400 shrink-0" />
             <span className="truncate">Equipe</span>
+          </button>
+          <button
+            id="nav-tab-horas"
+            onClick={() => setActiveTab("lancamento_horas")}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "lancamento_horas" ? "active border-indigo-500/50 text-indigo-300 bg-indigo-950/40" : "hover:border-indigo-500/30 text-indigo-400"}`}
+            title="Formulário de Lançamento de Horas"
+          >
+            <Clock size={12} className="text-indigo-400 shrink-0" />
+            <span className="truncate font-bold">Horas</span>
           </button>
           <button
             id="nav-tab-consolidacao"

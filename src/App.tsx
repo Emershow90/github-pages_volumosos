@@ -47,6 +47,7 @@ import { ConsolidationPanel } from "./components/ConsolidationPanel.v2";
 import { GargalosTab } from "./components/GargalosTab";
 import { PlanoAcaoTab } from "./components/PlanoAcaoTab";
 import { CasesMelhoriaTab } from "./components/CasesMelhoriaTab";
+import { LancamentoHorasTab } from "./components/LancamentoHorasTab";
 import { InsightIaModal } from "./components/InsightIaModal";
 import { DiagnosticoGargalo } from "./types/Gargalo";
 import { useActionPlanStore } from "./stores/useActionPlanStore";
@@ -1366,6 +1367,7 @@ function App() {
                 colaboradores={colaboradores}
                 capacidade={capacidade}
                 onUpdateCapacidade={handleUpdateCapacidade}
+                onNavigateTab={setActiveTab}
               />
             </ProtectedRoute>
           )}
@@ -1390,6 +1392,7 @@ function App() {
                 onUpdateColaboradorStatus={handleUpdateColaboradorStatus}
                 onUpdateColaboradorHoras={handleUpdateColaboradorHoras}
                 onGravarTurno={handleGravarTurno}
+                onNavigateTab={setActiveTab}
               />
             </ProtectedRoute>
           )}
@@ -1468,6 +1471,24 @@ function App() {
                 onSetColaboradores={handleSetColaboradores}
                 currentRole={currentRole}
               />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "lancamento_horas" && (
+            <ProtectedRoute
+              userRole={currentRole}
+              allowedRoles={[
+                UserRole.Admin,
+                UserRole.Coordenador,
+                UserRole.Referente,
+                UserRole.Operador,
+                UserRole.Operacao,
+                UserRole.Expedicao,
+                UserRole.Lider,
+                UserRole.Consulta,
+              ]}
+            >
+              <LancamentoHorasTab onNavigateTab={setActiveTab} />
             </ProtectedRoute>
           )}
 

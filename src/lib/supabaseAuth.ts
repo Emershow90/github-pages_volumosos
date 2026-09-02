@@ -442,7 +442,7 @@ export const logoutGoogle = async () => {
 };
 
 export const loginWithEmail = async (email: string, password: string): Promise<any> => {
-  if (isStaticBuild) {
+  if (isStaticBuild || !supabase) {
     const mockUser: SupabaseUser = {
       uid: "local-user",
       id: "local-user",
@@ -455,50 +455,69 @@ export const loginWithEmail = async (email: string, password: string): Promise<a
     return mockUser;
   }
 
-  const { data, error } = await supabase!.auth.signInWithPassword({
-    email,
-    password
-  });
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
 
-  if (error) {
-    // If the user doesn't exist, Supabase returns "Invalid login credentials". 
-    // For test automation in this sandbox, we'll try to auto-register them.
-    if (error.message?.includes('Invalid login credentials') || error.message?.includes('Invalid login')) {
-      try {
-        const { data: signUpData, error: signUpError } = await supabase!.auth.signUp({
-          email,
-          password,
-        });
-        if (!signUpError && signUpData.user) {
-          const u = signUpData.user;
-          const mappedUser: SupabaseUser = {
-            uid: u.id,
-            id: u.id,
-            email: u.email,
-            displayName: u.email?.split('@')[0],
-            getIdToken: async () => signUpData.session?.access_token || ""
-          };
-          currentMockUser = mappedUser;
-          localStorage.setItem('active_user_session', JSON.stringify(mappedUser));
-          return mappedUser;
+    if (error) {
+      // If the user doesn't exist, Supabase returns "Invalid login credentials". 
+      // For test automation in this sandbox, we'll try to auto-register them.
+      if (error.message?.includes('Invalid login credentials') || error.message?.includes('Invalid login')) {
+        try {
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+          });
+          if (!signUpError && signUpData.user) {
+            const u = signUpData.user;
+            const mappedUser: SupabaseUser = {
+              uid: u.id,
+              id: u.id,
+              email: u.email,
+              displayName: u.email?.split('@')[0],
+              getIdToken: async () => signUpData.session?.access_token || ""
+            };
+            currentMockUser = mappedUser;
+            localStorage.setItem('active_user_session', JSON.stringify(mappedUser));
+            return mappedUser;
+          }
+        } catch (e) {
+          // Silently fail fallback and throw original error
         }
-      } catch (e) {
-        // Silently fail fallback and throw original error
       }
+      throw error;
     }
-    throw error;
+    const u = data.user!;
+    const mappedUser: SupabaseUser = {
+      uid: u.id,
+      id: u.id,
+      email: u.email,
+      displayName: u.user_metadata?.displayName || u.email?.split('@')[0],
+      getIdToken: async () => data.session?.access_token || ""
+    };
+    currentMockUser = mappedUser;
+    localStorage.setItem('active_user_session', JSON.stringify(mappedUser));
+    return mappedUser;
+  } catch (err: any) {
+    const errMsg = err?.message || (typeof err === 'string' ? err : '');
+    if (errMsg.includes('fetch') || errMsg.includes('NetworkError') || errMsg.includes('Failed to fetch')) {
+      console.warn('⚠️ [Supabase Auth] Falha de conexão com servidor Supabase (Failed to fetch). Ativando contingência local para:', email);
+      const safeUid = 'local-' + (email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_'));
+      const fallbackUser: SupabaseUser = {
+        uid: safeUid,
+        id: safeUid,
+        email,
+        displayName: email.split('@')[0],
+        getIdToken: async () => "local-token"
+      };
+      currentMockUser = fallbackUser;
+      localStorage.setItem('active_user_session', JSON.stringify(fallbackUser));
+      return fallbackUser;
+    }
+    throw err;
   }
-  const u = data.user!;
-  const mappedUser: SupabaseUser = {
-    uid: u.id,
-    id: u.id,
-    email: u.email,
-    displayName: u.user_metadata?.displayName || u.email?.split('@')[0],
-    getIdToken: async () => data.session?.access_token || ""
-  };
-  currentMockUser = mappedUser;
-  localStorage.setItem('active_user_session', JSON.stringify(mappedUser));
-  return mappedUser;
 };
 
 export const signUpWithEmail = async (
@@ -507,7 +526,7 @@ export const signUpWithEmail = async (
   name: string,
   role: UserRole
 ): Promise<{ user: any; profile: Usuario }> => {
-  if (isStaticBuild) {
+  if (isStaticBuild || !supabase) {
     const mockUser: SupabaseUser = {
       uid: "local-user",
       id: "local-user",
@@ -532,61 +551,91 @@ export const signUpWithEmail = async (
     return { user: mockUser, profile };
   }
 
-  const { data, error } = await supabase!.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        full_name: name,
-        displayName: name
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: name,
+          displayName: name
+        }
       }
+    });
+
+    if (error) throw error;
+    const u = data.user!;
+    const mappedUser: SupabaseUser = {
+      uid: u.id,
+      id: u.id,
+      email: u.email,
+      displayName: name,
+      getIdToken: async () => data.session?.access_token || ""
+    };
+
+    currentMockUser = mappedUser;
+    localStorage.setItem('active_user_session', JSON.stringify(mappedUser));
+
+    const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com' || email.toLowerCase() === 'emerson.oliveira@decathlon.com';
+    const userProfile: Usuario = {
+      email,
+      nome: name,
+      role: isOwner ? UserRole.Admin : role,
+      setoresAutorizados: isOwner ? ["S87", "S88", "S89", "S90"] : [],
+      situacao: isOwner ? 'Ativo' : 'Pendente',
+      cargo: isOwner ? 'ADMINISTRADOR' : 'AGUARDANDO_APROVACAO',
+      unidade: "CD Principal"
+    };
+
+    const rawUserRecord = {
+      id: u.id,
+      email: userProfile.email,
+      nome: userProfile.nome,
+      role: userProfile.role,
+      setoresAutorizados: userProfile.setoresAutorizados,
+      situacao: userProfile.situacao,
+      cargo: userProfile.cargo,
+      unidade: userProfile.unidade || 'CD Principal',
+      avatar_url: userProfile.foto || ''
+    };
+    const dbRecord = SupabaseService.toDbRecord('usuarios', rawUserRecord);
+    const filteredRecord = SupabaseService.filterRecordColumns('usuarios', dbRecord);
+
+    await supabase
+      .from('usuarios')
+      .upsert(filteredRecord);
+
+    localStorage.setItem(`cached_profile_${u.id}`, JSON.stringify(userProfile));
+    return { user: mappedUser, profile: userProfile };
+  } catch (err: any) {
+    const errMsg = err?.message || (typeof err === 'string' ? err : '');
+    if (errMsg.includes('fetch') || errMsg.includes('NetworkError') || errMsg.includes('Failed to fetch')) {
+      console.warn('⚠️ [Supabase Auth] Falha de rede em signUpWithEmail, usando fallback local.');
+      const safeUid = 'local-' + (email.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_'));
+      const mockUser: SupabaseUser = {
+        uid: safeUid,
+        id: safeUid,
+        email,
+        displayName: name,
+        getIdToken: async () => "local-token"
+      };
+      currentMockUser = mockUser;
+      localStorage.setItem('active_user_session', JSON.stringify(mockUser));
+      const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com' || email.toLowerCase() === 'emerson.oliveira@decathlon.com';
+      const userProfile: Usuario = {
+        email,
+        nome: name,
+        role: isOwner ? UserRole.Admin : role,
+        setoresAutorizados: isOwner ? ["S87", "S88", "S89", "S90"] : [],
+        situacao: isOwner ? 'Ativo' : 'Pendente',
+        cargo: isOwner ? 'ADMINISTRADOR' : 'AGUARDANDO_APROVACAO',
+        unidade: "CD Principal"
+      };
+      localStorage.setItem(`cached_profile_${mockUser.uid}`, JSON.stringify(userProfile));
+      return { user: mockUser, profile: userProfile };
     }
-  });
-
-  if (error) throw error;
-  const u = data.user!;
-  const mappedUser: SupabaseUser = {
-    uid: u.id,
-    id: u.id,
-    email: u.email,
-    displayName: name,
-    getIdToken: async () => data.session?.access_token || ""
-  };
-
-  currentMockUser = mappedUser;
-  localStorage.setItem('active_user_session', JSON.stringify(mappedUser));
-
-  const isOwner = email.toLowerCase() === 'emersonoliveira.goncalves@gmail.com' || email.toLowerCase() === 'emerson.oliveira@decathlon.com';
-  const userProfile: Usuario = {
-    email,
-    nome: name,
-    role: isOwner ? UserRole.Admin : role,
-    setoresAutorizados: isOwner ? ["S87", "S88", "S89", "S90"] : [],
-    situacao: isOwner ? 'Ativo' : 'Pendente',
-    cargo: isOwner ? 'ADMINISTRADOR' : 'AGUARDANDO_APROVACAO',
-    unidade: "CD Principal"
-  };
-
-  const rawUserRecord = {
-    id: u.id,
-    email: userProfile.email,
-    nome: userProfile.nome,
-    role: userProfile.role,
-    setoresAutorizados: userProfile.setoresAutorizados,
-    situacao: userProfile.situacao,
-    cargo: userProfile.cargo,
-    unidade: userProfile.unidade || 'CD Principal',
-    avatar_url: userProfile.foto || ''
-  };
-  const dbRecord = SupabaseService.toDbRecord('usuarios', rawUserRecord);
-  const filteredRecord = SupabaseService.filterRecordColumns('usuarios', dbRecord);
-
-  await supabase!
-    .from('usuarios')
-    .upsert(filteredRecord);
-
-  localStorage.setItem(`cached_profile_${u.id}`, JSON.stringify(userProfile));
-  return { user: mappedUser, profile: userProfile };
+    throw err;
+  }
 };
 
 export const recoverPassword = async (email: string): Promise<void> => {

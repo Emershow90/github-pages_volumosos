@@ -39,6 +39,8 @@ export default function LoginTilt({ onSubmit, errorMessage }: Props) {
     setLoading(true);
     try {
       await onSubmit(email, password);
+    } catch (err) {
+      console.warn("[LoginTilt] Erro capturado no submit:", err);
     } finally {
       setLoading(false);
     }

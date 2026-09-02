@@ -15,7 +15,7 @@ import {
 import { CopilBarChart, ProdHorasHorizontalBar } from "./CommandCharts";
 import { OverrideOperacionalModal } from "./OverrideOperacionalModal";
 import { CollaboratorCarousel } from "./CollaboratorCarousel";
-import { Minimize2, Plus, RefreshCw, FileText, Upload, ShieldAlert, Sparkles, Sliders, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { Minimize2, Plus, RefreshCw, FileText, Upload, ShieldAlert, Sparkles, Sliders, CheckCircle2, ChevronDown, ChevronUp, Clock } from "lucide-react";
 
 // ==========================================
 // CAPACIDADE TAB
@@ -25,6 +25,7 @@ interface CapacidadeTabProps {
   colaboradores: Colaborador[];
   capacidade: CapacidadeSetor[];
   onUpdateCapacidade: (sid: string, field: "abertura" | "fechoHora", value: number) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export const CapacidadeTab: React.FC<CapacidadeTabProps> = ({
@@ -32,6 +33,7 @@ export const CapacidadeTab: React.FC<CapacidadeTabProps> = ({
   colaboradores,
   capacidade,
   onUpdateCapacidade,
+  onNavigateTab,
 }) => {
   const totalArmazemMeta = capacidade.reduce((sum, c) => sum + c.abertura, 0);
 
@@ -42,9 +44,23 @@ export const CapacidadeTab: React.FC<CapacidadeTabProps> = ({
           <h2 className="text-xl font-black text-white tracking-widest uppercase">Consolidado de Turnos &amp; Capacidade</h2>
           <p className="text-xs text-zinc-500 mt-1 uppercase font-semibold">Previsões operacionais de processamento por setor</p>
         </div>
-        <div className="bg-black/30 p-3 rounded-lg border border-white/5 flex items-center gap-4">
-          <span className="text-[0.55rem] text-zinc-400 font-bold uppercase tracking-widest">Abertura Armazém Meta</span>
-          <span className="text-2xl font-black text-white font-mono">{(totalArmazemMeta ?? 0).toLocaleString("pt-BR")}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          {onNavigateTab && (
+            <button
+              type="button"
+              id="btn-nav-lancamento-horas-cap"
+              onClick={() => onNavigateTab("lancamento_horas")}
+              className="bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 px-3 py-2.5 rounded-lg text-xs font-bold font-mono transition flex items-center gap-2 cursor-pointer shadow-sm"
+              title="Abrir formulário de lançamento de horas"
+            >
+              <Clock size={14} className="text-indigo-400" />
+              <span>Lançar Horas (Forms)</span>
+            </button>
+          )}
+          <div className="bg-black/30 p-3 rounded-lg border border-white/5 flex items-center gap-4">
+            <span className="text-[0.55rem] text-zinc-400 font-bold uppercase tracking-widest">Abertura Armazém Meta</span>
+            <span className="text-2xl font-black text-white font-mono">{(totalArmazemMeta ?? 0).toLocaleString("pt-BR")}</span>
+          </div>
         </div>
       </div>
       <div className="overflow-x-auto custom-scrollbar">
@@ -116,6 +132,7 @@ interface ProdutividadeTabProps {
   onUpdateColaboradorStatus: (index: number, status: ColaboradorStatus) => void;
   onUpdateColaboradorHoras: (index: number, horas: number) => void;
   onGravarTurno: () => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export const ProdutividadeTab: React.FC<ProdutividadeTabProps> = ({
@@ -127,6 +144,7 @@ export const ProdutividadeTab: React.FC<ProdutividadeTabProps> = ({
   onUpdateColaboradorStatus,
   onUpdateColaboradorHoras,
   onGravarTurno,
+  onNavigateTab,
 }) => {
   const activeS = setores.find((x) => x.id === activeSectorId) || setores[0];
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
@@ -161,6 +179,18 @@ export const ProdutividadeTab: React.FC<ProdutividadeTabProps> = ({
         <div className="flex justify-between items-center border-b border-white/5 pb-4">
           <h3 className="font-black text-white text-sm uppercase">Cálculo Macro Oficial (UPH)</h3>
           <div className="flex items-center gap-3">
+            {onNavigateTab && (
+              <button
+                type="button"
+                id="btn-nav-lancamento-horas-prod"
+                onClick={() => onNavigateTab("lancamento_horas")}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600/20 text-indigo-300 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-500/30 transition-colors text-xs font-bold cursor-pointer font-mono"
+                title="Abrir formulário de lançamento de horas"
+              >
+                <Clock size={13} className="text-indigo-400" />
+                <span>Lançar Horas</span>
+              </button>
+            )}
             <button
               onClick={() => setIsOverrideModalOpen(true)}
               className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-500/30 transition-colors text-xs font-bold cursor-pointer"

@@ -13,7 +13,13 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
     setErrorMessage(undefined);
     try {
       const user = await loginWithEmail(email, password);
-      const profile = (await getUserProfile(user.uid || user.id)) || (await ensureUserProfile(user));
+      let profile = null;
+      try {
+        profile = (await getUserProfile(user.uid || user.id)) || (await ensureUserProfile(user));
+      } catch (pErr) {
+        console.warn('[LoginScreen] Aviso ao obter perfil remoto, criando perfil padrão:', pErr);
+        profile = await ensureUserProfile(user);
+      }
       onAuthSuccess(user, profile);
     } catch (err: unknown) {
       console.error('[LoginScreen] Falha na autenticação:', err);
@@ -35,12 +41,13 @@ export default function LoginScreen({ onAuthSuccess }: LoginScreenProps) {
         msg = 'Este usuário foi desativado no sistema.';
       } else if (rawMsg.includes('Email not confirmed')) {
         msg = 'E-mail não confirmado. Verifique sua caixa de entrada.';
+      } else if (rawMsg.includes('fetch') || rawMsg.includes('NetworkError') || rawMsg.includes('Failed to fetch')) {
+        msg = 'Erro de conexão com o servidor. Verifique sua internet.';
       } else if (rawMsg) {
         msg = rawMsg;
       }
 
       setErrorMessage(msg);
-      throw new Error(msg);
     }
   };
 
