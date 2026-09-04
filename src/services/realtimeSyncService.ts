@@ -124,7 +124,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<StoreOperation>('store_operations')
         .then((dbOps) => {
           if (cancelled) return;
-          if (dbOps && dbOps.length > 0) {
+          if (dbOps) {
             const filtered = dbOps.filter(op => op.programacaoId === programacaoId);
             const opsMap: Record<string, StoreOperation> = {};
             filtered.forEach(op => {
@@ -210,7 +210,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<AtividadeLoja>('atividade_loja')
         .then((dbAtivs) => {
           if (cancelled) return;
-          if (dbAtivs && dbAtivs.length > 0) {
+          if (dbAtivs) {
             const filtered = dbAtivs.filter(ativ => ativ.programacaoId === programacaoId);
             filtered.forEach(ativ => {
               useAtividadeLoja.getState().upsertAtividade(ativ);
@@ -289,7 +289,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<Setor>('setores', currentSetores)
         .then((dbSetores) => {
           if (cancelled) return;
-          if (dbSetores && dbSetores.length > 0) {
+          if (dbSetores) {
             useSectorStore.getState().setSetores(dbSetores);
           }
 
@@ -305,7 +305,7 @@ class RealtimeSyncService {
               },
               async () => {
                 const fresh = await SupabaseService.fetchTable<Setor>('setores');
-                if (fresh.length > 0) {
+                if (fresh) {
                   fresh.sort((a, b) => a.id.localeCompare(b.id));
                   useSectorStore.getState().setSetores(fresh);
                 }
@@ -359,7 +359,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<Colaborador>('colaboradores', currentColab)
         .then((dbColab) => {
           if (cancelled) return;
-          if (dbColab && dbColab.length > 0) {
+          if (dbColab) {
             useCollaboratorStore.getState().setColaboradores(dbColab);
           }
 
@@ -375,7 +375,7 @@ class RealtimeSyncService {
               },
               async () => {
                 const fresh = await SupabaseService.fetchTable<Colaborador>('colaboradores');
-                if (fresh.length > 0) {
+                if (fresh) {
                   fresh.sort((a, b) => a.nome.localeCompare(b.nome));
                   useCollaboratorStore.getState().setColaboradores(fresh);
                 }
@@ -428,7 +428,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<EscalaColaborador>('escalas')
         .then((dbEscalas) => {
           if (cancelled) return;
-          if (dbEscalas && dbEscalas.length > 0) {
+          if (dbEscalas) {
             useCollaboratorStore.getState().setEscalas(dbEscalas);
           }
 
@@ -444,7 +444,7 @@ class RealtimeSyncService {
               },
               async () => {
                 const fresh = await SupabaseService.fetchTable<EscalaColaborador>('escalas');
-                if (fresh.length > 0) {
+                if (fresh) {
                   useCollaboratorStore.getState().setEscalas(fresh);
                 }
               }
@@ -496,7 +496,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<UniversoMix>('universos_trabalho')
         .then((rows) => {
           if (cancelled) return;
-          if (rows && rows.length > 0) {
+          if (rows) {
             useSectorStore.getState().setUniversos(transformUniversos(rows));
           }
 
@@ -512,7 +512,7 @@ class RealtimeSyncService {
               },
               async () => {
                 const fresh = await SupabaseService.fetchTable<UniversoMix>('universos_trabalho');
-                if (fresh.length > 0) {
+                if (fresh) {
                   useSectorStore.getState().setUniversos(transformUniversos(fresh));
                 }
               }
@@ -564,7 +564,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<CopilMatrizRow>('copil_matriz')
         .then((rows) => {
           if (cancelled) return;
-          if (rows && rows.length > 0) {
+          if (rows) {
             useSectorStore.getState().setCopilData(transformCopilMatriz(rows));
           }
 
@@ -580,7 +580,7 @@ class RealtimeSyncService {
               },
               async () => {
                 const fresh = await SupabaseService.fetchTable<CopilMatrizRow>('copil_matriz');
-                if (fresh.length > 0) {
+                if (fresh) {
                   useSectorStore.getState().setCopilData(transformCopilMatriz(fresh));
                 }
               }
@@ -627,7 +627,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<CapacidadeSetor>('capacidade_operacional')
         .then((rows) => {
           if (cancelled) return;
-          if (rows && rows.length > 0) {
+          if (rows) {
             useSectorStore.getState().setCapacidade(rows);
           }
           if (isStaticBuild || !supabase) return;
@@ -635,7 +635,7 @@ class RealtimeSyncService {
           channel = supabase.channel(key)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'capacidade_operacional' }, async () => {
               const fresh = await SupabaseService.fetchTable<CapacidadeSetor>('capacidade_operacional');
-              if (fresh.length > 0) useSectorStore.getState().setCapacidade(fresh);
+              if (fresh) useSectorStore.getState().setCapacidade(fresh);
             })
             .subscribe();
 
@@ -670,7 +670,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<ReferenteSemana>('escalas_referentes')
         .then((rows) => {
           if (cancelled) return;
-          if (rows && rows.length > 0) {
+          if (rows) {
             useSectorStore.getState().setReferentesSemana(rows);
           }
           if (isStaticBuild || !supabase) return;
@@ -678,7 +678,7 @@ class RealtimeSyncService {
           channel = supabase.channel(key)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'escalas_referentes' }, async () => {
               const fresh = await SupabaseService.fetchTable<ReferenteSemana>('escalas_referentes');
-              if (fresh.length > 0) useSectorStore.getState().setReferentesSemana(fresh);
+              if (fresh) useSectorStore.getState().setReferentesSemana(fresh);
             })
             .subscribe();
 
@@ -713,7 +713,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<Usuario>('usuarios')
         .then((rows) => {
           if (cancelled) return;
-          if (rows && rows.length > 0) {
+          if (rows) {
             useUserStore.getState().loadPendingUsers();
           }
           if (isStaticBuild || !supabase) return;
@@ -755,7 +755,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<AlertLog>('alertas_operacionais')
         .then((rows) => {
           if (cancelled) return;
-          if (rows && rows.length > 0) {
+          if (rows) {
             useHistoryStore.getState().setAlerts(rows);
           }
           if (isStaticBuild || !supabase) return;
@@ -763,7 +763,7 @@ class RealtimeSyncService {
           channel = supabase.channel(key)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'alertas_operacionais' }, async () => {
               const fresh = await SupabaseService.fetchTable<AlertLog>('alertas_operacionais');
-              if (fresh.length > 0) useHistoryStore.getState().setAlerts(fresh);
+              if (fresh) useHistoryStore.getState().setAlerts(fresh);
             })
             .subscribe();
 
@@ -798,7 +798,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<HistoricoRegistro>('historico_consolidado')
         .then((rows) => {
           if (cancelled) return;
-          if (rows && rows.length > 0) {
+          if (rows) {
             useHistoryStore.getState().setHistorico(rows);
           }
           if (isStaticBuild || !supabase) return;
@@ -806,7 +806,7 @@ class RealtimeSyncService {
           channel = supabase.channel(key)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'historico_consolidado' }, async () => {
               const fresh = await SupabaseService.fetchTable<HistoricoRegistro>('historico_consolidado');
-              if (fresh.length > 0) useHistoryStore.getState().setHistorico(fresh);
+              if (fresh) useHistoryStore.getState().setHistorico(fresh);
             })
             .subscribe();
 
@@ -841,7 +841,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable<AuditLog>('audit_logs')
         .then((rows) => {
           if (cancelled) return;
-          if (rows && rows.length > 0) {
+          if (rows) {
             useHistoryStore.getState().setAudit(rows);
           }
           if (isStaticBuild || !supabase) return;
@@ -849,7 +849,7 @@ class RealtimeSyncService {
           channel = supabase.channel(key)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, async () => {
               const fresh = await SupabaseService.fetchTable<AuditLog>('audit_logs');
-              if (fresh.length > 0) useHistoryStore.getState().setAudit(fresh);
+              if (fresh) useHistoryStore.getState().setAudit(fresh);
             })
             .subscribe();
 
@@ -886,7 +886,7 @@ class RealtimeSyncService {
       SupabaseService.fetchTable('activity_entries')
         .then((rows) => {
           if (cancelled) return;
-          if (rows && rows.length > 0) {
+          if (rows) {
             useSectorStore.getState().setActivityEntries(rows as ActivityEntry[]);
           }
           if (isStaticBuild || !supabase) return;
@@ -894,7 +894,7 @@ class RealtimeSyncService {
           channel = supabase.channel(key)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_entries' }, async () => {
               const fresh = await SupabaseService.fetchTable<ActivityEntry>('activity_entries');
-              if (fresh.length > 0) {
+              if (fresh) {
                 useSectorStore.getState().setActivityEntries(fresh);
               }
             })

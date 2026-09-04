@@ -309,7 +309,11 @@ export class ConsolidationService {
         .upsert(payload, { onConflict: "data" });
 
       if (error) {
-        console.error("[ConsolidationService] Erro ao salvar consolidado no Supabase:", error);
+        if (error.code === 'PGRST205' || error.code === '42P01' || String(error.message).includes('Could not find')) {
+          console.warn("[ConsolidationService] Tabela 'consolidado_diario' não encontrada no Supabase. Ignorando sincronização remota.");
+          return false;
+        }
+        console.error("[ConsolidationService] Erro ao salvar consolidado no Supabase:", JSON.stringify(error));
         return false;
       }
       return true;

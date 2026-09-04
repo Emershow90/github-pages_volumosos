@@ -381,23 +381,7 @@ export const initialCopil: Record<string, CopilSetor> = {
 
 import { UniversoMix } from './types';
 
-export const initialUniversos: Record<string, UniversoMix[]> = {
-  "87": [
-    { setor_id: "87", nome: "Expedição Montanha", meta: 1200, feito: 850 },
-    { setor_id: "87", nome: "Picking Decote", meta: 800, feito: 800 },
-    { setor_id: "87", nome: "Triagem Sul", meta: 2000, feito: 1200 },
-  ],
-  "88": [
-    { setor_id: "88", nome: "Expedição Vale", meta: 1500, feito: 1200 },
-    { setor_id: "88", nome: "Reabastecimento", meta: 500, feito: 150 },
-  ],
-  "89": [
-    { setor_id: "89", nome: "Picking Especial", meta: 400, feito: 400 },
-  ],
-  "90": [
-    { setor_id: "90", nome: "Recebimento Carga", meta: 1000, feito: 900 },
-  ],
-};
+export const initialUniversos: Record<string, UniversoMix[]> = {};
 
 export const initialSystemState: SystemState = {
   setores: initialSetores,

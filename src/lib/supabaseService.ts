@@ -55,7 +55,6 @@ const TABLE_NAME_MAP: Record<string, string> = {
 const LOCAL_ONLY_TABLES = new Set([
   'alertas_operacionais',
   'copil_matriz',
-  'universos_trabalho',
   'plano_carregamento',
   'atividade_loja'
 ]);
@@ -72,6 +71,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   colaboradores: ['id', 'nome', 'setor', 'status', 'cargo', 'horas', 'foto', 'created_at', 'updated_at'],
   escalas: ['id', 'colaborador_id', 'data', 'turno', 'status', 'created_at', 'updated_at'],
   escala_semanal: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'updated_at', 'updated_by'],
+  universos_trabalho: ['id', 'setor_id', 'nome', 'meta', 'feito', 'created_at', 'updated_at'],
   capacidade: ['id', 'setor', 'abertura', 'fecho_hora', 'updated_at'],
   capacidade_operacional: ['id', 'setor', 'abertura', 'fecho_hora', 'updated_at'],
   escalas_referentes: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'updated_at', 'updated_by'],
@@ -560,11 +560,16 @@ export class SupabaseService {
 
         if (error) throw error;
 
-        if (data && data.length > 0) {
-          this.registerRemoteColumns(realTableName, Object.keys(data[0] as Record<string, unknown>));
-          const mapped = data.map((row) => this.fromDbRecord(tableName, row as Record<string, unknown>) as unknown as T);
-          await IndexedDBService.putMany(tableName, mapped);
-          return mapped;
+        if (data) {
+          await IndexedDBService.clear(tableName);
+          
+          if (data.length > 0) {
+            this.registerRemoteColumns(realTableName, Object.keys(data[0] as Record<string, unknown>));
+            const mapped = data.map((row) => this.fromDbRecord(tableName, row as Record<string, unknown>) as unknown as T);
+            await IndexedDBService.putMany(tableName, mapped);
+            return mapped;
+          }
+          return [];
         }
       } catch (err) {
         this.logSchema404Error(tableName, err);
