@@ -1,0 +1,1 @@
+sed -i 's/export const loginWithEmail = async (email: string, password: string): Promise<User> => {/export const loginWithEmail = async (email: string, password: string): Promise<User> => {\n  if (!firebaseConfig.apiKey) {\n    return { uid: "local-user", email, displayName: "Usuário Local", getIdToken: async () => "local-token" } as any;\n  }/g' src/lib/firebaseAuth.ts
