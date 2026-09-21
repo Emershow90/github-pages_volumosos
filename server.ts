@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { google } from 'googleapis';
 import { generateLocalStrategyPlan } from './src/services/aiStrategyService';
 import { generateLocalCargoForecast } from './src/services/aiForecastService';
 import { generateDatabaseIndexDDL, RECOMMENDED_DB_INDEXES } from './src/lib/dbPerformanceIndexes';

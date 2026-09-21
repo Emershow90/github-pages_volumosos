@@ -63,6 +63,7 @@ import {
 import { useSectorStore, resolveSectorMetrics } from "../stores/useSectorStore";
 import { useUserStore } from "../stores/useUserStore";
 import { exportToGoogleSheets, initGoogleIdentity } from "../services/googleSheetsExportService";
+import { auth } from "../lib/supabaseAuth";
 import { can } from "../lib/rbac";
 
 interface DashboardTabProps {
@@ -103,6 +104,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   onNavigateTab,
 }) => {
   const [isExporting, setIsExporting] = useState(false);
+  const [showConsolidationModal, setShowConsolidationModal] = useState(false);
+  const [consolidationProgress, setConsolidationProgress] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<"all" | "escala" | "monitor" | "grafico">("all");
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalInput, setTerminalInput] = useState("");
@@ -508,6 +511,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </button>
 
           <button
+            onClick={() => setShowConsolidationModal(true)}
+            className="flex items-center gap-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
+            title="Executar consolidação diária"
+          >
+            <Sparkles size={14} className="text-blue-400" />
+            <span>Consolidação Rápida</span>
+          </button>
+
+          <button
             onClick={() => setShowTerminal(!showTerminal)}
             className={`p-2 rounded-xl border text-xs font-mono transition-all ${
               showTerminal
@@ -741,6 +753,56 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </div>
             </div>
           </div>
+          
+          {/* Modal de Consolidação */}
+          {showConsolidationModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+              <div className="bg-[#121218] border border-white/10 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+                <h3 className="text-sm font-black text-white uppercase tracking-wider mb-4">Consolidação Rápida</h3>
+                <p className="text-xs text-zinc-400 mb-6">{consolidationProgress || "Preparando para consolidar dados do dia..."}</p>
+                {!consolidationProgress && (
+                  <button
+                    onClick={async () => {
+                      setConsolidationProgress("Validando...");
+                      try {
+                        const token = await auth.currentUser?.getIdToken();
+                        if (!token) throw new Error("Usuário não autenticado.");
+                        
+                        const response = await fetch('/api/sheets/consolidate', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                          },
+                          body: JSON.stringify({
+                            spreadsheetId: 'YOUR_SPREADSHEET_ID',
+                            data: []
+                          })
+                        });
+
+                        if (!response.ok) {
+                          const errorData = await response.json();
+                          throw new Error(errorData.error || 'Erro na consolidação');
+                        }
+                        
+                        setConsolidationProgress("Consolidação concluída!");
+                        setTimeout(() => {
+                           setShowConsolidationModal(false);
+                           setConsolidationProgress(null);
+                        }, 1500);
+                      } catch (e: any) {
+                        alert("Erro: " + e.message);
+                        setConsolidationProgress(null);
+                      }
+                    }}
+                    className="w-full px-4 py-2 bg-indigo-600 rounded-lg text-white text-xs font-bold"
+                  >
+                    Executar
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Grid de Cards de Setores */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">

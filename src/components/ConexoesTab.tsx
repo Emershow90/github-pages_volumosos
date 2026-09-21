@@ -24,9 +24,11 @@ import {
   RotateCcw,
   Check,
   Calendar,
-  CloudDownload
+  CloudDownload,
+  FileSpreadsheet
 } from 'lucide-react';
 import { ConexoesService, SyncResult, ConnectionDetail } from '../services/conexoesService';
+import { fetchPublishedSheet, buildViewerUrl } from '../services/sheetsService';
 import { useToast } from '../hooks/useToast';
 import { SupabaseService } from '../lib/supabaseService';
 import { formatToBrasiliaTime } from '../utils/time';
@@ -36,6 +38,7 @@ import { useSectorStore } from '../stores/useSectorStore';
 import { useCollaboratorStore } from '../stores/useCollaboratorStore';
 import { useDailyActivityHealth } from '../hooks/useDailyActivityHealth';
 import { exportToGoogleSheets, initGoogleIdentity } from '../services/googleSheetsExportService';
+import { ConsolidationPanel } from './ConsolidationPanel';
 
 export const ConexoesTab: React.FC = () => {
   const toast = useToast();
@@ -558,7 +561,19 @@ export const ConexoesTab: React.FC = () => {
             {connections.map((conn) => (
               <div
                 key={conn.id}
-                className="bg-zinc-900/60 p-5 rounded-2xl border border-zinc-800/80 hover:border-zinc-700/80 transition-all flex flex-col justify-between space-y-4 shadow-sm"
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (conn.id === 'google_sheets_atividade') window.open(buildViewerUrl('controladoria'), '_blank', 'noopener');
+                  else if (conn.id === 'google_sheets_plano') window.open(buildViewerUrl('planoCarregamento'), '_blank', 'noopener');
+                  else if (conn.id === 'supabase_database') window.open('https://supabase.com/dashboard', '_blank', 'noopener');
+                }}
+                onKeyDown={e => e.key === 'Enter' && (
+                  conn.id === 'google_sheets_atividade' ? window.open(buildViewerUrl('controladoria'), '_blank') :
+                  conn.id === 'google_sheets_plano' ? window.open(buildViewerUrl('planoCarregamento'), '_blank') :
+                  null
+                )}
+                className="bg-zinc-900/60 p-5 rounded-2xl border border-zinc-800/80 hover:border-purple-500/50 transition-all flex flex-col justify-between space-y-4 shadow-sm cursor-pointer"
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
@@ -619,6 +634,10 @@ export const ConexoesTab: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+          
+          <div className="mt-6">
+            <ConsolidationPanel />
           </div>
 
           {/* Database Tables Overview & Quick Actions */}

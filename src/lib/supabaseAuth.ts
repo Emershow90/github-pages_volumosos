@@ -73,7 +73,12 @@ if (typeof window !== 'undefined') {
 import { supabase, isStaticBuild } from './supabase';
 import { UserRole, Usuario } from '../types/Usuario';
 import { IndexedDBService } from './indexedDb';
-import { SupabaseService } from './supabaseService';
+// import { SupabaseService } from './supabaseService'; // Circular dependency
+
+async function getSupabaseService() {
+  const { SupabaseService } = await import('./supabaseService');
+  return SupabaseService;
+}
 
 
 // Define a safe mock user interface
@@ -278,8 +283,9 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
               unidade: existing.unidade || 'CD Principal',
               avatar_url: existing.foto || ''
             };
-            const dbRecord = SupabaseService.toDbRecord('usuarios', rawUserRecord);
-            const filteredRecord = SupabaseService.filterRecordColumns('usuarios', dbRecord);
+            const SS = await getSupabaseService();
+            const dbRecord = SS.toDbRecord('usuarios', rawUserRecord);
+            const filteredRecord = SS.filterRecordColumns('usuarios', dbRecord);
             await supabase!
               .from('usuarios')
               .upsert(filteredRecord);
@@ -316,8 +322,9 @@ export const ensureUserProfile = async (user: any): Promise<Usuario | null> => {
           unidade: defaultProfile.unidade || 'CD Principal',
           avatar_url: defaultProfile.foto || ''
         };
-        const dbRecord = SupabaseService.toDbRecord('usuarios', rawUserRecord);
-        const filteredRecord = SupabaseService.filterRecordColumns('usuarios', dbRecord);
+        const SS = await getSupabaseService();
+        const dbRecord = SS.toDbRecord('usuarios', rawUserRecord);
+        const filteredRecord = SS.filterRecordColumns('usuarios', dbRecord);
         await supabase!
           .from('usuarios')
           .upsert(filteredRecord);
@@ -598,8 +605,9 @@ export const signUpWithEmail = async (
       unidade: userProfile.unidade || 'CD Principal',
       avatar_url: userProfile.foto || ''
     };
-    const dbRecord = SupabaseService.toDbRecord('usuarios', rawUserRecord);
-    const filteredRecord = SupabaseService.filterRecordColumns('usuarios', dbRecord);
+    const SS = await getSupabaseService();
+    const dbRecord = SS.toDbRecord('usuarios', rawUserRecord);
+    const filteredRecord = SS.filterRecordColumns('usuarios', dbRecord);
 
     await supabase
       .from('usuarios')
