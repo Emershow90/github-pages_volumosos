@@ -1,50 +1,17 @@
-CREATE TABLE public.plano_carregamento (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  data DATE NOT NULL,
-  dia_semana TEXT,
-  hora_carregamento TEXT,
-  cod_loja TEXT,
-  nome_loja TEXT,
-  fonte TEXT DEFAULT 'google_sheets_publico',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE UNIQUE INDEX idx_plano_carregamento_unique ON public.plano_carregamento(data, cod_loja, hora_carregamento);
-
-ALTER TABLE public.plano_carregamento ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "select_plano_carregamento" ON public.plano_carregamento
-  FOR SELECT TO authenticated
-  USING (true);
-
-CREATE POLICY "insert_plano_carregamento" ON public.plano_carregamento
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    EXISTS (SELECT 1 FROM public.usuarios WHERE id = auth.uid() AND LOWER(role) IN ('coordenador', 'admin'))
-  );
-
-CREATE POLICY "update_plano_carregamento" ON public.plano_carregamento
-  FOR UPDATE TO authenticated
-  USING (
-    EXISTS (SELECT 1 FROM public.usuarios WHERE id = auth.uid() AND LOWER(role) IN ('coordenador', 'admin'))
-  );
-
-CREATE POLICY "delete_plano_carregamento" ON public.plano_carregamento
-  FOR DELETE TO authenticated
-  USING (
-    EXISTS (SELECT 1 FROM public.usuarios WHERE id = auth.uid() AND LOWER(role) IN ('coordenador', 'admin'))
-  );
-
 -- ============================================================================
 -- FASE 2: CORREÇÕES CRÍTICAS DO SUPABASE
+-- 1. Recriação e estabilização de audit_logs
+-- 2. Correção e adição de colunas em setores
+-- 3. RPC get_table_counts de alta performance
 -- ============================================================================
 
--- 1. TABELA audit_logs
+-- ----------------------------------------------------------------------------
+-- 1. TABELA audit_logs: Garantir chave primária com default e colunas completas
+-- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.audit_logs (
   id TEXT PRIMARY KEY DEFAULT ('aud-' || gen_random_uuid()::text),
-  acao TEXT NOT NULL DEFAULT 'AÇÃO',
-  usuario TEXT NOT NULL DEFAULT 'Sistema',
+  acao TEXT NOT NULL,
+  usuario TEXT NOT NULL,
   campo TEXT,
   dispositivo TEXT,
   valor_anterior TEXT,
@@ -53,9 +20,11 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Garantir default caso a tabela já tenha sido criada sem default na coluna id
 ALTER TABLE public.audit_logs 
   ALTER COLUMN id SET DEFAULT ('aud-' || gen_random_uuid()::text);
 
+-- Garantir colunas essenciais
 ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS acao TEXT NOT NULL DEFAULT 'AÇÃO';
 ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS usuario TEXT NOT NULL DEFAULT 'Sistema';
 ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS campo TEXT;
@@ -65,15 +34,20 @@ ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS valor_novo TEXT;
 ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
 ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
 
+-- Índices de auditoria
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON public.audit_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_usuario ON public.audit_logs (usuario, created_at DESC);
 
+-- Habilitar RLS e criar política permissiva para logs operacionais
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
 DROP POLICY IF EXISTS "Acesso total audit_logs" ON public.audit_logs;
 CREATE POLICY "Acesso total audit_logs" ON public.audit_logs
   FOR ALL USING (true) WITH CHECK (true);
 
--- 2. TABELA setores
+-- ----------------------------------------------------------------------------
+-- 2. TABELA setores: Garantir todas as colunas operacionais (snake_case e aliases)
+-- ----------------------------------------------------------------------------
 ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS coletado DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS colis DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS tipo_operacao TEXT DEFAULT 'PADRAO';
@@ -86,6 +60,7 @@ ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS suggested_metrics JSONB DEFA
 ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS equipe JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
 
+-- Aliases e colunas alternativas para compatibilidade mútua entre schemas
 ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS foto_lider TEXT;
 ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS fotolider TEXT;
 ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS var_fin DECIMAL(10,2) DEFAULT 0;
@@ -106,7 +81,9 @@ ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS rdl DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS poli_said DECIMAL(10,2) DEFAULT 0;
 ALTER TABLE public.setores ADD COLUMN IF NOT EXISTS polisaid DECIMAL(10,2) DEFAULT 0;
 
--- 3. RPC get_table_counts
+-- ----------------------------------------------------------------------------
+-- 3. RPC FUNCTION get_table_counts: Contagem agregada instantânea de linhas
+-- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_table_counts()
 RETURNS TABLE (
   table_name text,
@@ -142,52 +119,5 @@ BEGIN
 END;
 $$;
 
+-- Permissões para execução da RPC
 GRANT EXECUTE ON FUNCTION public.get_table_counts() TO authenticated, anon;
-
--- ============================================================================
--- FASE 3: GEMBA BOARD DIGITAL - TABELA E POLÍTICAS DE ACESSO
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS public.gemba_cards (
-  id TEXT PRIMARY KEY DEFAULT ('gmb-' || gen_random_uuid()::text),
-  categoria TEXT NOT NULL DEFAULT 'Geral',
-  descricao TEXT NOT NULL,
-  acoes TEXT,
-  responsavel TEXT NOT NULL,
-  data_alvo DATE,
-  identificador TEXT,
-  data_id DATE DEFAULT CURRENT_DATE,
-  status TEXT NOT NULL DEFAULT 'EM CURSO',
-  foto_url TEXT,
-  arquivado BOOLEAN DEFAULT FALSE,
-  historico JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS categoria TEXT NOT NULL DEFAULT 'Geral';
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS descricao TEXT NOT NULL DEFAULT '';
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS acoes TEXT;
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS responsavel TEXT NOT NULL DEFAULT 'Não atribuído';
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS data_alvo DATE;
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS identificador TEXT;
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS data_id DATE DEFAULT CURRENT_DATE;
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'EM CURSO';
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS foto_url TEXT;
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS arquivado BOOLEAN DEFAULT FALSE;
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS historico JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
-ALTER TABLE public.gemba_cards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
-
-CREATE INDEX IF NOT EXISTS idx_gemba_cards_status ON public.gemba_cards (status, arquivado);
-CREATE INDEX IF NOT EXISTS idx_gemba_cards_categoria ON public.gemba_cards (categoria);
-CREATE INDEX IF NOT EXISTS idx_gemba_cards_identificador ON public.gemba_cards (identificador);
-CREATE INDEX IF NOT EXISTS idx_gemba_cards_data_alvo ON public.gemba_cards (data_alvo);
-
-ALTER TABLE public.gemba_cards ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Acesso total gemba_cards" ON public.gemba_cards;
-CREATE POLICY "Acesso total gemba_cards" ON public.gemba_cards
-  FOR ALL USING (true) WITH CHECK (true);
-
-

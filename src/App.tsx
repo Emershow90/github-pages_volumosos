@@ -68,6 +68,7 @@ import { googleSheetsService } from "./services/googleSheetsService";
 // Layout & Modular UI Components
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { OverrideTab } from "./components/OverrideTab";
+import { GembaBoard } from "./components/GembaBoard";
 import { HeaderBar } from "./components/HeaderBar";
 import { NavigationPanel } from "./components/NavigationPanel";
 import { TerminalDrawer } from "./components/TerminalDrawer";
@@ -1258,6 +1259,22 @@ function App() {
                 onClearInitialGargalo={() => setSelectedGargaloForPlan(null)}
                 currentUserNome={currentUser}
               />
+            </ProtectedRoute>
+          )}
+
+          {activeTab === "gemba" && (
+            <ProtectedRoute
+              userRole={currentRole}
+              allowedRoles={[
+                UserRole.Admin,
+                UserRole.Coordenador,
+                UserRole.Referente,
+                UserRole.Operador,
+                UserRole.Operacao,
+                UserRole.Consulta,
+              ]}
+            >
+              <GembaBoard />
             </ProtectedRoute>
           )}
 

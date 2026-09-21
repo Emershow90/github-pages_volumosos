@@ -12,3 +12,4 @@ export * from './AIStrategy';
 export * from './AIForecast';
 export * from './Gargalo';
 export * from './ActionPlan';
+export * from './GembaCard';

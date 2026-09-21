@@ -38,7 +38,7 @@ import { useSectorStore } from '../stores/useSectorStore';
 import { useCollaboratorStore } from '../stores/useCollaboratorStore';
 import { useDailyActivityHealth } from '../hooks/useDailyActivityHealth';
 import { exportToGoogleSheets, initGoogleIdentity } from '../services/googleSheetsExportService';
-import { ConsolidationPanel } from './ConsolidationPanel';
+import { ConsolidationPanel } from './ConsolidationPanelV2';
 
 export const ConexoesTab: React.FC = () => {
   const toast = useToast();
@@ -82,6 +82,25 @@ export const ConexoesTab: React.FC = () => {
   } = useDailyActivityHealth(setores, colaboradores);
   const [isConsolidatingDaily, setIsConsolidatingDaily] = useState(false);
   const [isExportingSheets, setIsExportingSheets] = useState(false);
+  const [isSyncingGemba, setIsSyncingGemba] = useState(false);
+
+  const handleSyncGemba = async () => {
+    setIsSyncingGemba(true);
+    try {
+      initGoogleIdentity();
+      const res = await ConexoesService.syncGembaSheet();
+      if (res.success) {
+        toast.success(`Aba Gemba sincronizada com sucesso! (${res.importedCount} registros de anomalias/ações).`);
+        loadTableCounts();
+      } else {
+        toast.error(res.error || 'Falha ao sincronizar aba Gemba.');
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao sincronizar aba Gemba');
+    } finally {
+      setIsSyncingGemba(false);
+    }
+  };
 
   const handleConsolidarDaily = async () => {
     setIsConsolidatingDaily(true);
@@ -145,6 +164,16 @@ export const ConexoesTab: React.FC = () => {
       description: 'Aba/Planilha exclusiva do Plano de Carregamento de Lojas, Cortes e Transportadoras.',
       endpointUrl: PLANO_SHEET_URL,
       recordCount: stores.length,
+    },
+    {
+      id: 'google_sheets_gemba',
+      name: 'Planilha Mestre - Aba Gemba (Gestão de Chão de Fábrica)',
+      type: 'google_sheets',
+      status: 'connected',
+      lastSync: 'Sincronização Ativa (Torre de Comando)',
+      description: 'Aba Gemba na Planilha Mestre para anomalias, contramedidas imediatas, 5W2H e histórico de chão de fábrica.',
+      endpointUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTy_lfMaDqE48mRuMZJ_nBP2R4qbDG7wYEA3vtIeHOhMTTxjYHPZzGPcJrWvaIokP0EaRrMGf_1UoP2/pub?gid=419827361&output=html',
+      recordCount: tableCounts.gemba_cards || 0,
     },
     {
       id: 'supabase_database',
@@ -317,7 +346,7 @@ export const ConexoesTab: React.FC = () => {
   const loadTableCounts = async () => {
     setLoadingTables(true);
     try {
-      const [setores, colabs, matriz, historico, escalas, plano, ops, storesMaster, activityEntries] = await Promise.all([
+      const [setores, colabs, matriz, historico, escalas, plano, ops, storesMaster, activityEntries, gembaCards, casesMelhoria] = await Promise.all([
         SupabaseService.fetchTable('setores').catch(() => []),
         SupabaseService.fetchTable('colaboradores').catch(() => []),
         SupabaseService.fetchTable('matriz_performance').catch(() => []),
@@ -327,6 +356,8 @@ export const ConexoesTab: React.FC = () => {
         SupabaseService.fetchTable('store_operations').catch(() => []),
         SupabaseService.fetchTable('store_master').catch(() => []),
         SupabaseService.fetchTable('activity_entries').catch(() => []),
+        SupabaseService.fetchTable('gemba_cards').catch(() => []),
+        SupabaseService.fetchTable('cases_melhoria').catch(() => []),
       ]);
       setTableCounts({
         setores: setores.length,
@@ -338,6 +369,8 @@ export const ConexoesTab: React.FC = () => {
         store_operations: ops.length,
         store_master: storesMaster.length,
         activity_entries: activityEntries.length,
+        gemba_cards: gembaCards.length,
+        cases_melhoria: casesMelhoria.length,
       });
     } catch (err) {
       console.error('[ConexoesTab] Erro ao carregar registros das tabelas:', err);
@@ -428,7 +461,15 @@ export const ConexoesTab: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
+          <button
+            onClick={handleSyncGemba}
+            disabled={isSyncingGemba}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-lg shadow-indigo-600/20 cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 ${isSyncingGemba ? 'animate-spin' : ''}`} />
+            {isSyncingGemba ? 'Sincronizando Gemba...' : 'Sincronizar Aba Gemba'}
+          </button>
           <button
             onClick={handleSyncSheets}
             disabled={isSyncingSheets}

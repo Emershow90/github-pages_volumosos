@@ -3,7 +3,7 @@
  */
 
 const DB_NAME = "tower_os_offline_v1";
-const DB_VERSION = 15;
+const DB_VERSION = 16;
 
 export class IndexedDBService {
   private static db: IDBDatabase | null = null;
@@ -43,7 +43,7 @@ export class IndexedDBService {
             "lista_coleta", "store_master", "plano_carregamento", "planos_acao", "cases_melhoria",
             "store_operations", "atividade_loja", "universos_trabalho",
             "copil_matriz", "alertas_operacionais", "capacidade", "capacidade_operacional", "usuarios", "activity_entries", "painel_producao",
-            "matriz_performance", "conexoes", "sync_logs", "planilha_cache"
+            "matriz_performance", "conexoes", "sync_logs", "planilha_cache", "gemba_cards"
           ];
           
           stores.forEach(store => {

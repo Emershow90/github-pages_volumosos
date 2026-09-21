@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase, isStaticBuild } from "../lib/supabase";
+import { SupabaseService } from "../lib/supabaseService";
 import { 
   Database, 
   RefreshCw, 
@@ -51,15 +52,26 @@ export const SupabaseHealthPanel: React.FC = () => {
     setLoading(true);
     setGlobalError(null);
 
+    const entities: Array<{ name: string; type: "table" | "view"; description: string }> = [
+      { name: "usuarios", type: "table", description: "Perfis de usuários do sistema e controle de acesso (RBAC)" },
+      { name: "setores", type: "table", description: "Setores operacionais e suas respectivas metas e métricas" },
+      { name: "colaboradores", type: "table", description: "Cadastro e dados de produtividade dos operadores" },
+      { name: "store_master", type: "table", description: "Cadastro mestre de lojas parceiras e transportadoras" },
+      { name: "store_operations", type: "table", description: "Operações ativas de expedição e carregamento por loja" },
+      { name: "atividade_loja", type: "table", description: "Histórico e volume de atividades por loja" },
+      { name: "escalas", type: "table", description: "Planejamento semanal de turnos para os colaboradores" },
+      { name: "audit_logs", type: "table", description: "Rastreamento e auditoria de ações dos usuários" },
+      { name: "view_radar_completo", type: "view", description: "Relatório consolidado de listas de coleta e status" },
+      { name: "view_colaboradores_setor", type: "view", description: "Visão quantitativa de equipe operacional por setor" }
+    ];
+
     const checkEntity = async (name: string, type: "table" | "view", description: string): Promise<HealthItem> => {
       try {
-        // Query utilizing count parameter which is standard and performs count directly via head request
         const { count, error } = await supabase!
           .from(name)
           .select("*", { count: "exact", head: true });
 
         if (error) {
-          // Fallback query (select limited rows to see if we can read length)
           const { data: fallbackData, error: fallbackError } = await supabase!
             .from(name)
             .select("*")
@@ -76,7 +88,6 @@ export const SupabaseHealthPanel: React.FC = () => {
             };
           }
 
-          // Se funcionou o fallback mas sem count exato, buscamos tamanho dos dados ou retornamos 0
           return {
             name,
             type,
@@ -106,18 +117,24 @@ export const SupabaseHealthPanel: React.FC = () => {
     };
 
     try {
-      const results = await Promise.all([
-        checkEntity("usuarios", "table", "Perfis de usuários do sistema e controle de acesso (RBAC)"),
-        checkEntity("setores", "table", "Setores operacionais e suas respectivas metas e métricas"),
-        checkEntity("colaboradores", "table", "Cadastro e dados de produtividade dos operadores"),
-        checkEntity("store_master", "table", "Cadastro mestre de lojas parceiras e transportadoras"),
-        checkEntity("store_operations", "table", "Operações ativas de expedição e carregamento por loja"),
-        checkEntity("atividade_loja", "table", "Histórico e volume de atividades por loja"),
-        checkEntity("escalas", "table", "Planejamento semanal de turnos para os colaboradores"),
-        checkEntity("audit_logs", "table", "Rastreamento e auditoria de ações dos usuários"),
-        checkEntity("view_radar_completo", "view", "Relatório consolidado de listas de coleta e status"),
-        checkEntity("view_colaboradores_setor", "view", "Visão quantitativa de equipe operacional por setor")
-      ]);
+      // 1. Tenta obter contagens de forma instantânea via RPC get_table_counts
+      const rpcCounts = await SupabaseService.getTableCounts();
+      const hasRpc = Object.keys(rpcCounts).length > 0;
+
+      const results = await Promise.all(
+        entities.map(async ({ name, type, description }) => {
+          if (hasRpc && rpcCounts[name] !== undefined) {
+            return {
+              name,
+              type,
+              description,
+              count: rpcCounts[name],
+              status: "healthy" as const
+            };
+          }
+          return checkEntity(name, type, description);
+        })
+      );
 
       setItems(results);
     } catch (err: unknown) {

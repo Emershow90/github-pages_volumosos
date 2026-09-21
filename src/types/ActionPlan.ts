@@ -35,6 +35,7 @@ export interface PlanoAcao5W2H {
 export interface CaseMelhoria {
   id: string;
   planoAcaoId?: string;
+  gembaCardId?: string;
   titulo: string;
   categoria: "Produtividade" | "Qualidade" | "Ergonomia & Segurança" | "Processo" | "SLA";
   setor: string;
@@ -42,6 +43,7 @@ export interface CaseMelhoria {
   analiseCausa: string;
   acaoImplementada: string;
   responsavel: string;
+  autorizadoPor?: string;
   dataInicio: string;
   dataFim: string;
   valorAntes: number;
@@ -51,4 +53,9 @@ export interface CaseMelhoria {
   impactoOperacional: string;
   aprendizados: string;
   statusPadronizacao: "Em Validação" | "Padronizado no POP" | "Revisando";
+  popNumero?: string;
+  horasHomemEconomizadas?: number;
+  economiaEstimadaReais?: number;
+  created_at?: string;
+  updated_at?: string;
 }

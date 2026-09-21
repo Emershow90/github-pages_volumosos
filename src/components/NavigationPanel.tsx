@@ -24,7 +24,8 @@ import {
   Wrench,
   Award,
   Barcode,
-  Clock
+  Clock,
+  ListChecks
 } from "lucide-react";
 
 interface NavigationPanelProps {
@@ -93,8 +94,8 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
         </div>
       </div>
 
-      {/* LOGÍSTICA & OPERAÇÃO (5 Cols on XL) */}
-      <div className="xl:col-span-5 border border-cyan-500/20 bg-[#070d14] rounded-xl p-2 flex flex-col gap-1.5 shadow-sm relative overflow-hidden">
+      {/* LOGÍSTICA & OPERAÇÃO (4 Cols on XL) */}
+      <div className="xl:col-span-4 border border-cyan-500/20 bg-[#070d14] rounded-xl p-2 flex flex-col gap-1.5 shadow-sm relative overflow-hidden">
         <div className="flex items-center justify-between px-1.5 py-0.5">
           <div className="flex items-center gap-1.5 text-[10px] font-mono font-black uppercase text-cyan-400 tracking-wider">
             <Truck size={13} className="text-cyan-400 animate-pulse" />
@@ -162,13 +163,13 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
         </div>
       </div>
 
-      {/* GESTÃO & RESULTADOS (2.5 Cols on XL) */}
-      <div className="xl:col-span-2 border border-white/5 bg-[#0b0b10] rounded-xl p-2 flex flex-col gap-1.5 shadow-sm">
+      {/* GESTÃO & RESULTADOS (3 Cols on XL) */}
+      <div className="xl:col-span-3 border border-white/5 bg-[#0b0b10] rounded-xl p-2 flex flex-col gap-1.5 shadow-sm">
         <div className="flex items-center gap-1.5 px-1.5 py-0.5 text-[10px] font-mono font-black uppercase text-amber-400 tracking-wider">
           <Users size={12} className="text-amber-400" />
           <span>Gestão &amp; Ação</span>
         </div>
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
           <button
             id="nav-tab-plano-acao"
             onClick={() => setActiveTab("plano_acao")}
@@ -177,6 +178,15 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
           >
             <Wrench size={12} className="text-amber-400 shrink-0" />
             <span className="truncate font-bold">5W2H</span>
+          </button>
+          <button
+            id="nav-tab-gemba"
+            onClick={() => setActiveTab("gemba")}
+            className={`nav-btn py-1.5 px-0.5 text-[9.5px] ${activeTab === "gemba" ? "active border-indigo-500/50 text-indigo-300 bg-indigo-950/40" : "hover:border-indigo-500/30 text-indigo-400"}`}
+            title="Gemba Board Digital - Gestão de Chão de Fábrica"
+          >
+            <ListChecks size={12} className="text-indigo-400 shrink-0" />
+            <span className="truncate font-bold">Gemba</span>
           </button>
           <button
             id="nav-tab-cases"

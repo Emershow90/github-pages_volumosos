@@ -1,6 +1,6 @@
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, isStaticBuild } from './supabase';
-import { auth, initAuth } from './supabaseAuth';
+import { auth, initAuth, ensureAuth } from './supabaseAuth';
 import { IndexedDBService } from './indexedDb';
 import { AlertLog } from '../types';
 
@@ -61,7 +61,15 @@ const LOCAL_ONLY_TABLES = new Set([
 
 const TABLE_COLUMNS: Record<string, string[]> = {
   store_master: ['id', 'nome', 'cidade', 'uf', 'transportadorapadrao', 'observacoes', 'created_at', 'updated_at'],
-  setores: ['id', 'numero', 'nome', 'resp', 'fotolider', 'meta', 'horario', 'situacao', 'ativ', 'promessa', 'varfin', 'bsi', 'nota5s', 'errospicking', 'reprototal', 'infracaoseguranca', 'horasdkt', 'polirec', 'rdl', 'polisaid', 'coletado', 'uph', 'created_at', 'updated_at'],
+  setores: [
+    'id', 'numero', 'nome', 'resp', 'fotolider', 'foto_lider', 'meta', 'horario', 'situacao',
+    'ativ', 'promessa', 'varfin', 'var_fin', 'bsi', 'nota5s', 'nota_5s', 'errospicking',
+    'erros_picking', 'reprototal', 'repro_total', 'infracaoseguranca', 'infracao_seguranca',
+    'horasdkt', 'horas_dkt', 'polirec', 'poli_rec', 'rdl', 'polisaid', 'poli_said',
+    'coletado', 'colis', 'tipo_operacao', 'fonte_atividade', 'fonte_colis', 'exibir_caixas',
+    'exibir_reposicao_caixas', 'overrides', 'suggested_metrics', 'equipe', 'uph',
+    'created_at', 'updated_at'
+  ],
   lista_coleta: ['lista', 'loja', 'setor', 'corte', 'carregamento', 'transportadora', 'volumes', 'enderecos', 'atividaderelacionada', 'created_at', 'updated_at'],
   radar_lojas_status: ['lista', 'status_soltura', 'horario_soltura', 'solto_por', 'status_coleta', 'horario_coleta', 'coletado_por', 'status_carregamento', 'horario_carregamento', 'carregado_por', 'status_expedicao', 'created_at', 'updated_at', 'updated_by'],
   plano_carregamento: ['id', 'data', 'dia_semana', 'hora_carregamento', 'cod_loja', 'nome_loja', 'created_at'],
@@ -83,7 +91,10 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   painel_producao: ['id', 'sector_id', 'upload_date', 'feito_hoje', 'feito_ontem', 'maquina_full', 'rafale_full', 'uploaded_by', 'arquivo_nome', 'created_at', 'updated_at'],
   matriz_performance: ['id', 'setor', 'semana', 'ano', 'pilotagem', 'volume_que_caiu', 'percentual', 'horas_planning', 'horas_terceiros', 'poli_entrada', 'poli_saida', 'capacidade', 'total_coletado', 'produtividade', 'promessa', 'lead_time', 'aderencia', 'created_at', 'updated_at'],
   conexoes: ['id', 'nome', 'tipo', 'url', 'credenciais', 'configuracao', 'destino', 'status', 'ultima_sincronizacao', 'registros', 'created_at', 'updated_at'],
-  sync_logs: ['id', 'conexao_id', 'data_inicio', 'data_fim', 'status', 'registros_afetados', 'mensagem_erro', 'created_at']
+  sync_logs: ['id', 'conexao_id', 'data_inicio', 'data_fim', 'status', 'registros_afetados', 'mensagem_erro', 'created_at'],
+  gemba_cards: ['id', 'categoria', 'descricao', 'acoes', 'responsavel', 'data_alvo', 'identificador', 'data_id', 'status', 'foto_url', 'arquivado', 'historico', 'created_at', 'updated_at'],
+  planos_acao: ['id', 'gargalo_id', 'problema', 'causa', 'what', 'why', 'where', 'when', 'who', 'how', 'how_much', 'indicador', 'unidade', 'valor_antes', 'meta_esperada', 'valor_depois', 'percentual_ganho', 'meta_atingida', 'impacto_descricao', 'status', 'padronizado', 'padronizacao_descricao', 'criado_por', 'data_criacao', 'data_conclusao', 'observacoes', 'created_at', 'updated_at'],
+  cases_melhoria: ['id', 'plano_acao_id', 'gemba_card_id', 'titulo', 'categoria', 'setor', 'problema', 'analise_causa', 'acao_implementada', 'responsavel', 'autorizado_por', 'data_inicio', 'data_fim', 'valor_antes', 'valor_depois', 'unidade', 'ganho_percentual', 'impacto_operacional', 'aprendizados', 'status_padronizacao', 'pop_numero', 'horas_homem_economizadas', 'economia_estimada_reais', 'created_at', 'updated_at']
 };
 
 export class SupabaseService {
@@ -229,18 +240,24 @@ export class SupabaseService {
     const result: Record<string, unknown> = { ...record };
 
     if (realTable === 'setores') {
-      if ('fotoLider' in result) { result.fotolider = result.fotoLider; delete result.fotoLider; }
-      if ('varFin' in result) { result.varfin = result.varFin; delete result.varFin; }
-      if ('errosPicking' in result) { result.errospicking = result.errosPicking; delete result.errosPicking; }
+      if ('fotoLider' in result) { result.fotolider = result.fotoLider; result.foto_lider = result.fotoLider; delete result.fotoLider; }
+      if ('varFin' in result) { result.varfin = result.varFin; result.var_fin = result.varFin; delete result.varFin; }
+      if ('errosPicking' in result) { result.errospicking = result.errosPicking; result.erros_picking = result.errosPicking; delete result.errosPicking; }
       if ('erros_picking' in result) { result.errospicking = result.erros_picking; delete result.erros_picking; }
-      if ('reproTotal' in result) { result.reprototal = result.reproTotal; delete result.reproTotal; }
+      if ('reproTotal' in result) { result.reprototal = result.reproTotal; result.repro_total = result.reproTotal; delete result.reproTotal; }
       if ('repro_total' in result) { result.reprototal = result.repro_total; delete result.repro_total; }
-      if ('infracaoSeguranca' in result) { result.infracaoseguranca = result.infracaoSeguranca; delete result.infracaoSeguranca; }
-      if ('horasDKT' in result) { result.horasdkt = result.horasDKT; delete result.horasDKT; }
-      if ('poliRec' in result) { result.polirec = result.poliRec; delete result.poliRec; }
-      if ('poliSaid' in result) { result.polisaid = result.poliSaid; delete result.poliSaid; }
-      if ('nota_5s' in result) { result.nota5s = result.nota_5s; delete result.nota_5s; }
-      if ('equipe' in result) { delete result.equipe; }
+      if ('infracaoSeguranca' in result) { result.infracaoseguranca = result.infracaoSeguranca; result.infracao_seguranca = result.infracaoSeguranca; delete result.infracaoSeguranca; }
+      if ('horasDKT' in result) { result.horasdkt = result.horasDKT; result.horas_dkt = result.horasDKT; delete result.horasDKT; }
+      if ('poliRec' in result) { result.polirec = result.poliRec; result.poli_rec = result.poliRec; delete result.poliRec; }
+      if ('poliSaid' in result) { result.polisaid = result.poliSaid; result.poli_said = result.poliSaid; delete result.poliSaid; }
+      if ('nota_5s' in result) { result.nota5s = result.nota_5s; }
+      if ('nota5s' in result) { result.nota_5s = result.nota5s; }
+      if ('tipoOperacao' in result) { result.tipo_operacao = result.tipoOperacao; delete result.tipoOperacao; }
+      if ('fonteAtividade' in result) { result.fonte_atividade = result.fonteAtividade; delete result.fonteAtividade; }
+      if ('fonteColis' in result) { result.fonte_colis = result.fonteColis; delete result.fonteColis; }
+      if ('exibirCaixas' in result) { result.exibir_caixas = result.exibirCaixas; delete result.exibirCaixas; }
+      if ('exibirReposicaoCaixas' in result) { result.exibir_reposicao_caixas = result.exibirReposicaoCaixas; delete result.exibirReposicaoCaixas; }
+      if ('suggestedMetrics' in result) { result.suggested_metrics = result.suggestedMetrics; delete result.suggestedMetrics; }
       if ('capacidade' in result) { delete result.capacidade; }
     } else if (realTable === 'usuarios') {
       if (!Array.isArray(result.setoresAutorizados)) {
@@ -259,8 +276,8 @@ export class SupabaseService {
         else result.role = 'Consulta';
       }
     } else if (realTable === 'audit_logs') {
-      if ('id' in result && typeof result.id === 'string' && result.id.startsWith('aud-')) {
-        delete result.id;
+      if (!result.id) {
+        result.id = 'aud-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
       }
       if ('valorAnterior' in result) { result.valor_anterior = result.valorAnterior; delete result.valorAnterior; }
       if ('valorNovo' in result) { result.valor_novo = result.valorNovo; delete result.valorNovo; }
@@ -270,6 +287,13 @@ export class SupabaseService {
         }
         delete result.data;
       }
+    } else if (realTable === 'gemba_cards') {
+      if (!result.id) {
+        result.id = 'gmb-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+      }
+      if ('dataAlvo' in result) { result.data_alvo = result.dataAlvo; delete result.dataAlvo; }
+      if ('dataId' in result) { result.data_id = result.dataId; delete result.dataId; }
+      if ('fotoUrl' in result) { result.foto_url = result.fotoUrl; delete result.fotoUrl; }
     } else if (realTable === 'store_master') {
       if ('transportadoraPadrao' in result) { result.transportadorapadrao = result.transportadoraPadrao; delete result.transportadoraPadrao; }
     } else if (realTable === 'lista_coleta') {
@@ -346,13 +370,28 @@ export class SupabaseService {
 
     if (realTable === 'setores') {
       if ('fotolider' in result && !('fotoLider' in result)) result.fotoLider = result.fotolider;
+      if ('foto_lider' in result && !('fotoLider' in result)) result.fotoLider = result.foto_lider;
       if ('varfin' in result && !('varFin' in result)) result.varFin = result.varfin;
+      if ('var_fin' in result && !('varFin' in result)) result.varFin = result.var_fin;
       if ('errospicking' in result && !('errosPicking' in result)) result.errosPicking = result.errospicking;
+      if ('erros_picking' in result && !('errosPicking' in result)) result.errosPicking = result.erros_picking;
       if ('reprototal' in result && !('reproTotal' in result)) result.reproTotal = result.reprototal;
+      if ('repro_total' in result && !('reproTotal' in result)) result.reproTotal = result.repro_total;
       if ('infracaoseguranca' in result && !('infracaoSeguranca' in result)) result.infracaoSeguranca = result.infracaoseguranca;
+      if ('infracao_seguranca' in result && !('infracaoSeguranca' in result)) result.infracaoSeguranca = result.infracao_seguranca;
       if ('horasdkt' in result && !('horasDKT' in result)) result.horasDKT = result.horasdkt;
+      if ('horas_dkt' in result && !('horasDKT' in result)) result.horasDKT = result.horas_dkt;
       if ('polirec' in result && !('poliRec' in result)) result.poliRec = result.polirec;
+      if ('poli_rec' in result && !('poliRec' in result)) result.poliRec = result.poli_rec;
       if ('polisaid' in result && !('poliSaid' in result)) result.poliSaid = result.polisaid;
+      if ('poli_said' in result && !('poliSaid' in result)) result.poliSaid = result.poli_said;
+      if ('nota_5s' in result && !('nota5s' in result)) result.nota5s = result.nota_5s;
+      if ('tipo_operacao' in result && !('tipoOperacao' in result)) result.tipoOperacao = result.tipo_operacao;
+      if ('fonte_atividade' in result && !('fonteAtividade' in result)) result.fonteAtividade = result.fonte_atividade;
+      if ('fonte_colis' in result && !('fonteColis' in result)) result.fonteColis = result.fonte_colis;
+      if ('exibir_caixas' in result && !('exibirCaixas' in result)) result.exibirCaixas = result.exibir_caixas;
+      if ('exibir_reposicao_caixas' in result && !('exibirReposicaoCaixas' in result)) result.exibirReposicaoCaixas = result.exibir_reposicao_caixas;
+      if ('suggested_metrics' in result && !('suggestedMetrics' in result)) result.suggestedMetrics = result.suggested_metrics;
     } else if (realTable === 'usuarios') {
       if ('setoresautorizados' in result && !('setoresAutorizados' in result)) result.setoresAutorizados = result.setoresautorizados;
       if ('role' in result && typeof result.role === 'string') {
@@ -366,6 +405,10 @@ export class SupabaseService {
       if ('valor_anterior' in result && !('valorAnterior' in result)) result.valorAnterior = result.valor_anterior;
       if ('valor_novo' in result && !('valorNovo' in result)) result.valorNovo = result.valor_novo;
       if ('created_at' in result && !('data' in result)) result.data = result.created_at;
+    } else if (realTable === 'gemba_cards') {
+      if ('data_alvo' in result && !('dataAlvo' in result)) result.dataAlvo = result.data_alvo;
+      if ('data_id' in result && !('dataId' in result)) result.dataId = result.data_id;
+      if ('foto_url' in result && !('fotoUrl' in result)) result.fotoUrl = result.foto_url;
     } else if (realTable === 'activity_entries') {
       if ('sector_id' in result && !('sectorId' in result)) result.sectorId = result.sector_id;
       if ('activity_date' in result && !('activityDate' in result)) result.activityDate = result.activity_date;
@@ -490,27 +533,56 @@ export class SupabaseService {
     return supabase;
   }
 
-  public static garantirAuthPronto(): Promise<void> {
-    return new Promise((resolve) => {
-      if (this.authState !== 'loading') {
-        resolve();
-        return;
-      }
-
-      let unsubscribe: (() => void) | undefined;
-      unsubscribe = this.onAuthStateResolved((state) => {
-        if (state !== 'loading') {
-          if (unsubscribe) {
-            unsubscribe();
-          } else {
-            queueMicrotask(() => {
-              if (unsubscribe) unsubscribe();
-            });
+  public static async garantirAuthPronto(): Promise<void> {
+    if (this.authState === 'loading') {
+      await new Promise<void>((resolve) => {
+        let unsubscribe: (() => void) | undefined;
+        unsubscribe = this.onAuthStateResolved((state) => {
+          if (state !== 'loading') {
+            if (unsubscribe) {
+              unsubscribe();
+            } else {
+              queueMicrotask(() => {
+                if (unsubscribe) unsubscribe();
+              });
+            }
+            resolve();
           }
-          resolve();
-        }
+        });
       });
-    });
+    }
+
+    if (!auth.currentUser) {
+      await ensureAuth();
+    }
+  }
+
+  /**
+   * Obtém a contagem de linhas de todas as tabelas e views do Supabase
+   * utilizando a RPC otimizada get_table_counts (ou fallback individual).
+   */
+  public static async getTableCounts(): Promise<Record<string, number>> {
+    const counts: Record<string, number> = {};
+    if (isStaticBuild || !supabase) {
+      return counts;
+    }
+
+    try {
+      const client = this.getClient();
+      const { data, error } = await client.rpc('get_table_counts');
+      if (!error && Array.isArray(data)) {
+        for (const row of data as { table_name: string; row_count: number | string }[]) {
+          if (row.table_name) {
+            counts[row.table_name] = Number(row.row_count) || 0;
+          }
+        }
+        return counts;
+      }
+    } catch (rpcErr) {
+      console.warn('[SupabaseService] RPC get_table_counts indisponível, fallback ativo:', rpcErr);
+    }
+
+    return counts;
   }
 
   private static getDocId(record: Record<string, unknown>, keyField: string = 'id'): string {
@@ -539,16 +611,19 @@ export class SupabaseService {
     const realTableName = this.getRealTableName(tableName);
 
     if (!auth.currentUser) {
-      console.warn(`[Supabase] fetchTable(${tableName}) chamado sem usuário autenticado. Retornando cache local.`);
-      const cached = await IndexedDBService.getAll<T>(tableName);
-      if (cached.length > 0) {
-        return cached;
+      const user = await ensureAuth();
+      if (!user) {
+        // Sessão não autenticada: utiliza o cache local do IndexedDB ou dados padrão sem mensagens ruidosas
+        const cached = await IndexedDBService.getAll<T>(tableName);
+        if (cached.length > 0) {
+          return cached;
+        }
+        if (defaultData.length > 0) {
+          await IndexedDBService.putMany(tableName, defaultData);
+          return defaultData;
+        }
+        return [];
       }
-      if (defaultData.length > 0) {
-        await IndexedDBService.putMany(tableName, defaultData);
-        return defaultData;
-      }
-      return [];
     }
 
     if (isOnline()) {

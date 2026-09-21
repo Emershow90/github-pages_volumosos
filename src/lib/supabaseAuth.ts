@@ -189,6 +189,53 @@ export const auth = {
   }
 };
 
+/**
+ * Garante e resolve o usuário autenticado atual de forma assíncrona.
+ * Verifica memória, localStorage e consulta a sessão remota do Supabase.
+ */
+export const ensureAuth = async (): Promise<SupabaseUser | null> => {
+  if (currentMockUser) {
+    return ensureGetIdToken(currentMockUser);
+  }
+
+  if (typeof window !== 'undefined') {
+    const cachedUser = safeLocalStorage.getItem('active_user_session');
+    if (cachedUser) {
+      try {
+        const parsed = JSON.parse(cachedUser);
+        currentMockUser = ensureGetIdToken(parsed);
+        return currentMockUser;
+      } catch (e) {
+        console.error('Error parsing cached user session in ensureAuth', e);
+      }
+    }
+  }
+
+  if (isStaticBuild || !supabase) {
+    return null;
+  }
+
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (!error && session?.user) {
+      const u = session.user;
+      currentMockUser = {
+        uid: u.id,
+        id: u.id,
+        email: u.email,
+        displayName: u.user_metadata?.displayName || u.user_metadata?.full_name || u.email?.split('@')[0],
+        getIdToken: async () => session.access_token || ""
+      };
+      safeLocalStorage.setItem('active_user_session', JSON.stringify(currentMockUser));
+      return currentMockUser;
+    }
+  } catch (err) {
+    console.warn('[ensureAuth] Não foi possível restaurar sessão do Supabase:', err);
+  }
+
+  return null;
+};
+
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
 

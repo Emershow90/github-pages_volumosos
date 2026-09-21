@@ -6,3 +6,20 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# One-shot scripts
+*.patch
+fix_*.cjs
+fix-sync.cjs
+fix_*.ts
+fix_*.sh
+query*.cjs
+test-*.cjs
+parse*.cjs
+update_*.cjs
+
+# Rascunhos
+temp.txt
+temp*.txt
+*.tmp
+

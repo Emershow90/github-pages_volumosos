@@ -1,4 +1,6 @@
 import { Setor, Colaborador, ReaproData, HistoricoRegistro, CapacidadeSetor } from '../types';
+import { GembaCard } from '../types/GembaCard';
+import { useGembaStore } from '../stores/useGembaStore';
 
 const CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || '75894189562-7moh2aqmsh8e6s42ukpvh895ag82jkn0.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
@@ -128,6 +130,7 @@ export interface ExportDataPayload {
   historico?: HistoricoRegistro[];
   coordenador?: string;
   capacidade?: CapacidadeSetor[];
+  gembaCards?: GembaCard[];
 }
 
 const STORAGE_KEY_SPREADSHEET_ID = 'google_sheets_master_id';
@@ -166,7 +169,8 @@ export async function exportToGoogleSheets(data: ExportDataPayload): Promise<str
         { properties: { title: 'Consolidado Diário por Setor' } },
         { properties: { title: 'Colaboradores por Setor' } },
         { properties: { title: 'Atividade e UPH (Controladoria)' } },
-        { properties: { title: 'Indicadores Reapro' } }
+        { properties: { title: 'Indicadores Reapro' } },
+        { properties: { title: 'Gemba' } }
       ]
     };
 
@@ -192,7 +196,8 @@ export async function exportToGoogleSheets(data: ExportDataPayload): Promise<str
       'Consolidado Diário por Setor',
       'Colaboradores por Setor',
       'Atividade e UPH (Controladoria)',
-      'Indicadores Reapro'
+      'Indicadores Reapro',
+      'Gemba'
     ];
 
     const requestsToAdd: any[] = [];
@@ -358,6 +363,28 @@ export async function exportToGoogleSheets(data: ExportDataPayload): Promise<str
     ['Capacidade Est. Fechamento', (data.reapro.capacidadeFechamentoEst ?? 0).toString()]
   ];
 
+  // Sheet 7: Gemba (Gestão de Piso de Fábrica & Anomalias)
+  const cardsParaExportar = data.gembaCards || useGembaStore.getState().cards;
+  const gembaData = [
+    ['ID', 'Setor / Identificador', 'Categoria', 'Descrição da Anomalia / Oportunidade', 'Ações de Contenção / Melhoria', 'Responsável', 'Data Registro', 'Data Alvo', 'Status', 'Arquivado', 'Último Histórico']
+  ];
+  cardsParaExportar.forEach(c => {
+    const ultimoHist = c.historico && c.historico.length > 0 ? `${c.historico[0].data}: ${c.historico[0].acao}` : '-';
+    gembaData.push([
+      c.id,
+      c.identificador || 'Geral',
+      c.categoria || 'Geral',
+      c.descricao || '',
+      c.acoes || '',
+      c.responsavel || '',
+      c.data_id || '',
+      c.data_alvo || '',
+      c.status || 'EM CURSO',
+      c.arquivado ? 'Sim' : 'Não',
+      ultimoHist
+    ]);
+  });
+
   const updateValuesBody = {
     valueInputOption: 'USER_ENTERED',
     data: [
@@ -367,6 +394,7 @@ export async function exportToGoogleSheets(data: ExportDataPayload): Promise<str
       { range: 'Colaboradores por Setor!A1', values: colabData },
       { range: 'Atividade e UPH (Controladoria)!A1', values: ativUphData },
       { range: 'Indicadores Reapro!A1', values: reaproData },
+      { range: 'Gemba!A1', values: gembaData },
     ]
   };
 
@@ -379,4 +407,111 @@ export async function exportToGoogleSheets(data: ExportDataPayload): Promise<str
   );
 
   return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+}
+
+/**
+ * Exporta exclusivamente os dados do Gemba Board para a planilha mestre na aba 'Gemba'
+ */
+export async function exportGembaToGoogleSheets(customCards?: GembaCard[]): Promise<string> {
+  const token = await getAccessToken();
+  let spreadsheetId = localStorage.getItem(STORAGE_KEY_SPREADSHEET_ID);
+  let existingSpreadsheet: any = null;
+
+  if (spreadsheetId) {
+    try {
+      existingSpreadsheet = await fetchGoogleAPI(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`,
+        'GET',
+        token
+      );
+    } catch {
+      spreadsheetId = null;
+      localStorage.removeItem(STORAGE_KEY_SPREADSHEET_ID);
+    }
+  }
+
+  // Se a planilha não existe, cria com todas as abas padrão incluindo Gemba
+  if (!spreadsheetId || !existingSpreadsheet) {
+    const createSpreadsheetBody = {
+      properties: {
+        title: `Torre de Comando - Painel Consolidado Oficial`,
+      },
+      sheets: [
+        { properties: { title: 'Resumo Geral' } },
+        { properties: { title: 'Setores (Consolidado & Efetivo)' } },
+        { properties: { title: 'Consolidado Diário por Setor' } },
+        { properties: { title: 'Colaboradores por Setor' } },
+        { properties: { title: 'Atividade e UPH (Controladoria)' } },
+        { properties: { title: 'Indicadores Reapro' } },
+        { properties: { title: 'Gemba' } }
+      ]
+    };
+
+    const spreadsheet = await fetchGoogleAPI(
+      'https://sheets.googleapis.com/v4/spreadsheets',
+      'POST',
+      token,
+      createSpreadsheetBody
+    );
+
+    spreadsheetId = spreadsheet.spreadsheetId;
+    if (spreadsheetId) {
+      localStorage.setItem(STORAGE_KEY_SPREADSHEET_ID, spreadsheetId);
+    }
+  } else {
+    // Garante que a aba Gemba existe
+    const existingTitles: string[] = (existingSpreadsheet.sheets || []).map(
+      (s: any) => s.properties?.title
+    );
+    if (!existingTitles.includes('Gemba')) {
+      try {
+        await fetchGoogleAPI(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+          'POST',
+          token,
+          { requests: [{ addSheet: { properties: { title: 'Gemba' } } }] }
+        );
+      } catch (err) {
+        console.warn('Erro ao criar aba Gemba na planilha:', err);
+      }
+    }
+  }
+
+  const cards = customCards || useGembaStore.getState().cards;
+  const gembaRows = [
+    ['ID', 'Setor / Identificador', 'Categoria', 'Descrição da Anomalia / Oportunidade', 'Ações de Contenção / Melhoria', 'Responsável', 'Data Registro', 'Data Alvo', 'Status', 'Arquivado', 'Último Histórico']
+  ];
+
+  cards.forEach(c => {
+    const ultimoHist = c.historico && c.historico.length > 0 ? `${c.historico[0].data}: ${c.historico[0].acao}` : '-';
+    gembaRows.push([
+      c.id,
+      c.identificador || 'Geral',
+      c.categoria || 'Geral',
+      c.descricao || '',
+      c.acoes || '',
+      c.responsavel || '',
+      c.data_id || '',
+      c.data_alvo || '',
+      c.status || 'EM CURSO',
+      c.arquivado ? 'Sim' : 'Não',
+      ultimoHist
+    ]);
+  });
+
+  const updateBody = {
+    valueInputOption: 'USER_ENTERED',
+    data: [
+      { range: 'Gemba!A1', values: gembaRows }
+    ]
+  };
+
+  await fetchGoogleAPI(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+    'POST',
+    token,
+    updateBody
+  );
+
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=0`;
 }

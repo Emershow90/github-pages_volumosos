@@ -1,4 +1,6 @@
-import { fetchPublishedSheet } from '../services/sheetsService';
+import { fetchPublishedSheet, fetchGembaFromMasterSheet } from '../services/sheetsService';
+import { exportGembaToGoogleSheets } from '../services/googleSheetsExportService';
+import { useGembaStore } from '../stores/useGembaStore';
 import { SupabaseService } from '../lib/supabaseService';
 import { MatrizPerformanceItem } from '../types';
 
@@ -22,6 +24,30 @@ export class ConexoesService {
     } catch (err) {
       console.error("[ConexoesService] Erro:", err);
       return { success: false, importedCount: 0, timestamp: now.toLocaleTimeString(), error: String(err) };
+    }
+  }
+
+  public static async syncGembaSheet(): Promise<SyncResult> {
+    const now = new Date();
+    try {
+      const cards = useGembaStore.getState().cards;
+      // 1. Exporta os cards atuais para a planilha mestre (Aba Gemba)
+      const sheetUrl = await exportGembaToGoogleSheets(cards);
+
+      return {
+        success: true,
+        importedCount: cards.length,
+        timestamp: now.toLocaleTimeString(),
+        details: `Sincronizados ${cards.length} cards com a aba Gemba da Planilha Mestre. URL: ${sheetUrl}`
+      };
+    } catch (err) {
+      console.error("[ConexoesService] Erro ao sincronizar aba Gemba:", err);
+      return {
+        success: false,
+        importedCount: 0,
+        timestamp: now.toLocaleTimeString(),
+        error: String(err)
+      };
     }
   }
 
@@ -59,3 +85,15 @@ export interface SyncResult {
   timestamp: string;
   details?: string;
 }
+
+export interface ConnectionDetail {
+  id: string;
+  name: string;
+  type: string;
+  status: 'connected' | 'disconnected' | 'error' | 'syncing' | 'idle';
+  lastSync: string;
+  description: string;
+  endpointUrl?: string;
+  recordCount?: number;
+}
+
