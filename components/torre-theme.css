@@ -1,0 +1,28 @@
+/**
+ * torre-theme.css
+ * Tokens visuais compartilhados pelos componentes da Torre de Comando.
+ * Paleta Obsidian dark + emerald/bronze/carmine + JetBrains Mono.
+ */
+
+:root {
+  --torre-bg: #0b0d0f;          /* obsidian */
+  --torre-bg-elevated: #14171a; /* obsidian, um tom acima */
+  --torre-border: #2a2f34;
+  --torre-text: #e8e6e1;
+  --torre-text-dim: #9aa0a6;
+
+  --torre-emerald: #10b981;
+  --torre-emerald-dim: rgba(16, 185, 129, 0.16);
+  --torre-bronze: #c08552;
+  --torre-bronze-dim: rgba(192, 133, 82, 0.16);
+  --torre-carmine: #9b2226;
+  --torre-carmine-dim: rgba(155, 34, 38, 0.16);
+
+  --torre-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --torre-radius: 14px;
+}
+
+.torre-mono {
+  font-family: var(--torre-font-mono);
+  letter-spacing: -0.01em;
+}
