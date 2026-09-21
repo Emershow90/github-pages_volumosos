@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Setor } from '../types/Setor';
 import { Settings, X, AlertTriangle, Save, Sparkles, RefreshCw } from 'lucide-react';
-import { fetchPublicSpreadsheetMetrics, PublicSpreadsheetMetricsMap } from '../lib/googleSheetsPublicSource';
+import { useOverrideSugestoes } from '../hooks/useOverrideSugestoes';
 import { useSectorStore } from '../stores/useSectorStore';
 import { useToast } from '../hooks/useToast';
 
@@ -19,89 +19,36 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
   currentUser,
 }) => {
   const toast = useToast();
-  const { updateSectorOverride, applySuggestedMetrics } = useSectorStore();
+  const { updateSectorOverride } = useSectorStore();
   const [selectedSector, setSelectedSector] = useState<string>('');
+  
+  // Hook de sugestões simplificado
+  const { sugestoes, loading, recarregar } = useOverrideSugestoes(selectedSector);
+
   const [formData, setFormData] = useState<Record<string, string>>({
-    ativ: '',
+    atividade: '',
     uph: '',
-    reproTotal: '',
-    colis: '',
+    caixasReapro: '',
+    colisColeta: '',
     promessa: '',
-    nota5s: '',
+    auditoria5s: '',
     bsi: '',
     errosPicking: '',
   });
 
-  const [publicMetrics, setPublicMetrics] = useState<PublicSpreadsheetMetricsMap | null>(null);
-
-  const [suggestedAtiv, setSuggestedAtiv] = useState<string>('');
-  const [suggestedUph, setSuggestedUph] = useState<string>('');
-  const [suggestedRepro, setSuggestedRepro] = useState<string>('');
-  const [suggestedColis, setSuggestedColis] = useState<string>('');
-  const [suggestedPromessa, setSuggestedPromessa] = useState<string>('');
-  const [suggestedBsi, setSuggestedBsi] = useState<string>('');
-  const [suggestedErros, setSuggestedErros] = useState<string>('');
-
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
-  // Fetch public Google Sheets CSV metrics on modal open
-  useEffect(() => {
-    setSelectedSector('');
-    setFormData({
-      ativ: '',
-      uph: '',
-      reproTotal: '',
-      colis: '',
-      promessa: '',
-      nota5s: '',
-      bsi: '',
-      errosPicking: '',
-    });
-
-    setIsConfirming(false);
-    setIsSaving(false);
-
-    fetchPublicSpreadsheetMetrics()
-      .then((pubData) => {
-        setPublicMetrics(pubData);
-        // Aplica globalmente na store
-        const convertedMap: Record<string, any> = {};
-        Object.entries(pubData).forEach(([sec, val]) => {
-          convertedMap[sec] = {
-            ativ: val.atividadeTotal,
-            uph: val.uph,
-            promessa: val.promessa,
-            bsi: val.bsi,
-            errosPicking: val.errosPicking,
-            reproTotal: val.caixasDisponiveis,
-          };
-        });
-        applySuggestedMetrics(convertedMap);
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`Erro ao carregar dados da planilha: ${msg}`);
-      });
-  }, []);
 
   // Pre-fill metrics when a sector is selected
   useEffect(() => {
     if (!selectedSector) {
-      setSuggestedAtiv('');
-      setSuggestedUph('');
-      setSuggestedRepro('');
-      setSuggestedColis('');
-      setSuggestedPromessa('');
-      setSuggestedBsi('');
-      setSuggestedErros('');
       setFormData({
-        ativ: '',
+        atividade: '',
         uph: '',
-        reproTotal: '',
-        colis: '',
+        caixasReapro: '',
+        colisColeta: '',
         promessa: '',
-        nota5s: '',
+        auditoria5s: '',
         bsi: '',
         errosPicking: '',
       });
@@ -109,44 +56,23 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
     }
 
     const currentSec = setores.find((s) => s.id === selectedSector);
-    const pub = publicMetrics?.[selectedSector] || publicMetrics?.[selectedSector.replace('-', '')];
-
-    const sugAtiv = pub?.atividadeTotal?.toString() || currentSec?.suggestedMetrics?.ativ?.toString() || '';
-    const sugUph = (pub?.uph && pub.uph > 0) ? pub.uph.toString() : currentSec?.suggestedMetrics?.uph?.toString() || '';
-    const sugRepro = pub?.caixasDisponiveis?.toString() || currentSec?.suggestedMetrics?.reproTotal?.toString() || '';
-    const sugColis = currentSec?.suggestedMetrics?.colis?.toString() || (selectedSector === '87' ? '1500' : '0');
-    const sugProm = pub?.promessa != null ? pub.promessa.toString() : '100';
-    const sugBsi = pub?.bsi != null ? pub.bsi.toString() : '100';
-    const sugErr = pub?.errosPicking != null ? pub.errosPicking.toString() : '0';
-
-    setSuggestedAtiv(sugAtiv);
-    setSuggestedUph(sugUph);
-    setSuggestedRepro(sugRepro);
-    setSuggestedColis(sugColis);
-    setSuggestedPromessa(sugProm);
-    setSuggestedBsi(sugBsi);
-    setSuggestedErros(sugErr);
-
+    
     // Carrega overrides existentes se houver
     const ov = currentSec?.overrides || {};
     setFormData({
-      ativ: ov.ativ !== undefined && ov.ativ !== null ? ov.ativ.toString() : '',
-      uph: ov.uph !== undefined && ov.uph !== null ? ov.uph.toString() : '',
-      reproTotal: ov.reproTotal !== undefined && ov.reproTotal !== null ? ov.reproTotal.toString() : '',
-      colis: ov.colis !== undefined && ov.colis !== null ? ov.colis.toString() : '',
-      promessa: ov.promessa !== undefined && ov.promessa !== null ? ov.promessa.toString() : '',
-      nota5s: ov.nota5s !== undefined && ov.nota5s !== null ? ov.nota5s.toString() : '',
-      bsi: ov.bsi !== undefined && ov.bsi !== null ? ov.bsi.toString() : '',
-      errosPicking: ov.errosPicking !== undefined && ov.errosPicking !== null ? ov.errosPicking.toString() : '',
+      atividade: ov.atividade !== undefined ? (ov.atividade ?? '').toString() : '',
+      uph: ov.uph !== undefined ? (ov.uph ?? '').toString() : '',
+      caixasReapro: ov.caixasReapro !== undefined ? (ov.caixasReapro ?? '').toString() : '',
+      colisColeta: ov.colisColeta !== undefined ? (ov.colisColeta ?? '').toString() : '',
+      promessa: ov.promessa !== undefined ? (ov.promessa ?? '').toString() : '',
+      auditoria5s: ov.auditoria5s !== undefined ? (ov.auditoria5s ?? '').toString() : '',
+      bsi: ov.bsi !== undefined ? (ov.bsi ?? '').toString() : '',
+      errosPicking: ov.errosPicking !== undefined ? (ov.errosPicking ?? '').toString() : '',
     });
-  }, [selectedSector, publicMetrics, setores]);
+  }, [selectedSector, setores]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleClearOverride = (field: string) => {
-    setFormData((prev) => ({ ...prev, [field]: '' }));
   };
 
   const handleReview = () => {
@@ -161,20 +87,14 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
       const parsedOverrides: Record<string, number | null> = {};
       Object.entries(formData).forEach(([field, val]) => {
         const strVal = String(val || '').trim();
-        if (strVal === '') {
-          parsedOverrides[field] = null; // Remove override, volta ao sugerido
-        } else {
-          parsedOverrides[field] = Number(strVal);
-        }
+        parsedOverrides[field] = strVal === '' ? null : Number(strVal);
       });
 
       await updateSectorOverride(selectedSector, parsedOverrides, currentUser || 'operador');
 
       if (onUpdateSetor) {
         Object.entries(parsedOverrides).forEach(([field, val]) => {
-          if (val !== null) {
-            onUpdateSetor(selectedSector, field, val);
-          }
+          if (val !== null) onUpdateSetor(selectedSector, field, val);
         });
       }
 
@@ -226,67 +146,67 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FieldInput 
                     label="Atividade" 
-                    field="ativ" 
-                    value={formData.ativ} 
-                    suggestedValue={suggestedAtiv}
+                    field="atividade" 
+                    value={formData.atividade} 
+                    suggestedValue={sugestoes?.atividade?.toString()}
                     onChange={handleInputChange} 
-                    onClear={() => handleClearOverride('ativ')}
+                    onClear={() => handleInputChange('atividade', '')}
                   />
                   <FieldInput 
                     label="UPH" 
                     field="uph" 
                     value={formData.uph} 
-                    suggestedValue={suggestedUph}
+                    suggestedValue={sugestoes?.uph?.toString()}
                     onChange={handleInputChange} 
-                    onClear={() => handleClearOverride('uph')}
+                    onClear={() => handleInputChange('uph', '')}
                   />
                   <FieldInput 
                     label="Caixas Disponíveis (Repro Total)" 
-                    field="reproTotal" 
-                    value={formData.reproTotal} 
-                    suggestedValue={suggestedRepro}
+                    field="caixasReapro" 
+                    value={formData.caixasReapro} 
+                    suggestedValue={sugestoes?.caixasReapro?.toString()}
                     onChange={handleInputChange} 
-                    onClear={() => handleClearOverride('reproTotal')}
+                    onClear={() => handleInputChange('caixasReapro', '')}
                   />
                   <FieldInput 
                     label="Colis Coleta (Volume)" 
-                    field="colis" 
-                    value={formData.colis} 
-                    suggestedValue={suggestedColis}
+                    field="colisColeta" 
+                    value={formData.colisColeta} 
+                    suggestedValue={sugestoes?.colisColeta?.toString()}
                     onChange={handleInputChange} 
-                    onClear={() => handleClearOverride('colis')}
+                    onClear={() => handleInputChange('colisColeta', '')}
                   />
                   <FieldInput 
                     label="Promessa (%)" 
                     field="promessa" 
                     value={formData.promessa} 
-                    suggestedValue={suggestedPromessa}
+                    suggestedValue={sugestoes?.promessa?.toString()}
                     onChange={handleInputChange} 
-                    onClear={() => handleClearOverride('promessa')}
+                    onClear={() => handleInputChange('promessa', '')}
                   />
                   <FieldInput 
                     label="Auditoria 5S" 
-                    field="nota5s" 
-                    value={formData.nota5s} 
-                    suggestedValue="100"
+                    field="auditoria5s" 
+                    value={formData.auditoria5s} 
+                    suggestedValue={sugestoes?.auditoria5s?.toString()}
                     onChange={handleInputChange} 
-                    onClear={() => handleClearOverride('nota5s')}
+                    onClear={() => handleInputChange('auditoria5s', '')}
                   />
                   <FieldInput 
                     label="BSI (%)" 
                     field="bsi" 
                     value={formData.bsi} 
-                    suggestedValue={suggestedBsi}
+                    suggestedValue={sugestoes?.bsi?.toString()}
                     onChange={handleInputChange} 
-                    onClear={() => handleClearOverride('bsi')}
+                    onClear={() => handleInputChange('bsi', '')}
                   />
                   <FieldInput 
                     label="Erros Picking" 
                     field="errosPicking" 
                     value={formData.errosPicking} 
-                    suggestedValue={suggestedErros}
+                    suggestedValue={sugestoes?.errosPicking?.toString()}
                     onChange={handleInputChange} 
-                    onClear={() => handleClearOverride('errosPicking')}
+                    onClear={() => handleInputChange('errosPicking', '')}
                   />
                 </div>
               </div>
@@ -305,14 +225,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
                 {Object.entries(formData).map(([field, val]) => {
                   const strVal = String(val || '').trim();
                   const hasOverride = strVal !== '';
-                  let sugVal = '';
-                  if (field === 'ativ') sugVal = suggestedAtiv;
-                  if (field === 'uph') sugVal = suggestedUph;
-                  if (field === 'reproTotal') sugVal = suggestedRepro;
-                  if (field === 'colis') sugVal = suggestedColis;
-                  if (field === 'promessa') sugVal = suggestedPromessa;
-                  if (field === 'bsi') sugVal = suggestedBsi;
-                  if (field === 'errosPicking') sugVal = suggestedErros;
+                  const sugVal = sugestoes ? (sugestoes as any)[field] : null;
 
                   return (
                     <div key={field} className="flex justify-between text-sm items-center py-1 border-b border-white/5 last:border-0">
@@ -322,7 +235,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
                           <span className="text-amber-400 font-bold flex items-center gap-1.5">
                             ⚡ Override: {val}
                           </span>
-                          {sugVal && (
+                          {sugVal != null && (
                             <span className="text-[10px] text-zinc-500 line-through">
                               (Planilha: {sugVal})
                             </span>
@@ -330,7 +243,7 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
                         </div>
                       ) : (
                         <span className="text-emerald-400 text-xs font-semibold flex items-center gap-1">
-                          <Sparkles size={11} /> Usando Sugerido ({sugVal || '0'})
+                          <Sparkles size={11} /> Usando Sugerido ({sugVal ?? '0'})
                         </span>
                       )}
                     </div>
