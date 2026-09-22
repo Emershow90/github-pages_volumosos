@@ -39,6 +39,7 @@ import { useCollaboratorStore } from '../stores/useCollaboratorStore';
 import { useDailyActivityHealth } from '../hooks/useDailyActivityHealth';
 import { exportToGoogleSheets, initGoogleIdentity } from '../services/googleSheetsExportService';
 import { ConsolidationPanel } from './ConsolidationPanelV2';
+import { ParseLogsSection } from './ParseLogsSection';
 
 export const ConexoesTab: React.FC = () => {
   const toast = useToast();
@@ -980,6 +981,10 @@ export const ConexoesTab: React.FC = () => {
               </table>
             </div>
           )}
+
+          <div className="pt-4 border-t border-zinc-800/80">
+            <ParseLogsSection />
+          </div>
         </div>
       )}
 

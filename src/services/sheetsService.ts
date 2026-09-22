@@ -335,6 +335,8 @@ export async function fetchGemba(
   return parseGemba(csv);
 }
 
+export const fetchGembaFromMasterSheet = fetchGemba;
+
 export function parseGemba(csvText: string): ParseResult<Gemba> {
   const rows = parseCSV(csvText);
   if (rows.length < 2) {

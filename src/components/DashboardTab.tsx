@@ -59,6 +59,7 @@ import {
   Cpu,
   ChevronDown,
   ChevronUp,
+  Zap,
 } from "lucide-react";
 import { useSectorStore, resolveSectorMetrics } from "../stores/useSectorStore";
 import { useUserStore } from "../stores/useUserStore";
@@ -812,6 +813,15 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               const isCaixasSector = ["87", "087", "88", "088", "89", "089", "90", "090"].includes(String(s.id));
               const unitText = isCaixasSector ? "CAIXAS" : "COLIS";
 
+              const hasActiveOverride = Boolean(
+                s.overrides && Object.values(s.overrides).some((v) => v !== null && v !== undefined && v !== "")
+              );
+              const hasAtivOverride = Boolean(s.overrides?.ativ ?? s.overrides?.atividade);
+              const hasReproOverride = Boolean(s.overrides?.reproTotal ?? s.overrides?.caixasReapro);
+              const hasColisOverride = Boolean(s.overrides?.colis ?? s.overrides?.colisColeta);
+              const hasPromessaOverride = Boolean(s.overrides?.promessa);
+              const hasUphOverride = Boolean(s.overrides?.uph);
+
               const atividadeValue = s.ativ;
               const mix = getSectorMix(s.id, atividadeValue);
 
@@ -838,9 +848,20 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         {initialLetter}
                       </div>
                       <div>
-                        <p className="text-xs font-black text-white uppercase tracking-wider leading-none">
-                          SETOR {s.id} &bull; {unitText}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs font-black text-white uppercase tracking-wider leading-none">
+                            SETOR {s.id} &bull; {unitText}
+                          </p>
+                          {hasActiveOverride && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                              title="Override Operacional ativo neste setor"
+                            >
+                              <Zap size={8} className="fill-amber-300" />
+                              OVERRIDE
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[10px] font-bold text-indigo-300 mt-1 uppercase tracking-wider truncate max-w-[120px]">
                           Líder: {plantaoPrimeiroNome}
                         </p>
@@ -916,11 +937,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   >
                     <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider mb-0.5 flex items-center gap-1.5">
                       ATIVIDADE
+                      {hasAtivOverride && (
+                        <span className="text-amber-400 flex items-center gap-0.5 text-[8px] font-black bg-amber-500/10 px-1 py-0.2 rounded border border-amber-500/30" title="Valor sobrescrito via Override Operacional">
+                          <Zap size={8} className="fill-amber-400" /> OVERRIDE
+                        </span>
+                      )}
                       {can(currentUserProfile, "edit_sector_params", s.id) && (
                         <Edit3 size={10} className="text-indigo-400/50 group-hover:text-indigo-300 transition-colors" />
                       )}
                     </span>
-                    <span className="text-3xl lg:text-4xl font-black font-mono tracking-tight text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
+                    <span className={`text-3xl lg:text-4xl font-black font-mono tracking-tight drop-shadow-[0_2px_8px_rgba(255,255,255,0.05)] ${
+                      hasAtivOverride ? 'text-amber-300' : 'text-white'
+                    }`}>
                       {(atividadeValue ?? 0).toLocaleString("pt-BR")}
                     </span>
                     {can(currentUserProfile, "edit_sector_params", s.id) && (
@@ -982,11 +1010,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     </div>
 
                     {/* Bloco de Reabastecimento (CX) */}
-                    <div className="bg-amber-950/40 border border-amber-500/40 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                    <div className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between ${
+                      hasReproOverride ? 'bg-amber-950/60 border border-amber-400/80 shadow-[0_0_8px_rgba(245,158,11,0.25)]' : 'bg-amber-950/40 border border-amber-500/40'
+                    }`}>
                       <div className="flex items-center gap-1.5">
                         <RotateCcw size={12} className="text-amber-400" />
-                        <span className="text-amber-400 font-sans font-bold text-[10px] uppercase">
+                        <span className="text-amber-400 font-sans font-bold text-[10px] uppercase flex items-center gap-1">
                           REABASTECIMENTO
+                          {hasReproOverride && <Zap size={9} className="fill-amber-400 text-amber-400" title="Override ativo" />}
                         </span>
                       </div>
                       <div className="flex items-baseline gap-1 font-mono">
@@ -998,11 +1029,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     </div>
 
                     {/* Bloco de Colis */}
-                    <div className="bg-emerald-950/40 border border-emerald-500/40 px-2.5 py-1.5 rounded-lg flex items-center justify-between">
+                    <div className={`px-2.5 py-1.5 rounded-lg flex items-center justify-between ${
+                      hasColisOverride ? 'bg-emerald-950/60 border border-emerald-400/80 shadow-[0_0_8px_rgba(16,185,129,0.25)]' : 'bg-emerald-950/40 border border-emerald-500/40'
+                    }`}>
                       <div className="flex items-center gap-1.5">
                         <Package size={12} className="text-emerald-400" />
-                        <span className="text-emerald-400 font-sans font-bold text-[10px] uppercase">
+                        <span className="text-emerald-400 font-sans font-bold text-[10px] uppercase flex items-center gap-1">
                           COLIS COLETA
+                          {hasColisOverride && <Zap size={9} className="fill-emerald-400 text-emerald-400" title="Override ativo" />}
                         </span>
                       </div>
                       <div className="flex items-baseline gap-1 font-mono">
@@ -1020,16 +1054,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     <div className="bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between">
                       <span className="text-[9px] font-bold text-zinc-400 uppercase flex items-center justify-between">
                         Promessa
+                        {hasPromessaOverride && <Zap size={8} className="fill-emerald-400 text-emerald-400" title="Override ativo" />}
                       </span>
-                      <span className="text-base font-black text-emerald-400 font-mono">{s.promessa}%</span>
+                      <span className={`text-base font-black font-mono ${hasPromessaOverride ? 'text-amber-300' : 'text-emerald-400'}`}>{s.promessa}%</span>
                     </div>
 
                     {/* UPH */}
                     <div className="bg-black/30 p-2 rounded-xl border border-white/5 flex flex-col justify-between">
                       <span className="text-[9px] font-bold text-zinc-400 uppercase flex items-center justify-between">
                         UPH
+                        {hasUphOverride && <Zap size={8} className="fill-sky-400 text-sky-400" title="Override ativo" />}
                       </span>
-                      <span className="text-base font-black text-sky-400 font-mono">{s.uph}</span>
+                      <span className={`text-base font-black font-mono ${hasUphOverride ? 'text-amber-300' : 'text-sky-400'}`}>{s.uph}</span>
                     </div>
 
                     {/* BSI */}

@@ -366,22 +366,20 @@ export async function exportToGoogleSheets(data: ExportDataPayload): Promise<str
   // Sheet 7: Gemba (Gestão de Piso de Fábrica & Anomalias)
   const cardsParaExportar = data.gembaCards || useGembaStore.getState().cards;
   const gembaData = [
-    ['ID', 'Setor / Identificador', 'Categoria', 'Descrição da Anomalia / Oportunidade', 'Ações de Contenção / Melhoria', 'Responsável', 'Data Registro', 'Data Alvo', 'Status', 'Arquivado', 'Último Histórico']
+    ['CATEGORIA', 'DESCRICAO', 'ACOES', 'RESPONSAVEL', 'DATA_ALVO', 'IDENTIFICADO_POR', 'DATA_IDENTIFICACAO', 'STATUS', 'URL_FOTO', 'ARQUIVADO']
   ];
   cardsParaExportar.forEach(c => {
-    const ultimoHist = c.historico && c.historico.length > 0 ? `${c.historico[0].data}: ${c.historico[0].acao}` : '-';
     gembaData.push([
-      c.id,
-      c.identificador || 'Geral',
-      c.categoria || 'Geral',
+      c.categoria || 'OUTROS',
       c.descricao || '',
       c.acoes || '',
       c.responsavel || '',
-      c.data_id || '',
       c.data_alvo || '',
+      c.identificador || 'Operador',
+      c.data_id || '',
       c.status || 'EM CURSO',
-      c.arquivado ? 'Sim' : 'Não',
-      ultimoHist
+      c.foto_url || '',
+      c.arquivado ? 'SIM' : 'NAO',
     ]);
   });
 
@@ -479,23 +477,21 @@ export async function exportGembaToGoogleSheets(customCards?: GembaCard[]): Prom
 
   const cards = customCards || useGembaStore.getState().cards;
   const gembaRows = [
-    ['ID', 'Setor / Identificador', 'Categoria', 'Descrição da Anomalia / Oportunidade', 'Ações de Contenção / Melhoria', 'Responsável', 'Data Registro', 'Data Alvo', 'Status', 'Arquivado', 'Último Histórico']
+    ['CATEGORIA', 'DESCRICAO', 'ACOES', 'RESPONSAVEL', 'DATA_ALVO', 'IDENTIFICADO_POR', 'DATA_IDENTIFICACAO', 'STATUS', 'URL_FOTO', 'ARQUIVADO']
   ];
 
   cards.forEach(c => {
-    const ultimoHist = c.historico && c.historico.length > 0 ? `${c.historico[0].data}: ${c.historico[0].acao}` : '-';
     gembaRows.push([
-      c.id,
-      c.identificador || 'Geral',
-      c.categoria || 'Geral',
+      c.categoria || 'OUTROS',
       c.descricao || '',
       c.acoes || '',
       c.responsavel || '',
-      c.data_id || '',
       c.data_alvo || '',
+      c.identificador || 'Operador',
+      c.data_id || '',
       c.status || 'EM CURSO',
-      c.arquivado ? 'Sim' : 'Não',
-      ultimoHist
+      c.foto_url || '',
+      c.arquivado ? 'SIM' : 'NAO',
     ]);
   });
 

@@ -385,7 +385,7 @@ export default function RadarLojasTab({ currentRole: rbacRoleProps, onSaveRadar,
   };
 
   const handleDeleteAllOperations = async () => {
-    const opsList = Object.values(operations);
+    const opsList: StoreOperation[] = Object.values(operations);
     if (opsList.length === 0) {
       triggerFeedback("Não há operações para apagar.", true);
       return;

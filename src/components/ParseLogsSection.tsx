@@ -54,38 +54,42 @@ const PAGE_SIZE = 10;
 // =============================================================================
 
 type FilterSeverity = 'all' | ParseIssue['severity'];
-type FilterSheet = 'all' | string;
 
 export const ParseLogsSection: React.FC = () => {
   const [logs, setLogs] = useState<ParseIssue[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [filterSeverity, setFilterSeverity] = useState<FilterSeverity>('all');
-  const [filterSheet, setFilterSheet] = useState<FilterSheet>('all');
+  const [filterSheet, setFilterSheet] = useState<string>('all');
+  const [page, setPage] = useState(0);
   const [isClearing, setIsClearing] = useState(false);
 
   const carregar = useCallback(async () => {
     setLoading(true);
-    const data = await AuditService.listar(200);
-    setLogs(data);
-    setPage(0);
-    setLoading(false);
+    try {
+      const dados = await AuditService.listar(100);
+      setLogs(dados);
+    } catch (err) {
+      console.error('[ParseLogsSection] Erro ao carregar logs:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { void carregar(); }, [carregar]);
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
 
   const handleLimpar = async () => {
-    if (!confirm('Remover todos os logs com mais de 7 dias?')) return;
+    if (!window.confirm('Remover logs com mais de 7 dias?')) return;
     setIsClearing(true);
     const removidos = await AuditService.limparAntigos(7);
     setIsClearing(false);
     void carregar();
-    // Feedback inline — o componente pai pode ter toast, mas aqui usamos console
     console.info(`[ParseLogsSection] ${removidos} logs removidos.`);
   };
 
   // Filtros
-  const sheetsDisponiveis = [...new Set(logs.map(l => l.sheet))];
+  const sheetsDisponiveis: string[] = Array.from(new Set(logs.map(l => l.sheet)));
 
   const logsFiltrados = logs.filter(l => {
     if (filterSeverity !== 'all' && l.severity !== filterSeverity) return false;

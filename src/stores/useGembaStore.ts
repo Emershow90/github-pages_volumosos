@@ -6,7 +6,7 @@ import { IndexedDBService } from '../lib/indexedDb';
 export const INITIAL_GEMBA_CARDS: GembaCard[] = [
   {
     id: 'gmb-01',
-    categoria: 'Segurança',
+    categoria: 'SEGURANÇA',
     descricao: 'Pallets com tábuas soltas no corredor 14 do Setor 87 apresentando risco de queda.',
     acoes: 'Isolar a área com cones, substituir os pallets avariados e orientar operadores sobre inspeção prévia.',
     responsavel: 'Carlos Silva (Técnico Seg.)',
@@ -20,7 +20,7 @@ export const INITIAL_GEMBA_CARDS: GembaCard[] = [
   },
   {
     id: 'gmb-02',
-    categoria: '5S',
+    categoria: 'LOCAL DE TRABALHO',
     descricao: 'Falta de demarcação visual para caixas de reaproveitamento e reciclagem no Setor 89.',
     acoes: 'Pintura de demarcação amarela e sinalização das baias de separação 5S.',
     responsavel: 'Mariana Souza (Líder 89)',
@@ -34,7 +34,7 @@ export const INITIAL_GEMBA_CARDS: GembaCard[] = [
   },
   {
     id: 'gmb-03',
-    categoria: 'Produtividade',
+    categoria: 'PROCESSO',
     descricao: 'Gargalo no fluxo de coleta de caixas reabastecimento na entrada do mezanino do Setor 88.',
     acoes: 'Redefinir rota dos transpaletes manuais e ajustar horários de abastecimento dos lotes.',
     responsavel: 'Rafael Santos (Supervisor)',
@@ -48,7 +48,7 @@ export const INITIAL_GEMBA_CARDS: GembaCard[] = [
   },
   {
     id: 'gmb-04',
-    categoria: 'Qualidade',
+    categoria: 'QUALIDADE',
     descricao: 'Etiquetas de código de barras amassadas nas gaiolas de transferência para o Setor 90.',
     acoes: 'Recalibrar cabeçote da impressora térmica Zebra e treinar expedidores na colagem correta.',
     responsavel: 'Aline Costa (Qualidade)',

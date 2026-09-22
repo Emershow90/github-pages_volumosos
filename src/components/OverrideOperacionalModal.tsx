@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Setor } from '../types/Setor';
+import { Setor, SectorOverrideValues } from '../types/Setor';
 import { Settings, X, AlertTriangle, Save, Sparkles } from 'lucide-react';
 import { SupabaseService as FirebaseService } from '../lib/supabaseService';
 import { fetchPublicSpreadsheetMetrics, PublicSpreadsheetMetricsMap } from '../lib/googleSheetsPublicSource';
 import { useToast } from '../hooks/useToast';
+import { useSectorStore } from '../stores/useSectorStore';
 
 export interface OverrideOperacionalModalProps {
   isOpen: boolean;
@@ -191,18 +192,21 @@ export const OverrideOperacionalModal: React.FC<OverrideOperacionalModalProps> =
       if (!activeS) throw new Error('Setor não encontrado');
 
       // Update local state for each field
-      const updatedFields: Partial<Setor> = {};
+      const parsedOverrides: Partial<SectorOverrideValues> = {};
       Object.entries(formData).forEach(([field, val]) => {
         if (val !== '') {
           const numVal = Number(val);
           onUpdateSetor(selectedSector, field, numVal);
-          (updatedFields as Record<string, unknown>)[field] = numVal;
+          (parsedOverrides as Record<string, number | null>)[field] = numVal;
         }
       });
 
-      // Update Supabase directly to ensure atomic update of just these fields
-      const updatedSector = { ...activeS, ...updatedFields };
-      await FirebaseService.upsertRecord('setores', updatedSector, 'id');
+      // Synchronize with centralized store to ensure immediate reflection on Monitor
+      await useSectorStore.getState().updateSectorOverride(
+        selectedSector,
+        parsedOverrides,
+        'operador@sistema.local'
+      );
 
       // TAREFA 4: Log de ações no audit_logs
       try {

@@ -63,7 +63,7 @@ import { SupabaseService, SupabaseService as FirebaseService } from "../lib/supa
 import { IndexedDBService } from "../lib/indexedDb";
 import { ListaColetaItem, RadarLojaStatus, UniversoMix } from "../types";
 import { ModalConfirmacao } from "./ModalConfirmacao";
-import { useSectorStore } from "../stores/useSectorStore";
+import { useSectorStore, resolveSectorMetrics } from "../stores/useSectorStore";
 import { DailyActivityAlertBanner } from "./DailyActivityAlertBanner";
 import { exportToGoogleSheets, initGoogleIdentity } from "../services/googleSheetsExportService";
 import { ReaproData, CapacidadeSetor } from "../types";
@@ -2825,7 +2825,18 @@ export const ConfigTab: React.FC<ConfigTabProps> = ({
                             onClick={async () => {
                               if(confirm("Deseja realmente limpar todos os overrides deste setor? Ele voltará ao comportamento Baseline.")) {
                                 try {
-                                  await FirebaseService.upsertRecord("setores", { ...setor, overrides: {} }, "id");
+                                  const clearedSector = resolveSectorMetrics({ ...setor, overrides: {} });
+                                  useSectorStore.getState().setSetores(prev => prev.map(s => s.id === setor.id ? clearedSector : s));
+                                  try {
+                                    const raw = localStorage.getItem('torre_overrides_v1');
+                                    if (raw) {
+                                      const parsed = JSON.parse(raw);
+                                      delete parsed[setor.id];
+                                      delete parsed[String(setor.numero)];
+                                      localStorage.setItem('torre_overrides_v1', JSON.stringify(parsed));
+                                    }
+                                  } catch {}
+                                  await FirebaseService.upsertRecord("setores", clearedSector, "id");
                                   showFeedback("Overrides limpos. Setor retornou ao Baseline.");
                                 } catch(e: any) { showFeedback(e.message, "error"); }
                               }

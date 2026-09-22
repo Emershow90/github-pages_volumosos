@@ -55,7 +55,7 @@ import { useMidnightConsolidation } from "./hooks/useMidnightConsolidation";
 import { useUserStore } from "./stores/useUserStore";
 import RadarLojasTab from "./components/RadarLojasTab";
 import { useStoreOperations } from "./stores/useStoreOperations";
-import { useSectorStore } from "./stores/useSectorStore";
+import { useSectorStore, resolveSectorMetrics } from "./stores/useSectorStore";
 import { useHistoryStore } from "./stores/useHistoryStore";
 import { useCollaboratorStore } from "./stores/useCollaboratorStore";
 import { useUIStore } from "./stores/useUIStore";
@@ -670,12 +670,34 @@ function App() {
 
   const handleUpdateSetorProd = (sid: string, field: string, value: number) => {
     if (currentRole === UserRole.Guest) return;
+
+    // Mapeamento bidirecional para compatibilidade total entre aliases e chaves canônicas
+    const canonicalField =
+      field === "atividade" ? "ativ" :
+      field === "caixasReapro" ? "reproTotal" :
+      field === "colisColeta" ? "colis" :
+      field === "auditoria5s" ? "nota5s" : field;
+
     setSetores((prev) =>
       prev.map((s) => {
-        if (s.id === sid) {
-          addAudit(currentUser, "Apontamento Prod", `${sid}.${field}`, value, (s as any)[field]);
-          const updated = { ...s, [field]: value };
-          SupabaseService.upsertRecord("setores", updated).catch((err) =>
+        if (s.id === sid || String(s.numero) === sid) {
+          addAudit(currentUser, "Apontamento Prod", `${sid}.${canonicalField}`, value, (s as any)[canonicalField]);
+
+          const currentOverrides = s.overrides || {};
+          const newOverrides = {
+            ...currentOverrides,
+            [canonicalField]: value,
+            [field]: value
+          };
+
+          const updated = resolveSectorMetrics({
+            ...s,
+            [canonicalField]: value,
+            [field]: value,
+            overrides: newOverrides
+          });
+
+          SupabaseService.upsertRecord("setores", updated, "id").catch((err) =>
             console.error("Failed to upsert sector:", err)
           );
           return updated;

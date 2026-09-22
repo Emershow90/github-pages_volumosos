@@ -391,7 +391,21 @@ export class SupabaseService {
       if ('fonte_colis' in result && !('fonteColis' in result)) result.fonteColis = result.fonte_colis;
       if ('exibir_caixas' in result && !('exibirCaixas' in result)) result.exibirCaixas = result.exibir_caixas;
       if ('exibir_reposicao_caixas' in result && !('exibirReposicaoCaixas' in result)) result.exibirReposicaoCaixas = result.exibir_reposicao_caixas;
+      if ('overrides' in result && typeof result.overrides === 'string') {
+        try {
+          result.overrides = JSON.parse(result.overrides as string);
+        } catch {
+          result.overrides = {};
+        }
+      }
       if ('suggested_metrics' in result && !('suggestedMetrics' in result)) result.suggestedMetrics = result.suggested_metrics;
+      if ('suggestedMetrics' in result && typeof result.suggestedMetrics === 'string') {
+        try {
+          result.suggestedMetrics = JSON.parse(result.suggestedMetrics as string);
+        } catch {
+          result.suggestedMetrics = {};
+        }
+      }
     } else if (realTable === 'usuarios') {
       if ('setoresautorizados' in result && !('setoresAutorizados' in result)) result.setoresAutorizados = result.setoresautorizados;
       if ('role' in result && typeof result.role === 'string') {

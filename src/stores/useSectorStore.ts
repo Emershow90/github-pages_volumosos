@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { SupabaseService } from '../lib/supabaseService';
+import { IndexedDBService } from '../lib/indexedDb';
 import { Setor, SectorOverrideValues, CapacidadeSetor, RadarLoja, ReaproData, BolsaoData, CopilSetor, UniversoMix, ReferenteSemana, ActivityEntry } from '../types';
 import {
   initialSetores,
@@ -12,7 +13,120 @@ import {
   initialReferentesSemana
 } from '../initialData';
 
-interface SectorStoreState {
+const OVERRIDES_STORAGE_KEY = 'torre_overrides_v1';
+
+function getLocalCachedOverrides(): Record<string, SectorOverrideValues> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(OVERRIDES_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalCachedOverrides(cache: Record<string, SectorOverrideValues>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(cache));
+  } catch {}
+}
+
+/**
+ * Função pura que calcula os valores finais do setor respeitando a hierarquia:
+ * Valor Final = Override ?? Valor Sugerido da Planilha ?? Valor Baseline
+ */
+export function resolveSectorMetrics(sector: Setor): Setor {
+  let overrides: SectorOverrideValues = sector.overrides || {};
+  if (typeof overrides === 'string') {
+    try {
+      overrides = JSON.parse(overrides);
+    } catch {
+      overrides = {};
+    }
+  }
+
+  let suggested: SectorOverrideValues = sector.suggestedMetrics || {};
+  if (typeof suggested === 'string') {
+    try {
+      suggested = JSON.parse(suggested);
+    } catch {
+      suggested = {};
+    }
+  }
+
+  // ATIVIDADE (respeita canônico 'ativ' e alias 'atividade')
+  const ativOverride = overrides.ativ ?? overrides.atividade;
+  const ativSuggested = suggested.ativ ?? suggested.atividade;
+  const ativFinal = ativOverride !== undefined && ativOverride !== null
+    ? ativOverride
+    : (ativSuggested !== undefined && ativSuggested !== null ? ativSuggested : sector.ativ);
+
+  // UPH
+  const uphOverride = overrides.uph;
+  const uphSuggested = suggested.uph;
+  const uphFinal = uphOverride !== undefined && uphOverride !== null
+    ? uphOverride
+    : (uphSuggested !== undefined && uphSuggested !== null ? uphSuggested : sector.uph);
+
+  // REABASTECIMENTO / CAIXAS (respeita canônico 'reproTotal' e alias 'caixasReapro')
+  const reproOverride = overrides.reproTotal ?? overrides.caixasReapro;
+  const reproSuggested = suggested.reproTotal ?? suggested.caixasReapro;
+  const reproFinal = reproOverride !== undefined && reproOverride !== null
+    ? reproOverride
+    : (reproSuggested !== undefined && reproSuggested !== null ? reproSuggested : sector.reproTotal);
+
+  // COLIS (respeita canônico 'colis' e alias 'colisColeta')
+  const colisOverride = overrides.colis ?? overrides.colisColeta;
+  const colisSuggested = suggested.colis ?? suggested.colisColeta;
+  const colisFinal = colisOverride !== undefined && colisOverride !== null
+    ? colisOverride
+    : (colisSuggested !== undefined && colisSuggested !== null ? colisSuggested : (sector.colis ?? 0));
+
+  // PROMESSA
+  const promessaOverride = overrides.promessa;
+  const promessaSuggested = suggested.promessa;
+  const promessaFinal = promessaOverride !== undefined && promessaOverride !== null
+    ? promessaOverride
+    : (promessaSuggested !== undefined && promessaSuggested !== null ? promessaSuggested : sector.promessa);
+
+  // NOTA 5S (respeita canônico 'nota5s' e alias 'auditoria5s')
+  const nota5sOverride = overrides.nota5s ?? overrides.auditoria5s;
+  const nota5sSuggested = suggested.nota5s ?? suggested.auditoria5s;
+  const nota5sFinal = nota5sOverride !== undefined && nota5sOverride !== null
+    ? nota5sOverride
+    : (nota5sSuggested !== undefined && nota5sSuggested !== null ? nota5sSuggested : sector.nota5s);
+
+  // BSI
+  const bsiOverride = overrides.bsi;
+  const bsiSuggested = suggested.bsi;
+  const bsiFinal = bsiOverride !== undefined && bsiOverride !== null
+    ? bsiOverride
+    : (bsiSuggested !== undefined && bsiSuggested !== null ? bsiSuggested : sector.bsi);
+
+  // ERROS PICKING
+  const errosOverride = overrides.errosPicking;
+  const errosSuggested = suggested.errosPicking;
+  const errosFinal = errosOverride !== undefined && errosOverride !== null
+    ? errosOverride
+    : (errosSuggested !== undefined && errosSuggested !== null ? errosSuggested : sector.errosPicking);
+
+  return {
+    ...sector,
+    overrides,
+    suggestedMetrics: suggested,
+    ativ: ativFinal,
+    uph: uphFinal,
+    reproTotal: reproFinal,
+    colis: colisFinal,
+    promessa: promessaFinal,
+    nota5s: nota5sFinal,
+    bsi: bsiFinal,
+    errosPicking: errosFinal
+  };
+}
+
+export interface SectorStoreState {
   setores: Setor[];
   capacidade: CapacidadeSetor[];
   referentesSemana: ReferenteSemana[];
@@ -80,61 +194,19 @@ interface SectorStoreState {
   ) => Promise<void>;
 }
 
-/**
- * Função pura que calcula os valores finais do setor respeitando a hierarquia:
- * Valor Final = Override ?? Valor Sugerido da Planilha ?? Valor Baseline
- */
-export function resolveSectorMetrics(sector: Setor): Setor {
-  const overrides = sector.overrides || {};
-  const suggested = sector.suggestedMetrics || {};
-
-  const ativFinal = overrides.ativ !== undefined && overrides.ativ !== null
-    ? overrides.ativ
-    : (suggested.ativ !== undefined && suggested.ativ !== null ? suggested.ativ : sector.ativ);
-
-  const uphFinal = overrides.uph !== undefined && overrides.uph !== null
-    ? overrides.uph
-    : (suggested.uph !== undefined && suggested.uph !== null ? suggested.uph : sector.uph);
-
-  const reproFinal = overrides.reproTotal !== undefined && overrides.reproTotal !== null
-    ? overrides.reproTotal
-    : (suggested.reproTotal !== undefined && suggested.reproTotal !== null ? suggested.reproTotal : sector.reproTotal);
-
-  const colisFinal = overrides.colis !== undefined && overrides.colis !== null
-    ? overrides.colis
-    : (suggested.colis !== undefined && suggested.colis !== null ? suggested.colis : (sector.colis ?? 0));
-
-  const promessaFinal = overrides.promessa !== undefined && overrides.promessa !== null
-    ? overrides.promessa
-    : (suggested.promessa !== undefined && suggested.promessa !== null ? suggested.promessa : sector.promessa);
-
-  const nota5sFinal = overrides.nota5s !== undefined && overrides.nota5s !== null
-    ? overrides.nota5s
-    : (suggested.nota5s !== undefined && suggested.nota5s !== null ? suggested.nota5s : sector.nota5s);
-
-  const bsiFinal = overrides.bsi !== undefined && overrides.bsi !== null
-    ? overrides.bsi
-    : (suggested.bsi !== undefined && suggested.bsi !== null ? suggested.bsi : sector.bsi);
-
-  const errosFinal = overrides.errosPicking !== undefined && overrides.errosPicking !== null
-    ? overrides.errosPicking
-    : (suggested.errosPicking !== undefined && suggested.errosPicking !== null ? suggested.errosPicking : sector.errosPicking);
-
-  return {
-    ...sector,
-    ativ: ativFinal,
-    uph: uphFinal,
-    reproTotal: reproFinal,
-    colis: colisFinal,
-    promessa: promessaFinal,
-    nota5s: nota5sFinal,
-    bsi: bsiFinal,
-    errosPicking: errosFinal
-  };
+function getInitialSetoresWithCachedOverrides(): Setor[] {
+  const cached = getLocalCachedOverrides();
+  return initialSetores.map((s) => {
+    const ov = cached[s.id] || cached[String(s.numero)] || s.overrides;
+    return resolveSectorMetrics({
+      ...s,
+      overrides: ov ? { ...(s.overrides || {}), ...ov } : s.overrides
+    });
+  });
 }
 
 export const useSectorStore = create<SectorStoreState>((set, get) => ({
-  setores: initialSetores.map(resolveSectorMetrics),
+  setores: getInitialSetoresWithCachedOverrides(),
   capacidade: initialCapacidade,
   referentesSemana: initialReferentesSemana || [],
   universos: initialUniversos,
@@ -146,7 +218,35 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
 
   setSetores: (val) => set((state) => {
     const rawList = typeof val === 'function' ? val(state.setores) : val;
-    return { setores: rawList.map(resolveSectorMetrics) };
+    const cachedOverrides = getLocalCachedOverrides();
+
+    const mergedList = rawList.map((incoming) => {
+      const current = state.setores.find(
+        (s) => s.id === incoming.id || String(s.numero) === String(incoming.id)
+      );
+
+      const cached = cachedOverrides[incoming.id] || cachedOverrides[String(incoming.numero)];
+
+      // Preserva overrides existentes se a carga externa vier sem o campo
+      const incomingOverrides = incoming.overrides;
+      const currentOverrides = current?.overrides;
+      const finalOverrides = (incomingOverrides && Object.keys(incomingOverrides).length > 0)
+        ? { ...(cached || {}), ...(currentOverrides || {}), ...incomingOverrides }
+        : { ...(cached || {}), ...(currentOverrides || {}) };
+
+      const incomingSuggested = incoming.suggestedMetrics;
+      const currentSuggested = current?.suggestedMetrics;
+      const finalSuggested = (incomingSuggested && Object.keys(incomingSuggested).length > 0)
+        ? { ...(currentSuggested || {}), ...incomingSuggested }
+        : currentSuggested;
+
+      return resolveSectorMetrics({
+        ...incoming,
+        overrides: finalOverrides,
+        suggestedMetrics: finalSuggested,
+      });
+    });
+    return { setores: mergedList };
   }),
 
   applySuggestedMetrics: (suggestedMap) => set((state) => {
@@ -170,9 +270,36 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
     const targetSector = state.setores.find(s => s.id === sectorId || String(s.numero) === sectorId);
     if (!targetSector) return;
 
+    // Normalizar as chaves dos overrides para guardar os dois formatos (canônico e alias)
+    const normalizedNew: Partial<SectorOverrideValues> = { ...newOverrides };
+    if ('atividade' in newOverrides && newOverrides.atividade !== undefined) {
+      normalizedNew.ativ = newOverrides.atividade;
+    }
+    if ('ativ' in newOverrides && newOverrides.ativ !== undefined) {
+      normalizedNew.atividade = newOverrides.ativ;
+    }
+    if ('caixasReapro' in newOverrides && newOverrides.caixasReapro !== undefined) {
+      normalizedNew.reproTotal = newOverrides.caixasReapro;
+    }
+    if ('reproTotal' in newOverrides && newOverrides.reproTotal !== undefined) {
+      normalizedNew.caixasReapro = newOverrides.reproTotal;
+    }
+    if ('colisColeta' in newOverrides && newOverrides.colisColeta !== undefined) {
+      normalizedNew.colis = newOverrides.colisColeta;
+    }
+    if ('colis' in newOverrides && newOverrides.colis !== undefined) {
+      normalizedNew.colisColeta = newOverrides.colis;
+    }
+    if ('auditoria5s' in newOverrides && newOverrides.auditoria5s !== undefined) {
+      normalizedNew.nota5s = newOverrides.auditoria5s;
+    }
+    if ('nota5s' in newOverrides && newOverrides.nota5s !== undefined) {
+      normalizedNew.auditoria5s = newOverrides.nota5s;
+    }
+
     const mergedOverrides: SectorOverrideValues = {
       ...(targetSector.overrides || {}),
-      ...newOverrides
+      ...normalizedNew
     };
 
     const updatedSector = resolveSectorMetrics({
@@ -180,12 +307,36 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
       overrides: mergedOverrides
     });
 
-    set((s) => ({
-      setores: s.setores.map(sec => (sec.id === targetSector.id ? updatedSector : sec))
-    }));
+    // 1. Atualização imediata no estado Zustand e Cache Local (sincronização síncrona com o Monitor)
+    set((s) => {
+      const nextSetores = s.setores.map(sec => (sec.id === targetSector.id ? updatedSector : sec));
+      try {
+        const cacheMap = getLocalCachedOverrides();
+        cacheMap[targetSector.id] = mergedOverrides;
+        cacheMap[String(targetSector.numero)] = mergedOverrides;
+        saveLocalCachedOverrides(cacheMap);
+      } catch {}
+      return { setores: nextSetores };
+    });
 
+    // 2. Persistência assíncrona com redundância (Supabase + IndexedDB + Audit Logs)
     try {
       await SupabaseService.upsertRecord('setores', updatedSector, 'id');
+      await IndexedDBService.put('setores', updatedSector).catch(() => {});
+      
+      // Persiste também na tabela/store de redundância override_operacional
+      await SupabaseService.upsertRecord('override_operacional', {
+        chave: `override_${targetSector.id}`,
+        valor: JSON.stringify(mergedOverrides),
+        updated_at: new Date().toISOString()
+      }, 'chave').catch(() => {});
+
+      await IndexedDBService.put('override_operacional', {
+        chave: `override_${targetSector.id}`,
+        valor: mergedOverrides,
+        updated_at: new Date().toISOString()
+      }).catch(() => {});
+
       await SupabaseService.upsertRecord('audit_logs', {
         id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         acao: 'override_salvo',
@@ -193,7 +344,7 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
         dados: newOverrides,
         usuario: userId,
         timestamp: new Date().toISOString()
-      }, 'id');
+      }, 'id').catch(() => {});
     } catch (err) {
       console.warn('[useSectorStore] Erro ao sincronizar override no Supabase:', err);
     }

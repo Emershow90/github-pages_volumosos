@@ -7,6 +7,12 @@ export interface SectorOverrideValues {
   nota5s?: number | null;
   bsi?: number | null;
   errosPicking?: number | null;
+  
+  // Aliases suportados (garantia de compatibilidade com todos formulários e planilhas)
+  atividade?: number | null;
+  caixasReapro?: number | null;
+  colisColeta?: number | null;
+  auditoria5s?: number | null;
 }
 
 export interface Setor {

@@ -37,13 +37,13 @@ import { useActionPlanStore } from '../stores/useActionPlanStore';
 
 const CATEGORIAS = [
   'Todos',
-  'Segurança',
-  '5S',
-  'Produtividade',
-  'Qualidade',
-  'Manutenção',
-  'Processos',
-  'Ergonomia'
+  'SEGURANÇA',
+  'LOCAL DE TRABALHO',
+  'QUALIDADE',
+  'PROCESSO',
+  'EQUIPAMENTO',
+  'PESSOAS',
+  'OUTROS'
 ];
 
 const STATUS_LIST: Array<GembaCard['status']> = ['EM CURSO', 'EM RISCO', 'ATRASADO', 'CONCLUÍDO'];
@@ -148,7 +148,7 @@ export const GembaBoard: React.FC = () => {
   const openNewModal = () => {
     setEditingCard(null);
     setFormData({
-      categoria: 'Segurança',
+      categoria: 'SEGURANÇA',
       identificador: 'Setor 87',
       descricao: '',
       acoes: '',
@@ -278,7 +278,13 @@ export const GembaBoard: React.FC = () => {
       if (!showArchived && c.arquivado) return false;
       if (showArchived && !c.arquivado) return false;
 
-      if (selectedCategory !== 'Todos' && c.categoria !== selectedCategory) return false;
+      if (selectedCategory !== 'Todos') {
+        const normC = (c.categoria || '').toUpperCase();
+        const normS = selectedCategory.toUpperCase();
+        if (normC !== normS && !normC.includes(normS.slice(0, 5)) && !normS.includes(normC.slice(0, 5))) {
+          return false;
+        }
+      }
       if (selectedStatus !== 'Todos' && c.status !== selectedStatus) return false;
       if (selectedSector !== 'Todos' && c.identificador !== selectedSector) return false;
 
@@ -311,56 +317,61 @@ export const GembaBoard: React.FC = () => {
   }, [cards]);
 
   const getCategoryBadge = (categoria: string) => {
-    switch (categoria) {
-      case 'Segurança':
-        return {
-          icon: ShieldAlert,
-          bg: 'bg-rose-500/10 border-rose-500/30 text-rose-300',
-          borderLeft: 'border-l-rose-500'
-        };
-      case '5S':
-        return {
-          icon: Sparkles,
-          bg: 'bg-purple-500/10 border-purple-500/30 text-purple-300',
-          borderLeft: 'border-l-purple-500'
-        };
-      case 'Produtividade':
-        return {
-          icon: TrendingUp,
-          bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300',
-          borderLeft: 'border-l-emerald-500'
-        };
-      case 'Qualidade':
-        return {
-          icon: CheckCircle2,
-          bg: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300',
-          borderLeft: 'border-l-cyan-500'
-        };
-      case 'Manutenção':
-        return {
-          icon: Wrench,
-          bg: 'bg-amber-500/10 border-amber-500/30 text-amber-300',
-          borderLeft: 'border-l-amber-500'
-        };
-      case 'Processos':
-        return {
-          icon: Layers,
-          bg: 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300',
-          borderLeft: 'border-l-indigo-500'
-        };
-      case 'Ergonomia':
-        return {
-          icon: Activity,
-          bg: 'bg-pink-500/10 border-pink-500/30 text-pink-300',
-          borderLeft: 'border-l-pink-500'
-        };
-      default:
-        return {
-          icon: Tag,
-          bg: 'bg-zinc-500/10 border-zinc-500/30 text-zinc-300',
-          borderLeft: 'border-l-zinc-500'
-        };
+    const norm = (categoria || '').toUpperCase();
+    if (norm.includes('SEGURAN')) {
+      return {
+        icon: ShieldAlert,
+        bg: 'bg-rose-500/10 border-rose-500/30 text-rose-300',
+        borderLeft: 'border-l-rose-500'
+      };
     }
+    if (norm.includes('LOCAL') || norm.includes('5S') || norm.includes('TRABALHO')) {
+      return {
+        icon: Sparkles,
+        bg: 'bg-purple-500/10 border-purple-500/30 text-purple-300',
+        borderLeft: 'border-l-purple-500'
+      };
+    }
+    if (norm.includes('QUALIDADE')) {
+      return {
+        icon: CheckCircle2,
+        bg: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300',
+        borderLeft: 'border-l-cyan-500'
+      };
+    }
+    if (norm.includes('PROCESSO')) {
+      return {
+        icon: Layers,
+        bg: 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300',
+        borderLeft: 'border-l-indigo-500'
+      };
+    }
+    if (norm.includes('EQUIPAMENTO') || norm.includes('MANUTEN')) {
+      return {
+        icon: Wrench,
+        bg: 'bg-amber-500/10 border-amber-500/30 text-amber-300',
+        borderLeft: 'border-l-amber-500'
+      };
+    }
+    if (norm.includes('PESSOA') || norm.includes('ERGONOMIA')) {
+      return {
+        icon: Activity,
+        bg: 'bg-pink-500/10 border-pink-500/30 text-pink-300',
+        borderLeft: 'border-l-pink-500'
+      };
+    }
+    if (norm.includes('PRODUTIVIDADE') || norm.includes('EFICIENCIA')) {
+      return {
+        icon: TrendingUp,
+        bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300',
+        borderLeft: 'border-l-emerald-500'
+      };
+    }
+    return {
+      icon: Tag,
+      bg: 'bg-zinc-500/10 border-zinc-500/30 text-zinc-300',
+      borderLeft: 'border-l-zinc-500'
+    };
   };
 
   const getStatusBadge = (status: GembaCard['status']) => {

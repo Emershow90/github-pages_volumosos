@@ -55,19 +55,24 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
       return;
     }
 
-    const currentSec = setores.find((s) => s.id === selectedSector);
+    const currentSec = setores.find((s) => s.id === selectedSector || String(s.numero) === selectedSector);
     
-    // Carrega overrides existentes se houver
+    // Carrega overrides existentes se houver (checando aliases e chaves canônicas)
     const ov = currentSec?.overrides || {};
+    const ativVal = ov.atividade ?? ov.ativ;
+    const reproVal = ov.caixasReapro ?? ov.reproTotal;
+    const colisVal = ov.colisColeta ?? ov.colis;
+    const nota5sVal = ov.auditoria5s ?? ov.nota5s;
+
     setFormData({
-      atividade: ov.atividade !== undefined ? (ov.atividade ?? '').toString() : '',
-      uph: ov.uph !== undefined ? (ov.uph ?? '').toString() : '',
-      caixasReapro: ov.caixasReapro !== undefined ? (ov.caixasReapro ?? '').toString() : '',
-      colisColeta: ov.colisColeta !== undefined ? (ov.colisColeta ?? '').toString() : '',
-      promessa: ov.promessa !== undefined ? (ov.promessa ?? '').toString() : '',
-      auditoria5s: ov.auditoria5s !== undefined ? (ov.auditoria5s ?? '').toString() : '',
-      bsi: ov.bsi !== undefined ? (ov.bsi ?? '').toString() : '',
-      errosPicking: ov.errosPicking !== undefined ? (ov.errosPicking ?? '').toString() : '',
+      atividade: ativVal !== undefined && ativVal !== null ? ativVal.toString() : '',
+      uph: ov.uph !== undefined && ov.uph !== null ? ov.uph.toString() : '',
+      caixasReapro: reproVal !== undefined && reproVal !== null ? reproVal.toString() : '',
+      colisColeta: colisVal !== undefined && colisVal !== null ? colisVal.toString() : '',
+      promessa: ov.promessa !== undefined && ov.promessa !== null ? ov.promessa.toString() : '',
+      auditoria5s: nota5sVal !== undefined && nota5sVal !== null ? nota5sVal.toString() : '',
+      bsi: ov.bsi !== undefined && ov.bsi !== null ? ov.bsi.toString() : '',
+      errosPicking: ov.errosPicking !== undefined && ov.errosPicking !== null ? ov.errosPicking.toString() : '',
     });
   }, [selectedSector, setores]);
 
@@ -85,17 +90,57 @@ export const OverrideOperacionalForm: React.FC<OverrideOperacionalFormProps> = (
     setIsSaving(true);
     try {
       const parsedOverrides: Record<string, number | null> = {};
-      Object.entries(formData).forEach(([field, val]) => {
-        const strVal = String(val || '').trim();
-        parsedOverrides[field] = strVal === '' ? null : Number(strVal);
-      });
+      const numOrNull = (val: string) => {
+        const s = String(val || '').trim();
+        return s === '' ? null : Number(s);
+      };
+
+      const ativVal = numOrNull(formData.atividade);
+      const uphVal = numOrNull(formData.uph);
+      const reproVal = numOrNull(formData.caixasReapro);
+      const colisVal = numOrNull(formData.colisColeta);
+      const promessaVal = numOrNull(formData.promessa);
+      const nota5sVal = numOrNull(formData.auditoria5s);
+      const bsiVal = numOrNull(formData.bsi);
+      const errosVal = numOrNull(formData.errosPicking);
+
+      // Preenche tanto nomes canônicos quanto aliases para garantia de compatibilidade com o Monitor
+      parsedOverrides.ativ = ativVal;
+      parsedOverrides.atividade = ativVal;
+      parsedOverrides.uph = uphVal;
+      parsedOverrides.reproTotal = reproVal;
+      parsedOverrides.caixasReapro = reproVal;
+      parsedOverrides.colis = colisVal;
+      parsedOverrides.colisColeta = colisVal;
+      parsedOverrides.promessa = promessaVal;
+      parsedOverrides.nota5s = nota5sVal;
+      parsedOverrides.auditoria5s = nota5sVal;
+      parsedOverrides.bsi = bsiVal;
+      parsedOverrides.errosPicking = errosVal;
 
       await updateSectorOverride(selectedSector, parsedOverrides, currentUser || 'operador');
 
       if (onUpdateSetor) {
-        Object.entries(parsedOverrides).forEach(([field, val]) => {
-          if (val !== null) onUpdateSetor(selectedSector, field, val);
-        });
+        if (ativVal !== null) {
+          onUpdateSetor(selectedSector, 'ativ', ativVal);
+          onUpdateSetor(selectedSector, 'atividade', ativVal);
+        }
+        if (uphVal !== null) onUpdateSetor(selectedSector, 'uph', uphVal);
+        if (reproVal !== null) {
+          onUpdateSetor(selectedSector, 'reproTotal', reproVal);
+          onUpdateSetor(selectedSector, 'caixasReapro', reproVal);
+        }
+        if (colisVal !== null) {
+          onUpdateSetor(selectedSector, 'colis', colisVal);
+          onUpdateSetor(selectedSector, 'colisColeta', colisVal);
+        }
+        if (promessaVal !== null) onUpdateSetor(selectedSector, 'promessa', promessaVal);
+        if (nota5sVal !== null) {
+          onUpdateSetor(selectedSector, 'nota5s', nota5sVal);
+          onUpdateSetor(selectedSector, 'auditoria5s', nota5sVal);
+        }
+        if (bsiVal !== null) onUpdateSetor(selectedSector, 'bsi', bsiVal);
+        if (errosVal !== null) onUpdateSetor(selectedSector, 'errosPicking', errosVal);
       }
 
       toast.success('Parâmetros e overrides salvos com sucesso!');

@@ -68,24 +68,50 @@ export const stringOpt = z.string().trim().optional().default('');
 // =============================================================================
 
 export const CATEGORIAS_GEMBA = [
-  'SEGURANCA',
+  'SEGURANÇA',
   'LOCAL DE TRABALHO',
-  'EFICIENCIA',
   'QUALIDADE',
-  'COMUNICACAO',
+  'PROCESSO',
+  'EQUIPAMENTO',
+  'PESSOAS',
   'OUTROS',
 ] as const;
 
 export const STATUS_GEMBA = [
-  'EM CURSO',
+  'ABERTO',
+  'EM_ANDAMENTO',
   'CONCLUIDO',
+  'CANCELADO',
+  'EM CURSO',
   'ATRASADO',
   'EM RISCO',
 ] as const;
 
-export const categoriaGemba = z.enum(CATEGORIAS_GEMBA);
-export const statusGemba = z.enum(STATUS_GEMBA);
-export const arquivadoGemba = z.enum(['SIM', 'NAO']);
+export const categoriaGemba = z.string().transform((val) => {
+  const norm = (val || '').trim().toUpperCase();
+  if (norm.includes('SEGURAN')) return 'SEGURANÇA';
+  if (norm.includes('LOCAL') || norm.includes('5S') || norm.includes('TRABALHO')) return 'LOCAL DE TRABALHO';
+  if (norm.includes('QUALIDADE')) return 'QUALIDADE';
+  if (norm.includes('PROCESSO')) return 'PROCESSO';
+  if (norm.includes('EQUIPAMENTO') || norm.includes('MANUTEN') || norm.includes('MÁQUINA')) return 'EQUIPAMENTO';
+  if (norm.includes('PESSOA') || norm.includes('ERGONOMIA') || norm.includes('TREINAMENTO')) return 'PESSOAS';
+  return 'OUTROS';
+});
+
+export const statusGemba = z.string().transform((val) => {
+  const norm = (val || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (norm === 'CONCLUIDO' || norm === 'CONCLUÍDO') return 'CONCLUIDO';
+  if (norm === 'CANCELADO') return 'CANCELADO';
+  if (norm === 'ABERTO') return 'ABERTO';
+  if (norm === 'ATRASADO') return 'ATRASADO';
+  if (norm === 'EM_RISCO') return 'EM RISCO';
+  return 'EM_ANDAMENTO';
+});
+
+export const arquivadoGemba = z.string().transform((val) => {
+  const norm = (val || '').trim().toUpperCase();
+  return (norm === 'SIM' || norm === 'TRUE' || norm === 'S' || norm === '1') ? 'SIM' : 'NAO';
+});
 
 // =============================================================================
 // SCHEMA — CONTROLADORIA (formato pivo)
