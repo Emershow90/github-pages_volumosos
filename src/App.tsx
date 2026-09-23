@@ -310,6 +310,7 @@ function App() {
     realtimeSync.startListeningAudit();
     realtimeSync.startListeningActivityEntries();
     realtimeSync.startListeningPainelProducao();
+    realtimeSync.startListeningOverrides();
 
     return () => {
       realtimeSync.stopAll();

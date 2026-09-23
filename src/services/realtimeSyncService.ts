@@ -864,6 +864,48 @@ class RealtimeSyncService {
 
 
 
+  public startListeningOverrides() {
+    const key = 'override_operacional_live';
+    if (this.authObservers.has(key)) return;
+
+    const unsubscribeAuth = SupabaseService.onAuthStateResolved((state) => {
+      if (state === 'loading') return;
+      if (state === 'unauthenticated') {
+        const existing = this.unsubscribes.get(key);
+        if (existing) { existing(); this.unsubscribes.delete(key); }
+        return;
+      }
+      if (this.unsubscribes.has(key)) return;
+
+      let channel: RealtimeChannel | null = null;
+      let cancelled = false;
+
+      // Buscar overrides iniciais
+      SupabaseService.fetchTable<{chave: string, valor: string}>('override_operacional')
+        .then((rows) => {
+          if (cancelled) return;
+          if (rows) {
+            // Re-sincronizar os overrides no Zustand
+            useSectorStore.getState().applyOverridesFromRemote(rows);
+          }
+          if (isStaticBuild || !supabase) return;
+
+          channel = supabase.channel(key)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'override_operacional' }, async () => {
+              const fresh = await SupabaseService.fetchTable<{chave: string, valor: string}>('override_operacional');
+              if (fresh) useSectorStore.getState().applyOverridesFromRemote(fresh);
+            })
+            .subscribe();
+
+          this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+        })
+        .catch((err) => console.error("[RealtimeSyncService] Erro overrides:", err));
+
+      this.unsubscribes.set(key, () => { cancelled = true; if (channel) channel.unsubscribe(); });
+    });
+    this.authObservers.set(key, unsubscribeAuth);
+  }
+
   /**
    * Encerra todos os listeners ativos.
    */

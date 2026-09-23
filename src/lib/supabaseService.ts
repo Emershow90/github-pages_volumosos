@@ -56,17 +56,18 @@ const LOCAL_ONLY_TABLES = new Set([
   'alertas_operacionais',
   'copil_matriz',
   'plano_carregamento',
-  'atividade_loja'
+  'atividade_loja',
+  'audit_logs'
 ]);
 
 const TABLE_COLUMNS: Record<string, string[]> = {
   store_master: ['id', 'nome', 'cidade', 'uf', 'transportadorapadrao', 'observacoes', 'created_at', 'updated_at'],
   setores: [
     'id', 'numero', 'nome', 'resp', 'fotolider', 'foto_lider', 'meta', 'horario', 'situacao',
-    'ativ', 'promessa', 'varfin', 'var_fin', 'bsi', 'nota5s', 'nota_5s', 'errospicking',
+    'ativ', 'promessa', 'varfin', 'var_fin', 'bsi', 'nota5s', 'nota_5s',
     'erros_picking', 'reprototal', 'repro_total', 'infracaoseguranca', 'infracao_seguranca',
     'horasdkt', 'horas_dkt', 'polirec', 'poli_rec', 'rdl', 'polisaid', 'poli_said',
-    'coletado', 'colis', 'tipo_operacao', 'fonte_atividade', 'fonte_colis', 'exibir_caixas',
+    'coletado', 'tipo_operacao', 'fonte_atividade', 'fonte_colis', 'exibir_caixas',
     'exibir_reposicao_caixas', 'overrides', 'suggested_metrics', 'equipe', 'uph',
     'created_at', 'updated_at'
   ],
@@ -84,9 +85,8 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   capacidade_operacional: ['id', 'setor', 'abertura', 'fecho_hora', 'updated_at'],
   escalas_referentes: ['id', 'dia', 'referente_sb7', 'referente_volumosos', 'apoio', 'atualizado_em', 'updated_at', 'updated_by'],
   historico_consolidado: ['id', 'hora', 'semana', 'turno', 'setor', 'ativ', 'uph', 'repro', 'promessa', 'nota_5s', 'erros', 'created_at', 'updated_at'],
-  audit_logs: ['id', 'acao', 'usuario', 'campo', 'dispositivo', 'valor_anterior', 'valor_novo', 'created_at', 'updated_at'],
   lideranca: ['id', 'nome', 'cargo', 'setor', 'contato', 'foto', 'created_at', 'updated_at'],
-  override_operacional: ['chave', 'valor', 'created_at', 'updated_at'],
+  override_operacional: ['valor', 'created_at', 'updated_at'],
   activity_entries: ['id', 'sector_id', 'activity_date', 'user_id', 'alimento', 'montanha', 'l7_mochila', 'elog', 'reapro', 'colis', 'adhoc_categories', 'created_at', 'updated_at'],
   painel_producao: ['id', 'sector_id', 'upload_date', 'feito_hoje', 'feito_ontem', 'maquina_full', 'rafale_full', 'uploaded_by', 'arquivo_nome', 'created_at', 'updated_at'],
   matriz_performance: ['id', 'setor', 'semana', 'ano', 'pilotagem', 'volume_que_caiu', 'percentual', 'horas_planning', 'horas_terceiros', 'poli_entrada', 'poli_saida', 'capacidade', 'total_coletado', 'produtividade', 'promessa', 'lead_time', 'aderencia', 'created_at', 'updated_at'],
@@ -101,12 +101,24 @@ export class SupabaseService {
   public static readonly supabase = supabase;
 
   public static async checkConnection(): Promise<boolean> {
-    if (isStaticBuild) return false;
-    if (!navigator.onLine) return false;
+    if (isStaticBuild) {
+      console.warn('[Supabase Connection] Rodando em modo Estático/Mock.');
+      return false;
+    }
+    if (!navigator.onLine) {
+      console.warn('[Supabase Connection] Navegador offline.');
+      return false;
+    }
     try {
       const { error } = await supabase.from('setores').select('id').limit(1);
-      return !error;
-    } catch {
+      if (error) {
+        console.error('[Supabase Connection] Falha na verificação de tabela:', error);
+        return false;
+      }
+      console.log('[Supabase Connection] Conexão bem-sucedida.');
+      return true;
+    } catch (e) {
+      console.error('[Supabase Connection] Erro crítico na verificação:', e);
       return false;
     }
   }

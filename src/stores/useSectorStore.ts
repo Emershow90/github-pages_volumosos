@@ -323,19 +323,6 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
     try {
       await SupabaseService.upsertRecord('setores', updatedSector, 'id');
       await IndexedDBService.put('setores', updatedSector).catch(() => {});
-      
-      // Persiste também na tabela/store de redundância override_operacional
-      await SupabaseService.upsertRecord('override_operacional', {
-        chave: `override_${targetSector.id}`,
-        valor: JSON.stringify(mergedOverrides),
-        updated_at: new Date().toISOString()
-      }, 'chave').catch(() => {});
-
-      await IndexedDBService.put('override_operacional', {
-        chave: `override_${targetSector.id}`,
-        valor: mergedOverrides,
-        updated_at: new Date().toISOString()
-      }).catch(() => {});
 
       await SupabaseService.upsertRecord('audit_logs', {
         id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,

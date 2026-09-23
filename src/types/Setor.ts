@@ -29,10 +29,6 @@ export interface Setor {
   
   // Configuração por tipo de operação/setor
   tipoOperacao?: 'PADRAO' | 'CAIXAS' | 'VOLUMOSOS';
-  fonteAtividade?: string;
-  fonteColis?: string;
-  exibirCaixas?: boolean;
-  exibirReposicaoCaixas?: boolean;
   
   // Overrides e Valores Sugeridos
   overrides?: SectorOverrideValues;

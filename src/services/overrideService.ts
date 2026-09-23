@@ -33,8 +33,10 @@ function hojeBR(): string {
 
 /** Normaliza o identificador do setor para comparacao segura */
 function normalizarSetor(setor: string): string {
-  // Remove tudo exceto alfanumerico: "Setor 87" -> "87", "ELOG" -> "ELOG"
-  return setor.replace(/[^\dA-Z]/gi, '').toUpperCase();
+  // Remove tudo exceto alfanumerico e converte para maiusculas
+  const base = setor.replace(/[^\dA-Z]/gi, '').toUpperCase();
+  // Remove zeros à esquerda para comparar "087" como "87"
+  return base.replace(/^0+/, '');
 }
 
 /**
