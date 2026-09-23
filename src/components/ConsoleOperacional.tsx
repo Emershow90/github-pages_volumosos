@@ -33,7 +33,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { usePainelProducaoStore } from '../stores/usePainelProducaoStore';
-import { useSectorStore } from '../stores/useSectorStore';
+import { useSectorStore, resolveSectorMetrics } from '../stores/useSectorStore';
 import { useUserStore } from '../stores/useUserStore';
 import { useCollaboratorStore } from '../stores/useCollaboratorStore';
 import { useHistoryStore } from '../stores/useHistoryStore';
@@ -78,6 +78,11 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   const { currentUser, currentUserUid } = useUserStore();
   const { registros, upsertRegistro, fetchRegistrosHoje } = usePainelProducaoStore();
   const { activityEntries, capacidade, updateActivityUniversosBatch, updateSectorOverride, setSetores } = useSectorStore();
+  const storeSetores = useSectorStore((s) => s.setores);
+  const effectiveSetores = useMemo(() => {
+    const list = setores && setores.length > 0 ? setores : storeSetores;
+    return list.map((s) => resolveSectorMetrics(s));
+  }, [setores, storeSetores]);
   const { colaboradores } = useCollaboratorStore();
   const { historico, addAuditLog } = useHistoryStore();
   const { metrics: copilData, summaryStats: copilSummary } = useCopilMetrics();
@@ -261,7 +266,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   // Helper to obtain sector universe breakdown (Alimento, Montanha, Custom Universos) and Colis
   const getSectorUniversos = (sectorId: string) => {
     const cfg = CONFIG_SETORES[sectorId] || CONFIG_SETORES['88'];
-    const sectorObj = setores.find(s => String(s.id) === String(sectorId) || String(s.numero) === String(sectorId));
+    const sectorObj = effectiveSetores.find(s => String(s.id) === String(sectorId) || String(s.numero) === String(sectorId));
     
     const entry = activityEntries.find(e => String(e.sectorId) === String(sectorId) && e.activityDate === todayStr) ||
                   activityEntries.find(e => String(e.sectorId) === String(sectorId));
@@ -377,7 +382,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   const handleOpenEditUniversos = (secId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const u = getSectorUniversos(secId);
-    const sectorObj = setores.find(s => String(s.id) === String(secId) || String(s.numero) === String(secId));
+    const sectorObj = effectiveSetores.find(s => String(s.id) === String(secId) || String(s.numero) === String(secId));
     setEditingSectorUniversos(secId);
     setEditAlimento(u.alimento);
     setEditMontanha(u.montanha);
@@ -530,7 +535,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   };
 
   // Active Leader info
-  const activeSectorObj = setores.find(s => s.id === visaoAtual || s.numero.toString() === visaoAtual) || setores[0];
+  const activeSectorObj = effectiveSetores.find(s => s.id === visaoAtual || s.numero.toString() === visaoAtual) || effectiveSetores[0];
   const leaderName = activeSectorObj?.resp || 'IAGO ANDERSON';
   const promessaVal = activeSectorObj?.promessa?.toString() || '96,15';
 
@@ -1551,7 +1556,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                         <div>
                           <span className="text-[10px] uppercase text-slate-400 font-bold block">Qtd Reabastecimento</span>
                           <div className="text-3xl sm:text-4xl font-black font-mono text-amber-300 leading-tight">
-                            {(setores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.reproTotal || parseInt(u.reapro?.replace(" CX", "") || "0") || 0).toLocaleString('pt-BR')} <span className="text-lg font-bold text-amber-400/80">CX</span>
+                            {(effectiveSetores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.reproTotal || parseInt(u.reapro?.replace(" CX", "") || "0") || 0).toLocaleString('pt-BR')} <span className="text-lg font-bold text-amber-400/80">CX</span>
                           </div>
                         </div>
                       </div>
@@ -1569,7 +1574,8 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                               <Package size={18} className="text-emerald-400" />
                               COLIS COLETA
                             </h4>
-                            {setores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.overrides?.colis !== undefined && (
+                            {(effectiveSetores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.overrides?.colis !== undefined ||
+                              effectiveSetores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.overrides?.colisColeta !== undefined) && (
                               <span className="text-[9px] font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
                                 MANUAL
                               </span>
@@ -1588,7 +1594,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                         <div>
                           <span className="text-[10px] uppercase text-slate-400 font-bold block">Total Colis</span>
                           <div className="text-3xl sm:text-4xl font-black font-mono text-emerald-300 leading-tight">
-                            {(setores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.colis ?? u.colis ?? 0).toLocaleString('pt-BR')} <span className="text-lg font-bold text-emerald-400/80">COLIS</span>
+                            {(effectiveSetores.find(s => String(s.id) === String(id) || String(s.numero) === String(id))?.colis ?? u.colis ?? 0).toLocaleString('pt-BR')} <span className="text-lg font-bold text-emerald-400/80">COLIS</span>
                           </div>
                         </div>
                       </div>
@@ -1786,7 +1792,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                   <p className="text-[10px] text-slate-500 text-right mt-1">
                     Atividade atual do setor:{' '}
                     <span className="font-mono text-emerald-400">
-                      {editingSectorUniversos ? (setores.find(s => String(s.id) === String(editingSectorUniversos) || String(s.numero) === String(editingSectorUniversos))?.ativ || 0).toLocaleString('pt-BR') : '---'}
+                      {editingSectorUniversos ? (effectiveSetores.find(s => String(s.id) === String(editingSectorUniversos) || String(s.numero) === String(editingSectorUniversos))?.ativ || 0).toLocaleString('pt-BR') : '---'}
                     </span>
                   </p>
                 )}

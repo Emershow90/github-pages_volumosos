@@ -197,20 +197,24 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       (c.status as string) === "Refeicao"
   ).length;
 
-  // Totais operacionais do CD
-  const totalVolumeAtiv = useMemo(() => setores.reduce((sum, s) => sum + (s.ativ || 0), 0), [setores]);
-  const totalReabastecimento = useMemo(() => setores.reduce((sum, s) => sum + (s.reproTotal || 0), 0), [setores]);
-  const totalColis = useMemo(() => setores.reduce((sum, s) => sum + (s.colis || 0), 0), [setores]);
+  // Totais operacionais do CD baseados na hierarquia estrita de resolução (Override > Sugerido > Baseline)
+  const resolvedSetores = useMemo(() => {
+    return (setores || []).map((s) => resolveSectorMetrics(s));
+  }, [setores]);
+
+  const totalVolumeAtiv = useMemo(() => resolvedSetores.reduce((sum, s) => sum + (s.ativ || 0), 0), [resolvedSetores]);
+  const totalReabastecimento = useMemo(() => resolvedSetores.reduce((sum, s) => sum + (s.reproTotal || 0), 0), [resolvedSetores]);
+  const totalColis = useMemo(() => resolvedSetores.reduce((sum, s) => sum + (s.colis || 0), 0), [resolvedSetores]);
   const mediaUPH = useMemo(
-    () => (setores.length ? Math.round(setores.reduce((sum, s) => sum + (s.uph || 0), 0) / setores.length) : 0),
-    [setores]
+    () => (resolvedSetores.length ? Math.round(resolvedSetores.reduce((sum, s) => sum + (s.uph || 0), 0) / resolvedSetores.length) : 0),
+    [resolvedSetores]
   );
   const mediaSLA = useMemo(
     () =>
-      setores.length
-        ? parseFloat((setores.reduce((sum, s) => sum + (s.promessa || 0), 0) / setores.length).toFixed(1))
+      resolvedSetores.length
+        ? parseFloat((resolvedSetores.reduce((sum, s) => sum + (s.promessa || 0), 0) / resolvedSetores.length).toFixed(1))
         : 0,
-    [setores]
+    [resolvedSetores]
   );
 
   // Helper de mix de universos
@@ -807,7 +811,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
           {/* Grid de Cards de Setores */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-            {setores.map((s, idx) => {
+            {resolvedSetores.map((s, idx) => {
               const isDanger = s.bsi < 99 || s.infracaoSeguranca;
               const borderTopColor = isDanger ? "#ef4444" : "#6366f1";
               const isCaixasSector = ["87", "087", "88", "088", "89", "089", "90", "090"].includes(String(s.id));

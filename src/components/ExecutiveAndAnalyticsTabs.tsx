@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Setor, CapacidadeSetor, AlertLog, HistoricoRegistro, CopilSetor } from "../types";
 import { ExecutivoBarChart, AnalyticsDoubleLineChart, HourlyBarChart } from "./CommandCharts";
 import { TrendingUp, AlertOctagon, Zap, Shield, HelpCircle, Activity } from "lucide-react";
 import { SupabaseHealthPanel } from "./SupabaseHealthPanel";
 import { HealthDashboard } from "./HealthDashboard";
 import { AIForecastPanel } from "./AIForecastPanel";
+import { resolveSectorMetrics } from "../stores/useSectorStore";
 
 interface ExecutivoTabProps {
   setores: Setor[];
@@ -28,16 +29,21 @@ export const ExecutivoTab: React.FC<ExecutivoTabProps> = ({
   copilData,
   calcCopilNota,
 }) => {
+  // Resolve métricas respeitando Overrides e Planilha
+  const resolvedSetores = useMemo(() => {
+    return (setores || []).map((s) => resolveSectorMetrics(s));
+  }, [setores]);
+
   // Compute indicators
-  const totalVolume = setores.reduce((sum, s) => sum + s.ativ, 0);
-  const mediaUPH = setores.length ? Math.round(setores.reduce((sum, s) => sum + s.uph, 0) / setores.length) : 0;
-  const mediaSLA = setores.length ? parseFloat((setores.reduce((sum, s) => sum + s.promessa, 0) / setores.length).toFixed(1)) : 0;
+  const totalVolume = resolvedSetores.reduce((sum, s) => sum + s.ativ, 0);
+  const mediaUPH = resolvedSetores.length ? Math.round(resolvedSetores.reduce((sum, s) => sum + s.uph, 0) / resolvedSetores.length) : 0;
+  const mediaSLA = resolvedSetores.length ? parseFloat((resolvedSetores.reduce((sum, s) => sum + s.promessa, 0) / resolvedSetores.length).toFixed(1)) : 0;
   const capTotal = capacidade.reduce((sum, c) => sum + c.abertura, 0);
-  const totalRiscoSetores = setores.filter((s) => s.bsi < 99 || s.infracaoSeguranca).length;
+  const totalRiscoSetores = resolvedSetores.filter((s) => s.bsi < 99 || s.infracaoSeguranca).length;
 
   // Find bottleneck (sector with lowest UPH)
-  const gargalo = setores.length
-    ? setores.reduce((min, s) => (s.uph > 0 && s.uph < min.uph ? s : min), setores[0])
+  const gargalo = resolvedSetores.length
+    ? resolvedSetores.reduce((min, s) => (s.uph > 0 && s.uph < min.uph ? s : min), resolvedSetores[0])
     : null;
 
   // Render HeatMap helper
@@ -127,10 +133,16 @@ export const ExecutivoTab: React.FC<ExecutivoTabProps> = ({
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {setores.map((s) => {
+            {resolvedSetores.map((s) => {
               const hState = getHeatmapColor(s);
+              const hasOverride = Boolean(s.overrides && Object.values(s.overrides).some(v => v !== null && v !== undefined && v !== ''));
               return (
-                <div key={s.id} className={`glass-card p-4 text-center border ${hState.border}`}>
+                <div key={s.id} className={`glass-card p-4 text-center border ${hState.border} relative overflow-hidden`}>
+                  {hasOverride && (
+                    <span className="absolute top-2 right-2 text-amber-400" title="Métrica calibrada via Override Operacional">
+                      <Zap size={11} className="fill-amber-400/20" />
+                    </span>
+                  )}
                   <p className="text-[0.55rem] text-zinc-500 uppercase font-bold mb-2 flex items-center justify-center gap-1.5">
                     <span className={`w-2 h-2 rounded-full ${hState.dot}`}></span>
                     {hState.label}

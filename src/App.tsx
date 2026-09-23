@@ -229,14 +229,18 @@ function App() {
 
   // Unified fluctuation selector
   const setoresFluctuated = React.useMemo(() => {
-    return setores.map((s) => {
+    return setores.map((rawS) => {
+      const s = resolveSectorMetrics(rawS);
+      const hasAtivOverride = Boolean(s.overrides?.ativ ?? s.overrides?.atividade);
+      const hasUphOverride = Boolean(s.overrides?.uph);
+
       const numericId = parseInt(s.id.replace(/\D/g, "")) || 0;
       const seed = numericId + ticker;
       const change = (seed % 11) - 5; // -5 to +5
-      const newAtiv = Math.max(0, s.ativ + change);
+      const newAtiv = hasAtivOverride ? s.ativ : Math.max(0, s.ativ + change);
 
       const uphChange = (seed % 5) - 2; // -2 to +2
-      const newUph = Math.max(10, s.uph + uphChange);
+      const newUph = hasUphOverride ? s.uph : Math.max(10, s.uph + uphChange);
 
       return {
         ...s,
@@ -416,11 +420,23 @@ function App() {
   });
 
   const handleUpdateSetorField = (sid: string, field: string, val: any) => {
+    const isOverrideField = [
+      'ativ', 'atividade', 'uph', 'reproTotal', 'caixasReapro',
+      'colis', 'colisColeta', 'promessa', 'bsi', 'erros', 'errosPicking', 'nota5s', 'auditoria5s'
+    ].includes(field);
+
+    if (isOverrideField) {
+      useSectorStore.getState().updateSectorOverride(sid, { [field]: Number(val) }, currentUser).catch((err) =>
+        console.error("[handleUpdateSetorField] Erro ao atualizar override:", err)
+      );
+      return;
+    }
+
     setSetores((prev) =>
       prev.map((s) => {
-        if (s.id === sid) {
-          const updated = { ...s, [field]: val };
-          SupabaseService.upsertRecord("setores", updated).catch((err) =>
+        if (s.id === sid || String(s.numero) === sid) {
+          const updated = resolveSectorMetrics({ ...s, [field]: val });
+          SupabaseService.upsertRecord("setores", updated, "id").catch((err) =>
             console.error("Failed to upsert sector:", err)
           );
           return updated;
@@ -670,40 +686,8 @@ function App() {
 
   const handleUpdateSetorProd = (sid: string, field: string, value: number) => {
     if (currentRole === UserRole.Guest) return;
-
-    // Mapeamento bidirecional para compatibilidade total entre aliases e chaves canônicas
-    const canonicalField =
-      field === "atividade" ? "ativ" :
-      field === "caixasReapro" ? "reproTotal" :
-      field === "colisColeta" ? "colis" :
-      field === "auditoria5s" ? "nota5s" : field;
-
-    setSetores((prev) =>
-      prev.map((s) => {
-        if (s.id === sid || String(s.numero) === sid) {
-          addAudit(currentUser, "Apontamento Prod", `${sid}.${canonicalField}`, value, (s as any)[canonicalField]);
-
-          const currentOverrides = s.overrides || {};
-          const newOverrides = {
-            ...currentOverrides,
-            [canonicalField]: value,
-            [field]: value
-          };
-
-          const updated = resolveSectorMetrics({
-            ...s,
-            [canonicalField]: value,
-            [field]: value,
-            overrides: newOverrides
-          });
-
-          SupabaseService.upsertRecord("setores", updated, "id").catch((err) =>
-            console.error("Failed to upsert sector:", err)
-          );
-          return updated;
-        }
-        return s;
-      })
+    useSectorStore.getState().updateSectorOverride(sid, { [field]: value }, currentUser).catch((err) =>
+      console.error("[handleUpdateSetorProd] Error updating sector override:", err)
     );
   };
 
