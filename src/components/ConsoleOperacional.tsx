@@ -30,7 +30,20 @@ import {
   RotateCcw,
   Database,
   FileSpreadsheet,
-  ShieldCheck
+  ShieldCheck,
+  FolderSync,
+  FolderOpen,
+  Maximize2,
+  Minimize2,
+  Truck,
+  Store as StoreIcon,
+  Boxes,
+  CheckSquare,
+  Search,
+  Filter,
+  Play,
+  Pause,
+  ArrowUpRight
 } from 'lucide-react';
 import { usePainelProducaoStore } from '../stores/usePainelProducaoStore';
 import { useSectorStore, resolveSectorMetrics } from '../stores/useSectorStore';
@@ -38,6 +51,10 @@ import { useUserStore } from '../stores/useUserStore';
 import { useCollaboratorStore } from '../stores/useCollaboratorStore';
 import { useHistoryStore } from '../stores/useHistoryStore';
 import { useCopilMetrics } from '../hooks/useCopilMetrics';
+import { useStoreOperations } from '../stores/useStoreOperations';
+import { usePlanoCarregamentoRisk } from '../hooks/usePlanoCarregamentoRisk';
+import { folderWatcherService, FolderWatcherStatus } from '../services/folderWatcherService';
+import { StoreOperation } from '../types/Store';
 import { useAIStrategy } from '../hooks/useAIStrategy';
 import { AIStrategyModal } from './AIStrategyModal';
 import { PromiseSLA } from '../types/AIStrategy';
@@ -96,9 +113,25 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
 
   const [visaoAtual, setVisaoAtual] = useState<string>('TODOS');
   const [carrosselAtivo, setCarrosselAtivo] = useState(false);
+  const [carrosselCountdown, setCarrosselCountdown] = useState(12);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [relogio, setRelogio] = useState('');
   const [fileInfo, setFileInfo] = useState('STATUS: ZERADO (AGUARDANDO UPLOAD)');
   const [isDropActive, setIsDropActive] = useState(false);
+
+  // Folder Watcher (Carregamento Automático de Pasta)
+  const [watcherStatus, setWatcherStatus] = useState<FolderWatcherStatus>(folderWatcherService.getStatus());
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  // Filtros de Lojas Hoje
+  const [lojaSearchFilter, setLojaSearchFilter] = useState('');
+  const [lojaStatusFilter, setLojaStatusFilter] = useState<'all' | 'Não iniciada' | 'Em andamento' | 'Coletada'>('all');
+  const [lojaSetorFilter, setLojaSetorFilter] = useState<string>('all');
+
+  // Stores de Operações e Risco de Carregamento
+  const operationsMap = useStoreOperations((s) => s.operations);
+  const upsertOperation = useStoreOperations((s) => s.upsertOperation);
+  const { operations: riskOperations, summary: riskSummary, planoCarregamento } = usePlanoCarregamentoRisk();
 
   // Sync state and live indicators
   const [isSyncingDb, setIsSyncingDb] = useState(false);
@@ -124,6 +157,16 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
+  // Subscribe to Folder Watcher
+  useEffect(() => {
+    return folderWatcherService.subscribeStatus((st) => {
+      setWatcherStatus(st);
+      if (st.summary) {
+        setFileInfo(`PLANILHA AUTO: "${st.summary.fileName}" • ${st.summary.totalAtividade.toLocaleString('pt-BR')} UN • ${st.summary.totalColis} COLIS • ${st.summary.totalLojasHoje} LOJAS`);
+      }
+    });
+  }, []);
+
   // Initialize data fetch
   useEffect(() => {
     fetchRegistrosHoje(todayStr);
@@ -139,17 +182,130 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // TV Carrossel mode
+  // TV Carrossel mode (Alterna entre TODOS, LOJAS_HOJE, 87, 88, 89, 90)
   useEffect(() => {
     if (!carrosselAtivo) return;
-    const modos = ['TODOS', '87', '88', '89', '90'];
-    let idx = modos.indexOf(visaoAtual);
-    const timer = setInterval(() => {
-      idx = (idx + 1) % modos.length;
-      setVisaoAtual(modos[idx]);
-    }, 8000);
-    return () => clearInterval(timer);
-  }, [carrosselAtivo, visaoAtual]);
+    const modos = ['TODOS', 'LOJAS_HOJE', '87', '88', '89', '90'];
+    setCarrosselCountdown(12);
+
+    const countdownTimer = setInterval(() => {
+      setCarrosselCountdown((prev) => (prev <= 1 ? 12 : prev - 1));
+    }, 1000);
+
+    const rotateTimer = setInterval(() => {
+      setVisaoAtual((prev) => {
+        const idx = modos.indexOf(prev);
+        const nextIdx = (idx + 1) % modos.length;
+        return modos[nextIdx];
+      });
+    }, 12000);
+
+    return () => {
+      clearInterval(countdownTimer);
+      clearInterval(rotateTimer);
+    };
+  }, [carrosselAtivo]);
+
+  // Fullscreen toggle handler
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    }
+  };
+
+  // Handler para conectar pasta automática
+  const handleConnectFolder = async () => {
+    if (folderWatcherService.isFileSystemApiSupported()) {
+      const ok = await folderWatcherService.connectDirectory();
+      if (!ok && folderInputRef.current) {
+        folderInputRef.current.click();
+      }
+    } else if (folderInputRef.current) {
+      folderInputRef.current.click();
+    }
+  };
+
+  // Handler para input de arquivos de pasta selecionada (fallback universal)
+  const handleFolderFilesSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await folderWatcherService.setFileList(e.target.files);
+    }
+  };
+
+  // Operações de Lojas Hoje computadas
+  const allOperationsList = useMemo(() => Object.values(operationsMap), [operationsMap]);
+  const todayOperations = useMemo<StoreOperation[]>(() => {
+    let list = allOperationsList.filter((op) => op.programacaoId === todayStr);
+    if (list.length === 0 && allOperationsList.length > 0) {
+      list = allOperationsList;
+    }
+    if (list.length === 0 && planoCarregamento.length > 0) {
+      return planoCarregamento.map((p) => ({
+        id: `${p.codLoja}_${todayStr}_S88`,
+        programacaoId: todayStr,
+        lojaId: p.codLoja,
+        nomeLoja: p.nomeLoja,
+        setor: 'S88',
+        transportadora: 'JADLOG',
+        corte: '12:00',
+        carregamento: p.horaCarregamento || '14:00',
+        volumes: 280,
+        enderecos: 95,
+        statusSoltura: 'Solta' as const,
+        horarioSoltura: '06:00',
+        soltoPor: 'AutoWatcher',
+        statusColeta: 'Não iniciada' as const,
+        horarioColeta: null,
+        coletadoPor: null,
+        statusCarregamento: 'Não carregada' as const,
+        horarioCarregamento: null,
+        carregadoPor: null,
+        statusExpedicao: 'Pendente' as const,
+        perdeuCorte: false,
+        updated_at: new Date().toISOString(),
+        updated_by: 'AutoWatcher'
+      }));
+    }
+    return list;
+  }, [allOperationsList, todayStr, planoCarregamento]);
+
+  // Métricas de Coleta de Lojas
+  const totalLojasHoje = todayOperations.length;
+  const lojasColetadasCount = todayOperations.filter((o) => o.statusColeta === 'Coletada').length;
+  const lojasEmAndamentoCount = todayOperations.filter((o) => o.statusColeta === 'Em andamento').length;
+  const lojasNaoIniciadasCount = todayOperations.filter((o) => o.statusColeta === 'Não iniciada').length;
+
+  const totalVolumesProgramados = todayOperations.reduce((acc, o) => acc + (o.volumes || 250), 0);
+  const totalVolumesColetados = todayOperations.reduce((acc, o) => {
+    const v = o.volumes || 250;
+    if (o.statusColeta === 'Coletada') return acc + v;
+    if (o.statusColeta === 'Em andamento') return acc + Math.round(v * 0.5);
+    return acc;
+  }, 0);
+
+  const percentualColetado = totalVolumesProgramados > 0
+    ? Math.round((totalVolumesColetados / totalVolumesProgramados) * 100)
+    : 0;
+
+  // Alternador rápido de status de coleta para o operador
+  const handleToggleStoreStatus = async (op: StoreOperation) => {
+    const nextStatus: 'Não iniciada' | 'Em andamento' | 'Coletada' =
+      op.statusColeta === 'Não iniciada' ? 'Em andamento' :
+      op.statusColeta === 'Em andamento' ? 'Coletada' : 'Não iniciada';
+    
+    await upsertOperation({
+      ...op,
+      statusColeta: nextStatus,
+      horarioColeta: nextStatus === 'Coletada' ? new Date().toLocaleTimeString('pt-BR') : op.horarioColeta,
+      coletadoPor: nextStatus === 'Coletada' ? (currentUser || 'Operador') : op.coletadoPor,
+      updated_at: new Date().toISOString(),
+      updated_by: currentUser || 'Operador',
+    });
+  };
 
   // Helper to parse numeric values from Excel cells
   const cleanNum = (cell: string | number): number => {
@@ -492,6 +648,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
   let totalAlimento = 0;
   let totalMontanha = 0;
   let totalColis = 0;
+  let totalReapro = 0;
   let setoresAtivosCount = 0;
 
   Object.keys(CONFIG_SETORES).forEach(id => {
@@ -505,10 +662,23 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     totalAlimento += u.alimento;
     totalMontanha += u.montanha;
     totalColis += u.colis;
+    const reaproParsed = parseInt(String(u.reapro || '0').replace(/\D/g, ''), 10) || 0;
+    totalReapro += reaproParsed;
     if (d.feitoHoje > 0 || d.feitoOntem > 0 || d.maquina > 0 || d.rafale > 0) {
       setoresAtivosCount++;
     }
   });
+
+  // Se valores de atividade, colis ou reapro vierem zerados da planilha, ancora nos setores resolvidos
+  if (totalFeitoHoje === 0) {
+    totalFeitoHoje = effectiveSetores.reduce((acc, s) => acc + (s.ativ || 0), 0);
+  }
+  if (totalColis === 0) {
+    totalColis = effectiveSetores.reduce((acc, s) => acc + (s.colis || 0), 0);
+  }
+  if (totalReapro === 0) {
+    totalReapro = effectiveSetores.reduce((acc, s) => acc + (s.reproTotal || 0), 0);
+  }
 
   const metaAtual = visaoAtual === 'TODOS' ? totalFeitoHoje : getSectorData(visaoAtual).feitoHoje;
   const metaTotal = visaoAtual === 'TODOS' ? totalCapacidade : getSectorData(visaoAtual).cap;
@@ -675,6 +845,262 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
     }
   };
 
+  // Renderizador da Seção de Lojas para Enviar Hoje
+  const renderLojasHojeSection = (isStandalone = false) => {
+    const filteredLojas = todayOperations.filter((op) => {
+      if (lojaStatusFilter !== 'all' && op.statusColeta !== lojaStatusFilter) return false;
+      if (lojaSetorFilter !== 'all' && op.setor !== lojaSetorFilter) return false;
+      if (lojaSearchFilter.trim()) {
+        const q = lojaSearchFilter.toLowerCase();
+        const matchName = op.nomeLoja?.toLowerCase().includes(q);
+        const matchId = op.lojaId?.toLowerCase().includes(q);
+        const matchTransp = op.transportadora?.toLowerCase().includes(q);
+        if (!matchName && !matchId && !matchTransp) return false;
+      }
+      return true;
+    });
+
+    return (
+      <div className={`space-y-4 ${isStandalone ? 'pt-1' : 'mt-2'}`}>
+        {/* Cabeçalho da Seção */}
+        <div className="bg-[#0b0c12] border border-[#1e1e2b] rounded-xl p-4 shadow-md">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                <Truck size={22} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm md:text-base font-black uppercase text-white tracking-wide">
+                    QUAIS LOJAS PARA ENVIAR HOJE
+                  </h2>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                    EXPEDIÇÃO & COLETA
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Programação do dia com controle em tempo real de status de coleta, corte de horário e transportadora
+                </p>
+              </div>
+            </div>
+
+            {/* Badges de Resumo em Tempo Real */}
+            <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+              <div className="px-3 py-1.5 rounded-lg bg-[#141520] border border-[#252738] text-slate-300">
+                Lojas: <strong className="text-white">{totalLojasHoje}</strong>
+              </div>
+              <div className="px-3 py-1.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 flex items-center gap-1.5">
+                <CheckCircle2 size={13} className="text-emerald-400" />
+                <span>Coletadas: <strong>{lojasColetadasCount}</strong></span>
+              </div>
+              <div className="px-3 py-1.5 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-300 flex items-center gap-1.5">
+                <RefreshCw size={13} className="animate-spin text-amber-400" />
+                <span>Em Andamento: <strong>{lojasEmAndamentoCount}</strong></span>
+              </div>
+              <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300">
+                Pendentes: <strong className="text-slate-100">{lojasNaoIniciadasCount}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Barra de Progresso Master de Coleta de Volumes */}
+          <div className="mt-4 pt-3 border-t border-[#1a1b28]">
+            <div className="flex justify-between items-center text-xs mb-1.5">
+              <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                <CheckSquare size={14} className="text-emerald-400" />
+                Progresso Geral de Coleta das Lojas:
+              </span>
+              <span className="font-mono font-bold text-emerald-400">
+                {totalVolumesColetados.toLocaleString('pt-BR')} / {totalVolumesProgramados.toLocaleString('pt-BR')} volumes ({percentualColetado}%)
+              </span>
+            </div>
+            <div className="w-full bg-[#050507] h-3 rounded-full overflow-hidden border border-[#1e1e2a] p-0.5">
+              <div
+                className="bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-400 h-full rounded-full transition-all duration-500"
+                style={{ width: `${percentualColetado}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Barra de Busca e Filtros */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#1a1b28]">
+            {/* Campo de Busca */}
+            <div className="relative flex-1 min-w-[240px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar loja por número, nome ou transportadora..."
+                value={lojaSearchFilter}
+                onChange={(e) => setLojaSearchFilter(e.target.value)}
+                className="w-full bg-[#13141f] border border-[#25273a] focus:border-blue-500 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 outline-none transition-all"
+              />
+              {lojaSearchFilter && (
+                <button
+                  onClick={() => setLojaSearchFilter('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Filtro de Status */}
+            <div className="flex items-center gap-1 bg-[#13141f] p-1 rounded-lg border border-[#25273a]">
+              {(['all', 'Não iniciada', 'Em andamento', 'Coletada'] as const).map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setLojaStatusFilter(st)}
+                  className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-all ${
+                    lojaStatusFilter === st
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {st === 'all' ? 'Todas' : st}
+                </button>
+              ))}
+            </div>
+
+            {/* Filtro de Setor */}
+            <div className="flex items-center gap-1 bg-[#13141f] p-1 rounded-lg border border-[#25273a]">
+              {['all', 'S87', 'S88', 'S89', 'S90'].map((sec) => (
+                <button
+                  key={sec}
+                  onClick={() => setLojaSetorFilter(sec)}
+                  className={`px-2 py-1 rounded text-[11px] font-mono font-semibold transition-all ${
+                    lojaSetorFilter === sec
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {sec === 'all' ? 'Todos Setores' : sec}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Grade de Lojas */}
+        {filteredLojas.length === 0 ? (
+          <div className="bg-[#0e0e16] border border-[#1e1e2a] rounded-xl p-8 text-center text-slate-400">
+            <Truck size={36} className="mx-auto mb-2 text-slate-600" />
+            <p className="text-sm font-semibold text-slate-300">Nenhuma loja encontrada para os filtros selecionados</p>
+            <p className="text-xs text-slate-500 mt-1">Limpe os filtros ou verifique a conexão com a planilha operacional</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+            {filteredLojas.map((op) => {
+              const isColetada = op.statusColeta === 'Coletada';
+              const isEmAndamento = op.statusColeta === 'Em andamento';
+
+              return (
+                <div
+                  key={op.id}
+                  className={`bg-[#0d0e15] rounded-xl p-4 border transition-all duration-200 shadow-md flex flex-col justify-between gap-3 ${
+                    isColetada
+                      ? 'border-emerald-500/40 hover:border-emerald-500/70 bg-gradient-to-b from-[#0d1612] to-[#0a0f0d]'
+                      : isEmAndamento
+                      ? 'border-amber-500/40 hover:border-amber-500/70 bg-gradient-to-b from-[#18140c] to-[#0f0e0c]'
+                      : 'border-[#1e1e2d] hover:border-[#2d2e42]'
+                  }`}
+                >
+                  {/* Topo do Card de Loja */}
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-mono font-bold text-xs">
+                          {op.lojaId}
+                        </span>
+                        <div>
+                          <h3 className="text-xs md:text-sm font-bold text-white leading-tight">
+                            {op.nomeLoja || `Loja ${op.lojaId}`}
+                          </h3>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold">
+                              {op.setor}
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                              {op.transportadora || 'LOGÍSTICA INTERNA'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="text-[11px] font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                          ⏰ {op.carregamento || '14:00'}
+                        </span>
+                        <div className="text-[9.5px] text-slate-500 font-mono mt-0.5">
+                          Corte: {op.corte || '12:00'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dados Quantitativos (Volumes e Endereços) */}
+                    <div className="grid grid-cols-2 gap-2 mt-3 pt-2.5 border-t border-[#1a1b28]">
+                      <div className="bg-[#12131d] px-2.5 py-1.5 rounded-lg border border-[#1f2030]">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Volumes</span>
+                        <span className="text-sm font-black font-mono text-white">
+                          {(op.volumes || 250).toLocaleString('pt-BR')} <span className="text-[10px] font-normal text-slate-400">cx</span>
+                        </span>
+                      </div>
+                      <div className="bg-[#12131d] px-2.5 py-1.5 rounded-lg border border-[#1f2030]">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Endereços</span>
+                        <span className="text-sm font-black font-mono text-cyan-300">
+                          {op.enderecos || 85} <span className="text-[10px] font-normal text-slate-400">end</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Botão Interativo de Status da Coleta */}
+                  <div className="pt-2 border-t border-[#1a1b28]">
+                    <button
+                      onClick={() => handleToggleStoreStatus(op)}
+                      className={`w-full py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-between shadow-sm cursor-pointer active:scale-95 ${
+                        isColetada
+                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-1 ring-emerald-400/50'
+                          : isEmAndamento
+                          ? 'bg-amber-600 hover:bg-amber-500 text-white ring-1 ring-amber-400/50 animate-pulse'
+                          : 'bg-[#181926] hover:bg-[#202235] border border-[#2c2e44] text-slate-300 hover:text-white'
+                      }`}
+                      title="Clique para alternar status da coleta desta loja"
+                    >
+                      <div className="flex items-center gap-2">
+                        {isColetada ? (
+                          <CheckCircle2 size={16} className="text-white" />
+                        ) : isEmAndamento ? (
+                          <RefreshCw size={15} className="animate-spin text-white" />
+                        ) : (
+                          <Clock size={15} className="text-slate-400" />
+                        )}
+                        <span>
+                          {isColetada
+                            ? 'COLETADA'
+                            : isEmAndamento
+                            ? 'COLETA EM ANDAMENTO'
+                            : 'COLETA NÃO INICIADA'}
+                        </span>
+                      </div>
+
+                      <span className="text-[10px] font-mono font-normal opacity-90">
+                        {isColetada
+                          ? `Feito às ${op.horarioColeta || '11:30'}`
+                          : isEmAndamento
+                          ? 'Clique p/ Concluir'
+                          : 'Clique p/ Iniciar'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div 
       className="min-h-screen bg-[#050507] text-[#f0f0f5] font-sans flex flex-col p-4 md:p-5 gap-4 select-none relative"
@@ -720,127 +1146,264 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
         </div>
       )}
 
-      {/* UPLOAD BAR */}
-      <div className="bg-[#111118] border border-dashed border-[#2a2a38] rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-md hover:border-emerald-500/40 transition-all">
+      {/* TOP BROADCAST BAR • MODO TV TELÃO */}
+      <div className="bg-[#0b0c10] border border-[#1e1e2a] rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <Upload size={18} />
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[11px] font-bold">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <Tv size={14} className="text-emerald-400" />
+            <span>MODO TV • TELÃO CD</span>
           </div>
-          <div>
-            <p className="text-xs font-semibold text-white">Upload da Planilha Operacional (.xlsm)</p>
-            <p className="text-[11px] text-slate-400">
-              Aba obrigatória: <span className="font-mono font-bold text-emerald-400">SU_QUERIES_SHEET</span> | Colunas: W, Y, F, S
-            </p>
-          </div>
-        </div>
 
-        <label className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-xs px-4 py-2 rounded-lg cursor-pointer transition-all flex items-center gap-2 shadow-sm shrink-0">
-          <Upload size={14} />
-          <span>Carregar Planilha</span>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            accept=".xlsm, .xlsx, .xls" 
-            className="hidden" 
-            onChange={(e) => {
-              if (e.target.files && e.target.files[0]) {
-                handleExcelUpload(e.target.files[0]);
-              }
-            }}
-          />
-        </label>
-      </div>
-
-      {/* HEADER PRINCIPAL */}
-      <header className="flex flex-wrap justify-between items-center pb-3 border-b border-[#1e1e2a] gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center font-mono font-black text-white text-sm shadow-md shrink-0">
-            S{visaoAtual === 'TODOS' ? '88' : visaoAtual}
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#12131a] border border-[#222430] text-slate-300 font-mono text-xs">
+            <Clock size={13} className="text-emerald-400" />
+            <span className="font-semibold text-white tracking-wider">{relogio || '--:--:--'}</span>
+            <span className="text-[10px] text-slate-400 uppercase font-sans">Brasília</span>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base md:text-lg font-black tracking-tight text-white uppercase">
-                CONSOLE OPERACIONAL {visaoAtual !== 'TODOS' && `— PICKING ${visaoAtual}`}
-              </h1>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                ATIVO/ATIVO
-              </span>
+
+          {carrosselAtivo && (
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-orange-500/10 border border-orange-500/30 text-orange-400 font-mono text-[11px]">
+              <RotateCcw size={12} className="animate-spin text-orange-400" />
+              <span>Rotação TV: <strong className="text-white">{carrosselCountdown}s</strong></span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Líder Responsável: <span className="font-semibold text-slate-200">{leaderName}</span>
-              <span className="mx-2 text-slate-700">•</span>
-              Promessa: <span className="font-mono font-semibold text-slate-200">{promessaVal}</span>
-            </p>
-          </div>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Selector */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#111118] border border-[#1e1e2a]">
-            <Layers size={14} className="text-slate-400" />
-            <span className="text-[11px] font-semibold text-slate-400">SETOR:</span>
-            <select 
-              value={visaoAtual} 
-              onChange={(e) => {
-                setVisaoAtual(e.target.value);
-                if (onChangeSector && e.target.value !== 'TODOS') onChangeSector(e.target.value);
-              }} 
-              className="bg-transparent text-xs font-semibold text-white outline-none cursor-pointer"
-            >
-              <option value="TODOS" className="bg-[#111118] text-white">Todos os Setores</option>
-              <option value="87" className="bg-[#111118] text-white">Setor 87 — Picking 87</option>
-              <option value="88" className="bg-[#111118] text-white">Setor 88 — Picking 88</option>
-              <option value="89" className="bg-[#111118] text-white">Setor 89 — Picking 89</option>
-              <option value="90" className="bg-[#111118] text-white">Setor 90 — Picking 90</option>
-            </select>
-          </div>
-
-          {/* TV Mode Carousel Button */}
-          <button 
-            onClick={() => setCarrosselAtivo(!carrosselAtivo)} 
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              carrosselAtivo 
-                ? 'bg-orange-600 text-white shadow-lg animate-pulse' 
-                : 'bg-orange-500 hover:bg-orange-600 text-white'
-            }`}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Botão de Tela Cheia */}
+          <button
+            onClick={toggleFullscreen}
+            className="px-3 py-1.5 rounded-lg bg-[#14151f] hover:bg-[#1c1e2b] border border-[#262836] text-slate-200 hover:text-white font-semibold text-xs transition-all flex items-center gap-1.5 shadow-sm"
+            title="Alternar Tela Cheia (Ideal para TVs e Telões)"
           >
-            <Tv size={14} />
-            <span>{carrosselAtivo ? 'Pausar TV (Auto 8s)' : 'Modo Apresentação (TV)'}</span>
+            {isFullscreen ? <Minimize2 size={14} className="text-emerald-400" /> : <Maximize2 size={14} className="text-emerald-400" />}
+            <span className="hidden md:inline">{isFullscreen ? 'Sair Tela Cheia' : 'Tela Cheia'}</span>
           </button>
 
-          {/* Sincronizar Banco de Dados (Supabase + IndexedDB) */}
-          <button 
+          {/* Botão de Carrossel TV Automático */}
+          <button
+            onClick={() => setCarrosselAtivo(!carrosselAtivo)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 shadow-md ${
+              carrosselAtivo
+                ? 'bg-orange-600 hover:bg-orange-500 text-white ring-2 ring-orange-400/50'
+                : 'bg-[#181926] hover:bg-[#202234] border border-[#2b2d42] text-slate-200'
+            }`}
+            title="Alterna automaticamente entre a visão geral do CD, lojas para enviar e cada setor a cada 12 segundos"
+          >
+            {carrosselAtivo ? <Pause size={13} /> : <Play size={13} />}
+            <span>{carrosselAtivo ? `Pausar Rotação (${carrosselCountdown}s)` : 'Iniciar Carrossel TV (12s)'}</span>
+          </button>
+
+          {/* Sincronizar Banco */}
+          <button
             onClick={handleSyncDatabase}
             disabled={isSyncingDb}
-            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-            title="Persistir todos os setores e atividades no Supabase e IndexedDB"
+            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+            title="Persistir setores e registros no banco de dados"
           >
-            <Database size={14} className={isSyncingDb ? 'animate-spin' : ''} />
-            <span>{isSyncingDb ? 'Gravando Banco...' : 'Sincronizar Banco'}</span>
+            <Database size={13} className={isSyncingDb ? 'animate-spin' : ''} />
+            <span className="hidden lg:inline">{isSyncingDb ? 'Gravando...' : 'Gravar Banco'}</span>
           </button>
 
-          {/* Gravar na Planilha Google Sheets */}
-          <button 
+          {/* Gravar Planilha Sheets */}
+          <button
             onClick={handleSyncGoogleSheets}
             disabled={isSyncingSheets}
-            className="bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-            title="Exportar dados consolidados para a planilha Google Sheets"
+            className="bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+            title="Gravar na planilha Google Sheets"
           >
-            <FileSpreadsheet size={14} className={isSyncingSheets ? 'animate-spin' : ''} />
-            <span>{isSyncingSheets ? 'Enviando...' : 'Gravar Planilha'}</span>
+            <FileSpreadsheet size={13} className={isSyncingSheets ? 'animate-spin' : ''} />
+            <span className="hidden lg:inline">{isSyncingSheets ? 'Enviando...' : 'Gravar Planilha'}</span>
           </button>
 
-          {/* CSV Export Button */}
-          <button 
+          {/* Exportar CSV */}
+          <button
             onClick={handleExportCSV}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-            title="Baixar planilha CSV local"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+            title="Baixar CSV consolidado"
           >
-            <Download size={14} />
-            <span>Exportar CSV</span>
+            <Download size={13} />
+            <span className="hidden sm:inline">CSV</span>
           </button>
         </div>
-      </header>
+      </div>
+
+      {/* CARREGAMENTO AUTOMÁTICO DE PLANILHA (CONECTADO A PASTA SELECIONADA) */}
+      <div className={`rounded-xl p-3.5 border transition-all duration-300 shadow-md ${
+        watcherStatus.isConnected
+          ? 'bg-[#0a1612] border-emerald-500/40 hover:border-emerald-500/70'
+          : 'bg-[#111118] border-dashed border-[#2a2a38] hover:border-amber-500/40'
+      }`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-lg border ${
+              watcherStatus.isConnected
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+            }`}>
+              {watcherStatus.isConnected ? <FolderSync size={20} className="animate-spin-slow" /> : <FolderOpen size={20} />}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold text-white uppercase tracking-wider">
+                  {watcherStatus.isConnected
+                    ? `Pasta Conectada: "${watcherStatus.folderName}"`
+                    : 'Carregamento Automático por Pasta Selecionada'}
+                </p>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border ${
+                  watcherStatus.isConnected
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                }`}>
+                  {watcherStatus.isConnected ? 'Auto-Alimentação Ativa (10s)' : 'Aguardando Pasta'}
+                </span>
+              </div>
+
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                {watcherStatus.isConnected ? (
+                  <>
+                    Monitorando arquivos <span className="font-mono text-emerald-300">.xlsm / .xlsx</span> a cada 10s • Quando o arquivo consta lá, se alimenta sozinho!
+                    {watcherStatus.lastFileName && (
+                      <span className="block sm:inline sm:ml-2 text-slate-300 font-mono text-[10.5px]">
+                        [Lido: <strong className="text-emerald-400">{watcherStatus.lastFileName}</strong> às {watcherStatus.lastIngestTime}]
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    Conecte a pasta de rede ou diretório local da planilha (<span className="font-mono text-emerald-400">SU_QUERIES_SHEET</span> / <span className="font-mono text-emerald-400">PLANO_CARREGAMENTO</span>). O sistema se alimenta automaticamente sempre que um arquivo for salvo lá!
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {watcherStatus.isConnected ? (
+              <>
+                <button
+                  onClick={() => folderWatcherService.scanAndProcess()}
+                  disabled={watcherStatus.isProcessing}
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-xs px-3.5 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+                  title="Verificar agora se há novas atualizações na pasta"
+                >
+                  <RefreshCw size={14} className={watcherStatus.isProcessing ? 'animate-spin' : ''} />
+                  <span>{watcherStatus.isProcessing ? 'Lendo Arquivo...' : 'Escanear Agora'}</span>
+                </button>
+
+                <button
+                  onClick={() => folderWatcherService.toggleAutoSync()}
+                  className="bg-[#181926] hover:bg-[#222436] border border-[#2b2d42] text-slate-300 hover:text-white font-semibold text-xs px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+                >
+                  {watcherStatus.autoSyncEnabled ? <Pause size={13} /> : <Play size={13} />}
+                  <span>{watcherStatus.autoSyncEnabled ? 'Pausar Auto' : 'Retomar Auto'}</span>
+                </button>
+
+                <button
+                  onClick={() => folderWatcherService.disconnect()}
+                  className="bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/40 text-rose-300 font-semibold text-xs px-2.5 py-2 rounded-lg transition-all"
+                  title="Desconectar monitoramento de pasta"
+                >
+                  Desconectar
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={handleConnectFolder}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-4 py-2 rounded-lg transition-all flex items-center gap-2 shadow-md cursor-pointer active:scale-95"
+                  title="Selecionar pasta para monitoramento e alimentação automática"
+                >
+                  <FolderOpen size={16} />
+                  <span>Conectar Pasta Automática</span>
+                </button>
+
+                <label className="bg-[#181926] hover:bg-[#202234] border border-[#2b2d42] text-slate-300 hover:text-white font-semibold text-xs px-3 py-2 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 shadow-sm">
+                  <Upload size={14} />
+                  <span>Arquivo Individual (.xlsm)</span>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept=".xlsm, .xlsx, .xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleExcelUpload(e.target.files[0]);
+                      }
+                    }}
+                  />
+                </label>
+              </>
+            )}
+
+            {/* Input oculto para seleção de pasta (fallback universal) */}
+            <input
+              type="file"
+              ref={folderInputRef}
+              {...({ webkitdirectory: '', directory: '' } as unknown as React.InputHTMLAttributes<HTMLInputElement>)}
+              multiple
+              className="hidden"
+              onChange={handleFolderFilesSelected}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* SELETOR DE VISÃO DO MODO TV */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-[#1e1e2a]">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setVisaoAtual('TODOS')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+              visaoAtual === 'TODOS'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md ring-1 ring-emerald-400'
+                : 'bg-[#111118] text-slate-300 hover:text-white hover:bg-[#191924] border border-[#1e1e2a]'
+            }`}
+          >
+            <Activity size={14} />
+            <span>VISÃO GERAL CD</span>
+          </button>
+
+          <button
+            onClick={() => setVisaoAtual('LOJAS_HOJE')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+              visaoAtual === 'LOJAS_HOJE'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md ring-1 ring-blue-400'
+                : 'bg-[#111118] text-slate-300 hover:text-white hover:bg-[#191924] border border-[#1e1e2a]'
+            }`}
+          >
+            <Truck size={14} />
+            <span>LOJAS PARA ENVIAR HOJE</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-mono">
+              {todayOperations.length}
+            </span>
+          </button>
+
+          {['87', '88', '89', '90'].map((secId) => (
+            <button
+              key={secId}
+              onClick={() => {
+                setVisaoAtual(secId);
+                if (onChangeSector) onChangeSector(secId);
+              }}
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                visaoAtual === secId
+                  ? 'bg-purple-600 text-white shadow-md ring-1 ring-purple-400'
+                  : 'bg-[#111118] text-slate-300 hover:text-white hover:bg-[#191924] border border-[#1e1e2a]'
+              }`}
+            >
+              <span>Setor {secId}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+          <span>Líder Responsável: <strong className="text-slate-200">{leaderName}</strong></span>
+          <span className="text-slate-600">•</span>
+          <span>Promessa: <strong className="text-slate-200">{promessaVal}</strong></span>
+        </div>
+      </div>
 
       {/* NOTIFICAÇÃO DE STATUS DE SINCRONIZAÇÃO */}
       {syncStatusMsg && (
@@ -1048,42 +1611,138 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
               </div>
             )}
 
-            {/* Top 4 Metrics Cards */}
+            {/* 4 HERO CARDS DE IMPACTO • MODO TV TELÃO */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-              <div className="bg-[#111118] border border-[#1e1e2a] border-t-2 border-t-emerald-500 p-4 rounded-xl relative overflow-hidden shadow-sm">
-                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 absolute top-3.5 right-3.5">
-                  <Activity size={16} />
+              {/* CARD 1: ATIVIDADE OPERACIONAL */}
+              <div className="bg-[#0e1017] border border-[#1e2230] border-t-4 border-t-emerald-500 p-4 rounded-xl relative overflow-hidden shadow-md flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                      <Activity size={15} />
+                      ATIVIDADE OPERACIONAL
+                    </p>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-bold">
+                      UPH: {uphAtual}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="text-3xl font-black font-mono text-white tracking-tight">
+                      {totalFeitoHoje.toLocaleString('pt-BR')}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-400 uppercase">un processadas</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Meta do Turno: <strong className="text-slate-200">{metaTotal.toLocaleString('pt-BR')} un</strong> ({metaPct}%)
+                  </p>
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Processado</p>
-                <p className="text-2xl font-black font-mono text-white mt-1">{totalFeitoHoje.toLocaleString('pt-BR')}</p>
-                <p className="text-[10px] text-slate-500 mt-1">Soma de todas as categorias hoje</p>
+
+                <div className="mt-3 pt-2.5 border-t border-[#1a1c28] flex items-center justify-between text-[10px] font-mono text-slate-400">
+                  <span>S87: <strong className="text-slate-200">{getSectorData('87').feitoHoje.toLocaleString('pt-BR')}</strong></span>
+                  <span>S88: <strong className="text-slate-200">{getSectorData('88').feitoHoje.toLocaleString('pt-BR')}</strong></span>
+                  <span>S89: <strong className="text-slate-200">{getSectorData('89').feitoHoje.toLocaleString('pt-BR')}</strong></span>
+                  <span>S90: <strong className="text-slate-200">{getSectorData('90').feitoHoje.toLocaleString('pt-BR')}</strong></span>
+                </div>
               </div>
 
-              <div className="bg-[#111118] border border-[#1e1e2a] border-t-2 border-t-blue-500 p-4 rounded-xl relative overflow-hidden shadow-sm">
-                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 absolute top-3.5 right-3.5">
-                  <Users size={16} />
+              {/* CARD 2: QUANTIDADE TOTAL COLIS */}
+              <div className="bg-[#0e1017] border border-[#1e2230] border-t-4 border-t-cyan-500 p-4 rounded-xl relative overflow-hidden shadow-md flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                      <Package size={15} />
+                      QUANTIDADE COLIS
+                    </p>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-bold">
+                      CD CONSOLIDADO
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="text-3xl font-black font-mono text-cyan-300 tracking-tight">
+                      {totalColis.toLocaleString('pt-BR')}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-400 uppercase">colis prontos</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Fluxo total de caixas e embalagens expedidas
+                  </p>
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Operadores Ativos</p>
-                <p className="text-2xl font-black font-mono text-white mt-1">{setoresAtivosCount}</p>
-                <p className="text-[10px] text-slate-500 mt-1">Setores com apontamentos hoje</p>
+
+                <div className="mt-3 pt-2.5 border-t border-[#1a1c28] flex items-center justify-between text-[10px] font-mono text-slate-400">
+                  <span>S87: <strong className="text-cyan-200">{(effectiveSetores.find(s=>s.id==='87')?.colis || getSectorUniversos('87').colis || 0).toLocaleString('pt-BR')}</strong></span>
+                  <span>S88: <strong className="text-cyan-200">{(effectiveSetores.find(s=>s.id==='88')?.colis || getSectorUniversos('88').colis || 0).toLocaleString('pt-BR')}</strong></span>
+                  <span>S89: <strong className="text-cyan-200">{(effectiveSetores.find(s=>s.id==='89')?.colis || getSectorUniversos('89').colis || 0).toLocaleString('pt-BR')}</strong></span>
+                  <span>S90: <strong className="text-cyan-200">{(effectiveSetores.find(s=>s.id==='90')?.colis || getSectorUniversos('90').colis || 0).toLocaleString('pt-BR')}</strong></span>
+                </div>
               </div>
 
-              <div className="bg-[#111118] border border-[#1e1e2a] border-t-2 border-t-orange-500 p-4 rounded-xl relative overflow-hidden shadow-sm">
-                <div className="p-2 rounded-lg bg-orange-500/10 text-orange-400 absolute top-3.5 right-3.5">
-                  <Apple size={16} />
+              {/* CARD 3: REAPRO (REABASTECIMENTO) */}
+              <div className="bg-[#0e1017] border border-[#1e2230] border-t-4 border-t-purple-500 p-4 rounded-xl relative overflow-hidden shadow-md flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                      <Boxes size={15} />
+                      REAPRO (REABASTECIMENTO)
+                    </p>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-bold">
+                      LINHAS ATIVAS
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="text-3xl font-black font-mono text-purple-300 tracking-tight">
+                      {totalReapro.toLocaleString('pt-BR')}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-400 uppercase">caixas reapro</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Alimentação contínua de caixas para o picking
+                  </p>
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Universo Alimento (Total)</p>
-                <p className="text-2xl font-black font-mono text-amber-300 mt-1">{totalAlimento.toLocaleString('pt-BR')}</p>
-                <p className="text-[10px] text-slate-500 mt-1">Volumes de Alimento no CD</p>
+
+                <div className="mt-3 pt-2.5 border-t border-[#1a1c28] flex items-center justify-between text-[10px] font-mono text-slate-400">
+                  <span>S87: <strong className="text-purple-200">{getSectorUniversos('87').reapro || '0 CX'}</strong></span>
+                  <span>S88: <strong className="text-purple-200">{getSectorUniversos('88').reapro || '0 CX'}</strong></span>
+                  <span>S89: <strong className="text-purple-200">{getSectorUniversos('89').reapro || '0 CX'}</strong></span>
+                  <span>S90: <strong className="text-purple-200">{getSectorUniversos('90').reapro || '0 CX'}</strong></span>
+                </div>
               </div>
 
-              <div className="bg-[#111118] border border-[#1e1e2a] border-t-2 border-t-purple-500 p-4 rounded-xl relative overflow-hidden shadow-sm">
-                <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400 absolute top-3.5 right-3.5">
-                  <Mountain size={16} />
+              {/* CARD 4: QUANTO JÁ FOI COLETADO */}
+              <div className="bg-[#0e1017] border border-[#1e2230] border-t-4 border-t-amber-500 p-4 rounded-xl relative overflow-hidden shadow-md flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                      <CheckSquare size={15} />
+                      QUANTO JÁ FOI COLETADO
+                    </p>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-bold">
+                      {lojasColetadasCount}/{totalLojasHoje} LOJAS
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-baseline gap-2">
+                    <span className="text-3xl font-black font-mono text-amber-300 tracking-tight">
+                      {percentualColetado}%
+                    </span>
+                    <span className="text-xs font-semibold text-slate-400 uppercase">concluído</span>
+                  </div>
+
+                  {/* Barra de Progresso Neon */}
+                  <div className="w-full bg-[#050507] h-2.5 rounded-full overflow-hidden border border-[#1e1e2a] p-0.5 mt-2">
+                    <div
+                      className="bg-gradient-to-r from-amber-500 via-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${percentualColetado}%` }}
+                    />
+                  </div>
+
+                  <p className="text-[10.5px] text-slate-400 mt-1.5">
+                    {totalVolumesColetados.toLocaleString('pt-BR')} de {totalVolumesProgramados.toLocaleString('pt-BR')} volumes coletados
+                  </p>
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Universo Montanha (Total)</p>
-                <p className="text-2xl font-black font-mono text-purple-300 mt-1">{totalMontanha.toLocaleString('pt-BR')}</p>
-                <p className="text-[10px] text-slate-500 mt-1">Volumes de Montanha no CD</p>
+
+                <div className="mt-2 pt-2 border-t border-[#1a1c28] flex items-center justify-between text-[10px] font-mono">
+                  <span className="text-emerald-400 font-bold">🟢 {lojasColetadasCount} Coletadas</span>
+                  <span className="text-amber-400 font-bold">🟡 {lojasEmAndamentoCount} Andamento</span>
+                  <span className="text-slate-400 font-bold">⚪ {lojasNaoIniciadasCount} Pendentes</span>
+                </div>
               </div>
             </div>
 
@@ -1310,7 +1969,13 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
                 })}
               </div>
             </div>
+
+            {/* SEÇÃO QUAIS LOJAS PARA ENVIAR HOJE NA VISÃO GERAL TELÃO */}
+            {renderLojasHojeSection(false)}
           </>
+        ) : visaoAtual === 'LOJAS_HOJE' ? (
+          /* VISÃO DEDICADA DE LOJAS PARA ENVIAR HOJE (MODO TV / FOCO EXPEDIÇÃO) */
+          renderLojasHojeSection(true)
         ) : (
           /* VISÃO INDIVIDUAL DE UM SETOR */
           (() => {

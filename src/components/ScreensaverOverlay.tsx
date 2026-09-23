@@ -1,5 +1,8 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Setor } from "../types";
+import { Activity, Package, Boxes, Truck, CheckSquare } from "lucide-react";
+import { useStoreOperations } from "../stores/useStoreOperations";
+import { useSectorStore, resolveSectorMetrics } from "../stores/useSectorStore";
 
 interface ScreensaverOverlayProps {
   isScreensaverActive: boolean;
@@ -16,6 +19,43 @@ export const ScreensaverOverlay: React.FC<ScreensaverOverlayProps> = ({
   timeState,
   currentUser,
 }) => {
+  // Store operations data
+  const operationsMap = useStoreOperations((s) => s.operations);
+  const sectorStoreSectors = useSectorStore((s) => s.setores);
+
+  const effectiveSetores = useMemo(() => {
+    return sectorStoreSectors.map((s) => resolveSectorMetrics(s));
+  }, [sectorStoreSectors]);
+
+  const allOperations = useMemo(() => Object.values(operationsMap), [operationsMap]);
+  const totalLojasHoje = allOperations.length;
+  const lojasColetadas = allOperations.filter((o) => o.statusColeta === "Coletada").length;
+  const lojasEmAndamento = allOperations.filter((o) => o.statusColeta === "Em andamento").length;
+
+  const totalVolumesProgramados = allOperations.reduce((acc, o) => acc + (o.volumes || 250), 0);
+  const totalVolumesColetados = allOperations.reduce((acc, o) => {
+    const v = o.volumes || 250;
+    if (o.statusColeta === "Coletada") return acc + v;
+    if (o.statusColeta === "Em andamento") return acc + Math.round(v * 0.5);
+    return acc;
+  }, 0);
+
+  const percentualColetado = totalVolumesProgramados > 0
+    ? Math.round((totalVolumesColetados / totalVolumesProgramados) * 100)
+    : 0;
+
+  const totalAtividade = useMemo(() => {
+    return effectiveSetores.reduce((acc, s) => acc + (s.ativ || 0), 0);
+  }, [effectiveSetores]);
+
+  const totalColis = useMemo(() => {
+    return effectiveSetores.reduce((acc, s) => acc + (s.colis || 0), 0);
+  }, [effectiveSetores]);
+
+  const totalReapro = useMemo(() => {
+    return effectiveSetores.reduce((acc, s) => acc + (s.reproTotal || 0), 0);
+  }, [effectiveSetores]);
+
   if (!isScreensaverActive) return null;
 
   // Safe retrieve of 4 main sectors
@@ -196,6 +236,76 @@ export const ScreensaverOverlay: React.FC<ScreensaverOverlayProps> = ({
           </div>
         </div>
       </header>
+
+      {/* 5 HERO METRICS BANNER • MODO TV (ATIVIDADE, COLIS, REAPRO, LOJAS HOJE, COLETADO) */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 relative z-10">
+        {/* ATIVIDADE */}
+        <div className="bg-zinc-950/70 border border-emerald-500/30 border-l-4 border-l-emerald-500 rounded-xl p-3 shadow-md">
+          <div className="flex items-center justify-between text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+            <span className="flex items-center gap-1.5"><Activity size={13} /> ATIVIDADE</span>
+            <span className="font-mono text-zinc-500">CD</span>
+          </div>
+          <div className="text-xl md:text-2xl font-black font-mono text-white mt-1">
+            {totalAtividade.toLocaleString("pt-BR")}
+          </div>
+          <p className="text-[9.5px] text-zinc-400 mt-0.5">Unidades processadas hoje</p>
+        </div>
+
+        {/* QUANTIDADE COLIS */}
+        <div className="bg-zinc-950/70 border border-cyan-500/30 border-l-4 border-l-cyan-500 rounded-xl p-3 shadow-md">
+          <div className="flex items-center justify-between text-cyan-400 text-[10px] font-bold uppercase tracking-wider">
+            <span className="flex items-center gap-1.5"><Package size={13} /> QUANTIDADE COLIS</span>
+            <span className="font-mono text-zinc-500">TOTAL</span>
+          </div>
+          <div className="text-xl md:text-2xl font-black font-mono text-cyan-300 mt-1">
+            {totalColis.toLocaleString("pt-BR")}
+          </div>
+          <p className="text-[9.5px] text-zinc-400 mt-0.5">Colis consolidados no CD</p>
+        </div>
+
+        {/* REAPRO */}
+        <div className="bg-zinc-950/70 border border-purple-500/30 border-l-4 border-l-purple-500 rounded-xl p-3 shadow-md">
+          <div className="flex items-center justify-between text-purple-400 text-[10px] font-bold uppercase tracking-wider">
+            <span className="flex items-center gap-1.5"><Boxes size={13} /> REAPRO</span>
+            <span className="font-mono text-zinc-500">LINHAS</span>
+          </div>
+          <div className="text-xl md:text-2xl font-black font-mono text-purple-300 mt-1">
+            {totalReapro.toLocaleString("pt-BR")}
+          </div>
+          <p className="text-[9.5px] text-zinc-400 mt-0.5">Caixas em reabastecimento</p>
+        </div>
+
+        {/* QUAIS LOJAS PARA ENVIAR HOJE */}
+        <div className="bg-zinc-950/70 border border-blue-500/30 border-l-4 border-l-blue-500 rounded-xl p-3 shadow-md">
+          <div className="flex items-center justify-between text-blue-400 text-[10px] font-bold uppercase tracking-wider">
+            <span className="flex items-center gap-1.5"><Truck size={13} /> LOJAS PARA ENVIAR</span>
+            <span className="font-mono text-zinc-500">HOJE</span>
+          </div>
+          <div className="text-xl md:text-2xl font-black font-mono text-white mt-1">
+            {totalLojasHoje} <span className="text-xs font-sans text-zinc-400 font-normal">lojas</span>
+          </div>
+          <p className="text-[9.5px] text-zinc-400 mt-0.5">
+            {lojasColetadas} coletadas • {lojasEmAndamento} em andamento
+          </p>
+        </div>
+
+        {/* QUANTO JÁ FOI COLETADO */}
+        <div className="bg-zinc-950/70 border border-amber-500/30 border-l-4 border-l-amber-500 rounded-xl p-3 shadow-md col-span-2 md:col-span-1">
+          <div className="flex items-center justify-between text-amber-400 text-[10px] font-bold uppercase tracking-wider">
+            <span className="flex items-center gap-1.5"><CheckSquare size={13} /> QUANTO COLETADO</span>
+            <span className="font-mono text-amber-300 font-bold">{percentualColetado}%</span>
+          </div>
+          <div className="w-full bg-black/60 h-2 rounded-full overflow-hidden border border-white/5 my-1.5">
+            <div
+              className="bg-gradient-to-r from-amber-500 to-emerald-400 h-full rounded-full transition-all duration-500"
+              style={{ width: `${percentualColetado}%` }}
+            />
+          </div>
+          <p className="text-[9.5px] text-zinc-400 font-mono">
+            {totalVolumesColetados.toLocaleString("pt-BR")}/{totalVolumesProgramados.toLocaleString("pt-BR")} vols
+          </p>
+        </div>
+      </div>
 
       {/* GRID OF 4 SECTORS (2x2) */}
       <main className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 h-[calc(100vh-160px)] overflow-y-auto mb-4 relative z-10">

@@ -39,6 +39,7 @@ export class ConexoesService {
             uph: m.uph,
             promessa: m.promessa ?? 100,
             bsi: m.bsi ?? 100,
+            errosPicking: m.errosPicking ?? 0,
             erros: m.errosPicking ?? 0,
             reproTotal: m.caixasDisponiveis ?? null,
             caixasReapro: m.caixasDisponiveis ?? null,
@@ -102,13 +103,20 @@ export class ConexoesService {
         if (bdResult.data && bdResult.data.length > 0) {
           const storeMaster = useStoreMaster.getState();
           for (const item of bdResult.data) {
-            if (item.loja) {
+            const raw = item as Record<string, unknown>;
+            const codLoja = String(raw['Cod Loja'] ?? raw['loja'] ?? raw['id'] ?? '').trim();
+            if (codLoja) {
+              const nome = String(raw['Nome da Loja'] ?? raw['nome'] ?? `Loja ${codLoja}`).trim();
+              const cidade = String(raw['Cidade'] ?? raw['cidade'] ?? 'Campinas').trim();
+              const uf = String(raw['UF'] ?? raw['uf'] ?? 'SP').trim().toUpperCase();
+              const transportadoraPadrao = String(raw['Transportadora Padrao'] ?? raw['transportadora'] ?? 'JADLOG').trim();
+
               await storeMaster.addStore({
-                id: String(item.loja),
-                nome: item.nome || `Loja ${item.loja}`,
-                cidade: item.cidade || 'Campinas',
-                uf: (item.uf as any) || 'SP',
-                transportadoraPadrao: item.transportadora || 'JADLOG',
+                id: codLoja,
+                nome,
+                cidade,
+                uf: uf as any,
+                transportadoraPadrao,
                 observacoes: 'Sincronizado via ConexoesService'
               });
               storesCount++;
