@@ -130,15 +130,29 @@ export const ConsolidationPanel: React.FC<ConsolidationPanelProps> = ({
     }
     setExporting(true);
     try {
-      const ok = await exportarPlanilhaOrganizada(googleSheetsService, spreadsheetId, consolidados);
-      addToast({
-        title: ok ? "✅ Exportado" : "⚠️ Falha parcial",
-        message: ok
-          ? `Planilha atualizada com ${consolidados.length} dias em 3 abas organizadas.`
-          : "Verifique o ID da planilha e as permissões.",
-        type: ok ? "success" : "warning",
-        duration: 5000,
-      });
+      const result = await exportarPlanilhaOrganizada(googleSheetsService, spreadsheetId, consolidados);
+      if (result.success) {
+        addToast({
+          title: "✅ Exportado",
+          message: `Planilha atualizada com ${consolidados.length} dias em 3 abas organizadas.`,
+          type: "success",
+          duration: 5000,
+        });
+      } else if (result.status === 401) {
+        addToast({
+          title: "🔑 Reautenticação necessária",
+          message: "Sua sessão do Google Sheets expirou. Por favor, conecte novamente.",
+          type: "danger",
+          duration: 8000,
+        });
+      } else {
+        addToast({
+          title: "⚠️ Falha na exportação",
+          message: result.error || "Verifique o ID da planilha e as permissões.",
+          type: "warning",
+          duration: 5000,
+        });
+      }
     } catch {
       addToast({
         title: "❌ Erro de exportação",

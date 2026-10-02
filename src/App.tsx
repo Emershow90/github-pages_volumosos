@@ -61,6 +61,7 @@ import { useCollaboratorStore } from "./stores/useCollaboratorStore";
 import { useUIStore } from "./stores/useUIStore";
 import { useNotificationStore } from "./stores/useNotificationStore";
 import { realtimeSync } from "./services/realtimeSyncService";
+import { useGembaStore } from "./stores/useGembaStore";
 import { SupabaseService } from "./lib/supabaseService";
 import { StoreService } from "./services/storeService";
 import { googleSheetsService } from "./services/googleSheetsService";
@@ -310,7 +311,7 @@ function App() {
     realtimeSync.startListeningAudit();
     realtimeSync.startListeningActivityEntries();
     realtimeSync.startListeningPainelProducao();
-    realtimeSync.startListeningOverrides();
+    googleSheetsService.fetchAndSyncGembaBoard();
 
     return () => {
       realtimeSync.stopAll();

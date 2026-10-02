@@ -65,6 +65,7 @@ export const GembaBoard: React.FC = () => {
     setSearchQuery,
     setShowArchived,
     loadCards,
+    importPublicCards,
     addCard,
     updateCard,
     archiveCard,
@@ -79,6 +80,18 @@ export const GembaBoard: React.FC = () => {
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'kanban' | 'grid'>('kanban');
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+
+  const handleImportSheet = async () => {
+    setIsSyncingSheets(true);
+    try {
+      await importPublicCards();
+      toast.success('Dados importados com sucesso!');
+    } catch (err) {
+      toast.error('Erro na importação.');
+    } finally {
+      setIsSyncingSheets(false);
+    }
+  };
 
   const handleSyncPlanilhaMestre = async () => {
     setIsSyncingSheets(true);
@@ -612,6 +625,17 @@ export const GembaBoard: React.FC = () => {
           {/* Action Buttons */}
           <div className="flex items-center gap-2.5 flex-wrap">
             <button
+              id="btn-import-gemba-sheets"
+              onClick={handleImportSheet}
+              disabled={isSyncingSheets}
+              className="px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 border border-cyan-500/30 text-xs font-semibold text-cyan-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Importar cards da planilha Gemba Pública"
+            >
+              <FileSpreadsheet size={15} className={isSyncingSheets ? 'animate-spin' : 'text-cyan-400'} />
+              <span>{isSyncingSheets ? 'Importando...' : 'Importar da Planilha'}</span>
+            </button>
+
+            <button
               id="btn-sync-gemba-sheets"
               onClick={handleSyncPlanilhaMestre}
               disabled={isSyncingSheets}
@@ -619,7 +643,7 @@ export const GembaBoard: React.FC = () => {
               title="Conectar e sincronizar na Planilha Mestre Oficial (Aba Gemba)"
             >
               <FileSpreadsheet size={15} className={isSyncingSheets ? 'animate-spin' : 'text-emerald-400'} />
-              <span>{isSyncingSheets ? 'Sincronizando...' : 'Conectar Planilha (Aba Gemba)'}</span>
+              <span>{isSyncingSheets ? 'Sincronizando...' : 'Sincronizar Planilha Mestre'}</span>
             </button>
 
             <button

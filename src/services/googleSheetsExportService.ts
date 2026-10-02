@@ -2,8 +2,8 @@ import { Setor, Colaborador, ReaproData, HistoricoRegistro, CapacidadeSetor } fr
 import { GembaCard } from '../types/GembaCard';
 import { useGembaStore } from '../stores/useGembaStore';
 
-const CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || '75894189562-7moh2aqmsh8e6s42ukpvh895ag82jkn0.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const CLIENT_ID = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
+const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets.readonly';
 const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
 
 let tokenClient: google.accounts.oauth2.TokenClient | null = null;

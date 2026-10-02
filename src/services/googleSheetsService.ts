@@ -61,18 +61,26 @@ export class GoogleSheetsService {
   }: {
     spreadsheetId: string;
     sheets: { title: string; header: string[]; rows: any[][] }[];
-  }): Promise<boolean> {
+  }): Promise<{ success: boolean; error?: string; status?: number }> {
     console.log(`[GoogleSheetsService] Exportando ${sheets.length} abas para planilha ${spreadsheetId}...`);
     try {
       // Simula operação com timeout seguro
       await new Promise((resolve) => setTimeout(resolve, 1200));
+      
+      // Simulação de erro 401 para teste de reconexão
+      // throw { status: 401, message: 'Unauthorized' };
+
       for (const sheet of sheets) {
         console.log(`[GoogleSheetsService] Aba '${sheet.title}': ${sheet.rows.length} linhas exportadas.`);
       }
-      return true;
-    } catch (err) {
+      return { success: true };
+    } catch (err: any) {
       console.error("[GoogleSheetsService] exportMultiSheet failed:", err);
-      return false;
+      return { 
+        success: false, 
+        error: err.message || 'Erro desconhecido', 
+        status: err.status 
+      };
     }
   }
 
@@ -93,6 +101,104 @@ export class GoogleSheetsService {
         lastSync: "Ontem, 23:59"
       }
     ];
+  }
+
+  /**
+   * Busca e sincroniza os dados da planilha Gemba pública com o GembaBoard/Supabase.
+   * Utiliza o padrão unificado 'fetch-and-sync' com verificação de duplicidade.
+   */
+  async fetchAndSyncGembaBoard(): Promise<{ success: boolean; count: number; error?: string }> {
+    const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTy_lfMaDqE48mRuMZJ_nBP2R4qbDG7wYEA3vtIeHOhMTTxjYHPZzGPcJrWvaIokP0EaRrMGf_1UoP2/pub?output=csv';
+    console.log(`[GoogleSheetsService] Iniciando fetch-and-sync da planilha pública de Gemba...`);
+    
+    try {
+      const response = await fetch(url, { redirect: 'follow' });
+      if (!response.ok) {
+        throw new Error(`Falha ao carregar a planilha: status ${response.status}`);
+      }
+      
+      const text = await response.text();
+      const lines = text.split(/\r?\n/);
+      let count = 0;
+      
+      // Carrega a store para obter cartões existentes
+      const { useGembaStore } = await import('../stores/useGembaStore');
+      const store = useGembaStore.getState();
+      const existingCards = store.cards;
+
+      // Função auxiliar local para tratar CSV robustamente
+      const parseCsvLineLocal = (line: string): string[] => {
+        let str = line.trim();
+        if (str.startsWith('"') && str.endsWith('"')) {
+          str = str.slice(1, -1);
+        }
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < str.length; i++) {
+          const char = str[i];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        result.push(current.trim());
+        return result;
+      };
+
+      for (let i = 5; i < lines.length; i++) {
+        const rawLine = lines[i].trim();
+        if (!rawLine) continue;
+
+        const cols = parseCsvLineLocal(rawLine);
+        if (cols.length < 6) continue;
+
+        // Limpa as colunas (removendo aspas, se houver)
+        const cleanCols = cols.map(c => c.replace(/^"|"$/g, '').trim());
+        const [categoria, descricao, acoes, responsavel, data_alvo, status] = cleanCols;
+
+        // Pula se for cabeçalho ou vazio
+        if (!categoria || categoria.toLowerCase() === 'categoria') continue;
+        if (!descricao) continue;
+
+        // Limpeza de hífens iniciais das strings (vêm da formatação em listas)
+        const cleanDesc = descricao.replace(/^-\s*/, '').trim();
+        const cleanAcoes = acoes.replace(/^-\s*/, '').trim();
+        const cleanResp = responsavel.replace(/^-\s*/, '').trim();
+
+        // Evita duplicidade baseado em categoria e descrição
+        const isDuplicate = existingCards.some(
+          (c) => c.categoria.toLowerCase() === categoria.toLowerCase() && 
+                 c.descricao.toLowerCase() === cleanDesc.toLowerCase()
+        );
+
+        if (!isDuplicate) {
+          const mappedCard = {
+            categoria: categoria.toUpperCase(),
+            descricao: cleanDesc,
+            acoes: cleanAcoes,
+            responsavel: cleanResp || 'Não atribuído',
+            data_alvo: data_alvo || new Date().toISOString().split('T')[0],
+            status: (status && status.toLowerCase() === 'concluído') ? 'CONCLUÍDO' : 'EM CURSO',
+            identificador: 'Setor 87', // Padrão
+            arquivado: false,
+          };
+          
+          await store.addCard(mappedCard as any);
+          count++;
+        }
+      }
+      
+      console.log(`[GoogleSheetsService] Sincronização Gemba concluída. ${count} novos cartões importados.`);
+      return { success: true, count };
+    } catch (err: any) {
+      console.error("[GoogleSheetsService] Erro ao sincronizar Gemba:", err);
+      return { success: false, count: 0, error: err.message || String(err) };
+    }
   }
 }
 

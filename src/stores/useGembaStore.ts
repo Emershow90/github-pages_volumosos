@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { GembaCard } from '../types/GembaCard';
 import { SupabaseService } from '../lib/supabaseService';
 import { IndexedDBService } from '../lib/indexedDb';
+import { fetchGembaBoardSheet } from '../lib/googleSheetsPublicSource';
 
 export const INITIAL_GEMBA_CARDS: GembaCard[] = [
   {
@@ -83,6 +84,7 @@ interface GembaStoreState {
   updateCard: (id: string, updates: Partial<GembaCard>) => Promise<void>;
   archiveCard: (id: string, arquivado?: boolean) => Promise<void>;
   deleteCard: (id: string) => Promise<void>;
+  importPublicCards: () => Promise<void>;
   subscribeToUpdates: () => () => void;
 }
 
@@ -122,6 +124,31 @@ export const useGembaStore = create<GembaStoreState>((set, get) => ({
           set({ cards: cached });
         }
       } catch {}
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  importPublicCards: async () => {
+    set({ loading: true });
+    try {
+      const cards = await fetchGembaBoardSheet();
+      const existingCards = get().cards;
+
+      for (const card of cards) {
+        if (card.categoria && card.descricao) {
+          // Verifica duplicidade básica baseada em categoria e descrição
+          const isDuplicate = existingCards.some(
+            (c) => c.categoria === card.categoria && c.descricao === card.descricao
+          );
+
+          if (!isDuplicate) {
+            await get().addCard(card as any);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[useGembaStore] Erro ao importar planilha pública:', err);
     } finally {
       set({ loading: false });
     }

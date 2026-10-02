@@ -1,4 +1,5 @@
 import { IndexedDBService } from './indexedDb';
+import { GembaCard } from '../types/GembaCard';
 
 export interface SectorPublicMetrics {
   atividadeTotal: number | null;
@@ -22,8 +23,53 @@ export interface PlanoCarregamentoRow {
 // Planilha Específica de Atividade Total (Controladoria - Atividades por Setor)
 export const ATIVIDADE_TOTAL_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRTghosKUGfdajRIIBogZzdYcxh6G4Yrj6zIHojZFw8zHWoQiGAwz3VvNNr4zTiJWe3VeNOzFsE0dOT/pub?output=csv';
 
+// URL da Gemba Board Pública
+export const GEMBA_BOARD_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTy_lfMaDqE48mRuMZJ_nBP2R4qbDG7wYEA3vtIeHOhMTTxjYHPZzGPcJrWvaIokP0EaRrMGf_1UoP2/pub?output=csv';
+
 // Planilha Específica do Plano de Carregamento (Logística - Programação de Carga)
 export const PLANO_CARREGAMENTO_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRSKeTmdIKZi0AAngskuSuKETelAONFje78J34WhbYErMYNKAi9N6oyfuciyL_l4PeCnocGDhrckxqm/pub?gid=1141245157&single=true&output=csv';
+
+/**
+ * Busca e mapeia a planilha pública de Gemba Board para objetos GembaCard.
+ */
+export async function fetchGembaBoardSheet(): Promise<Partial<GembaCard>[]> {
+  try {
+    const response = await fetch(GEMBA_BOARD_SHEET_URL, { redirect: 'follow' });
+    if (!response.ok) return [];
+    const text = await response.text();
+    const lines = text.split(/\r?\n/);
+    const result: Partial<GembaCard>[] = [];
+
+    // O header começa na linha 5 (índice 4 no array de linhas, dependendo do CSV)
+    // Vamos iterar procurando dados válidos (linhas com Categoria preenchida)
+    for (let i = 5; i < lines.length; i++) {
+      const rawLine = lines[i].trim();
+      if (!rawLine) continue;
+
+      const cols = parseCsvLine(rawLine);
+      if (cols.length < 6) continue;
+
+      const [categoria, descricao, acoes, responsavel, data_alvo, status] = cols;
+      if (!categoria || categoria === 'Categoria') continue;
+
+      result.push({
+        categoria: categoria.toUpperCase(),
+        descricao: descricao.startsWith('-') ? descricao.slice(1).trim() : descricao.trim(),
+        acoes: acoes.startsWith('-') ? acoes.slice(1).trim() : acoes.trim(),
+        responsavel: responsavel.startsWith('-') ? responsavel.slice(1).trim() : responsavel.trim(),
+        data_alvo: data_alvo || new Date().toISOString().split('T')[0],
+        status: status === 'Concluído' ? 'CONCLUÍDO' : 'EM CURSO',
+        identificador: 'Setor 87', // Default, já que não está explícito na planilha
+        arquivado: false,
+      });
+    }
+    return result;
+  } catch (err) {
+    console.error('[googleSheetsPublicSource] Erro ao buscar Gemba Board sheet:', err);
+    return [];
+  }
+}
+
 
 const ATIVIDADE_SHEET_CSV_URLS = [
   ATIVIDADE_TOTAL_SHEET_URL,

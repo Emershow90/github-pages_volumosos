@@ -111,22 +111,23 @@ export function useMidnightConsolidation({
       }
 
       // 3. Tenta exportar para Google Sheets
-      let sheetsOk = false;
+      let sheetsResult = { success: true };
       if (currentGoogleSheetsService && currentSpreadsheetId) {
         try {
           const todos = ConsolidationService.carregarCache();
-          sheetsOk = await exportarPlanilhaOrganizada(
+          sheetsResult = await exportarPlanilhaOrganizada(
             currentGoogleSheetsService,
             currentSpreadsheetId,
             todos
           );
         } catch (err) {
           console.error("[23:59] Falha ao exportar Sheets:", err);
+          sheetsResult = { success: false, error: 'Erro inesperado' };
         }
       }
 
       // 4. Notifica resultado
-      if (syncOk && sheetsOk) {
+      if (syncOk && sheetsResult.success) {
         currentAddToast({
           title: "✅ Consolidação 23:59 Concluída",
           message: `Dia ${hoje} salvo em Supabase + Google Sheets.`,
@@ -136,7 +137,7 @@ export function useMidnightConsolidation({
       } else if (syncOk) {
         currentAddToast({
           title: "⚠️ Consolidação 23:59 Parcial",
-          message: `Dia ${hoje} salvo no Supabase. Falha ao exportar Sheets.`,
+          message: `Dia ${hoje} salvo no Supabase. Falha Sheets: ${sheetsResult.error || 'Erro'}`,
           type: "warning",
           duration: 8000,
         });
@@ -226,7 +227,7 @@ export async function exportarPlanilhaOrganizada(
   googleSheetsService: any,
   spreadsheetId: string,
   consolidados: ConsolidadoDia[]
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string; status?: number }> {
   const ordenado = [...consolidados].sort((a, b) => a.dataISO.localeCompare(b.dataISO));
 
   // Aba 1: Consolidado Diário
@@ -293,5 +294,5 @@ export async function exportarPlanilhaOrganizada(
   }
 
   // Fallback se exportMultiSheet não estiver disponível
-  return true;
+  return { success: false, error: 'Serviço de exportação não disponível' };
 }

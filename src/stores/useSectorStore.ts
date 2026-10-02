@@ -15,23 +15,6 @@ import {
 
 const OVERRIDES_STORAGE_KEY = 'torre_overrides_v1';
 
-function getLocalCachedOverrides(): Record<string, SectorOverrideValues> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(OVERRIDES_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveLocalCachedOverrides(cache: Record<string, SectorOverrideValues>): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(cache));
-  } catch {}
-}
-
 /**
  * Função pura que calcula os valores finais do setor respeitando a hierarquia:
  * Valor Final = Override ?? Valor Sugerido da Planilha ?? Valor Baseline
@@ -194,19 +177,16 @@ export interface SectorStoreState {
   ) => Promise<void>;
 }
 
-function getInitialSetoresWithCachedOverrides(): Setor[] {
-  const cached = getLocalCachedOverrides();
+function getInitialSetoresWithResolvedOverrides(): Setor[] {
   return initialSetores.map((s) => {
-    const ov = cached[s.id] || cached[String(s.numero)] || s.overrides;
     return resolveSectorMetrics({
-      ...s,
-      overrides: ov ? { ...(s.overrides || {}), ...ov } : s.overrides
+      ...s
     });
   });
 }
 
 export const useSectorStore = create<SectorStoreState>((set, get) => ({
-  setores: getInitialSetoresWithCachedOverrides(),
+  setores: [],
   capacidade: initialCapacidade,
   referentesSemana: initialReferentesSemana || [],
   universos: initialUniversos,
@@ -218,21 +198,15 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
 
   setSetores: (val) => set((state) => {
     const rawList = typeof val === 'function' ? val(state.setores) : val;
-    const cachedOverrides = getLocalCachedOverrides();
 
     const mergedList = rawList.map((incoming) => {
       const current = state.setores.find(
         (s) => s.id === incoming.id || String(s.numero) === String(incoming.id)
       );
 
-      const cached = cachedOverrides[incoming.id] || cachedOverrides[String(incoming.numero)];
-
-      // Preserva overrides existentes se a carga externa vier sem o campo
-      const incomingOverrides = incoming.overrides;
-      const currentOverrides = current?.overrides;
-      const finalOverrides = (incomingOverrides && Object.keys(incomingOverrides).length > 0)
-        ? { ...(cached || {}), ...(currentOverrides || {}), ...incomingOverrides }
-        : { ...(cached || {}), ...(currentOverrides || {}) };
+      // O override já vem persistido no objeto Setor vindo do Supabase.
+      // O Supabase é a fonte da verdade.
+      const finalOverrides = incoming.overrides || current?.overrides || {};
 
       const incomingSuggested = incoming.suggestedMetrics;
       const currentSuggested = current?.suggestedMetrics;
@@ -307,15 +281,9 @@ export const useSectorStore = create<SectorStoreState>((set, get) => ({
       overrides: mergedOverrides
     });
 
-    // 1. Atualização imediata no estado Zustand e Cache Local (sincronização síncrona com o Monitor)
+    // 1. Atualização imediata no estado Zustand (sincronização síncrona com o Monitor)
     set((s) => {
       const nextSetores = s.setores.map(sec => (sec.id === targetSector.id ? updatedSector : sec));
-      try {
-        const cacheMap = getLocalCachedOverrides();
-        cacheMap[targetSector.id] = mergedOverrides;
-        cacheMap[String(targetSector.numero)] = mergedOverrides;
-        saveLocalCachedOverrides(cacheMap);
-      } catch {}
       return { setores: nextSetores };
     });
 
