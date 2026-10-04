@@ -111,7 +111,7 @@ export function useMidnightConsolidation({
       }
 
       // 3. Tenta exportar para Google Sheets
-      let sheetsResult = { success: true };
+      let sheetsResult: { success: boolean; error?: string; status?: number } = { success: true };
       if (currentGoogleSheetsService && currentSpreadsheetId) {
         try {
           const todos = ConsolidationService.carregarCache();

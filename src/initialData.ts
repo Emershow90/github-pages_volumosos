@@ -42,10 +42,6 @@ export const initialSetores: Setor[] = [
     uph: 550,
     colis: 1500,
     tipoOperacao: 'CAIXAS',
-    fonteAtividade: 'monitor_setores_ativos',
-    fonteColis: 'kpi_semana',
-    exibirCaixas: true,
-    exibirReposicaoCaixas: true,
   },
   {
     id: "88",
@@ -70,10 +66,6 @@ export const initialSetores: Setor[] = [
     uph: 450,
     colis: 1200,
     tipoOperacao: 'VOLUMOSOS',
-    fonteAtividade: 'atividade_h3',
-    fonteColis: 'sistema',
-    exibirCaixas: false,
-    exibirReposicaoCaixas: false,
   },
   {
     id: "89",
@@ -98,10 +90,6 @@ export const initialSetores: Setor[] = [
     uph: 300,
     colis: 84,
     tipoOperacao: 'PADRAO',
-    fonteAtividade: 'monitor_setores_ativos',
-    fonteColis: 'sistema',
-    exibirCaixas: false,
-    exibirReposicaoCaixas: false,
   },
   {
     id: "90",
@@ -126,10 +114,6 @@ export const initialSetores: Setor[] = [
     uph: 450,
     colis: 591,
     tipoOperacao: 'PADRAO',
-    fonteAtividade: 'monitor_setores_ativos',
-    fonteColis: 'sistema',
-    exibirCaixas: false,
-    exibirReposicaoCaixas: false,
   },
   {
     id: "ELOG",
@@ -154,10 +138,6 @@ export const initialSetores: Setor[] = [
     uph: 40,
     colis: 0,
     tipoOperacao: 'PADRAO',
-    fonteAtividade: 'monitor_setores_ativos',
-    fonteColis: 'sistema',
-    exibirCaixas: false,
-    exibirReposicaoCaixas: false,
   },
 ];
 
