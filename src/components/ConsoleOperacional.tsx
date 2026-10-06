@@ -1542,7 +1542,7 @@ export const ConsoleOperacional: React.FC<ConsoleOperacionalProps> = ({
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={refreshStrategy}
+                      onClick={() => { refreshStrategy(); }}
                       disabled={isStrategyLoading}
                       className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       title="Recalcular com IA"
