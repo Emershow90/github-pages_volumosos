@@ -1,8 +1,7 @@
-import React, { useState } from "react";
+import React from "react";
 import { Setor, UserRole } from "../types";
 import { Bell } from "lucide-react";
 import { OnlineIndicator } from "./OnlineIndicator";
-import ConfirmActionCode from "./ConfirmActionCode";
 
 export interface HeaderBarNotification {
   id: string;
@@ -27,7 +26,7 @@ interface HeaderBarProps {
   supabaseOnline: boolean | null;
   checkingSupabase: boolean;
   verifySupabaseConnection: () => void;
-  handleRoleChange: (role: UserRole) => void;
+  handleRoleChange?: (role: UserRole) => void;
   onLogout: () => Promise<void>;
   addAudit: (user: string, action: string, field: string, nVal: unknown, pVal?: unknown) => void;
   fbUser: unknown;
@@ -47,34 +46,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   supabaseOnline,
   checkingSupabase,
   verifySupabaseConnection,
-  handleRoleChange,
   onLogout,
   addAudit,
   fbUser,
 }) => {
-  const [confirmingAdminRole, setConfirmingAdminRole] = useState(false);
-
-  const onSelectRole = (newRole: UserRole) => {
-    if (newRole === UserRole.Admin && currentRole !== UserRole.Admin) {
-      setConfirmingAdminRole(true);
-      return;
-    }
-    handleRoleChange(newRole);
-  };
-
   return (
     <header className="header border-b border-white/5 bg-[#0b0b0d]/90 backdrop-blur-md sticky top-0 z-[50000] px-4 md:px-6 py-3 flex items-center justify-between">
-      {confirmingAdminRole && (
-        <ConfirmActionCode
-          actionLabel="Promover para Administrador"
-          severity="carmine"
-          onConfirm={() => {
-            handleRoleChange(UserRole.Admin);
-            setConfirmingAdminRole(false);
-          }}
-          onCancel={() => setConfirmingAdminRole(false)}
-        />
-      )}
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center font-black text-white text-base shadow-[0_0_15px_rgba(99,102,241,0.5)]">
           T
@@ -297,17 +274,9 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               {currentRole}
             </p>
           </div>
-          <select
-            id="header-select-role"
-            value={currentRole}
-            onChange={(e) => onSelectRole(e.target.value as UserRole)}
-            className="bg-[#0b0b0d] border border-white/10 rounded px-2 py-0.5 text-[10px] text-zinc-300 font-bold focus:outline-none cursor-pointer"
-          >
-            <option value={UserRole.Guest}>Guest</option>
-            <option value={UserRole.Operador}>Operador</option>
-            <option value={UserRole.Coordenador}>Coordenador</option>
-            <option value={UserRole.Admin}>Admin</option>
-          </select>
+          <div className="px-2 py-0.5 rounded bg-zinc-900 border border-white/10 text-[9px] font-black uppercase tracking-wider text-indigo-400">
+            {currentRole}
+          </div>
           {Boolean(fbUser) && (
             <button
               id="header-btn-logout"
