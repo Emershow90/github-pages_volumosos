@@ -1209,7 +1209,6 @@ function App() {
         supabaseOnline={supabaseOnline}
         checkingSupabase={checkingSupabase}
         verifySupabaseConnection={verifySupabaseConnection}
-        handleRoleChange={handleRoleChange}
         onLogout={logoutUser}
         addAudit={addAudit}
         fbUser={fbUser}
@@ -1242,7 +1241,7 @@ function App() {
             >
               <GargalosTab
                 setores={setores}
-                operacoes={operations}
+                operacoes={Object.values(operations)}
                 onCriarPlanoAcao={(gargalo) => {
                   setSelectedGargaloForPlan(gargalo);
                   setActiveTab("plano_acao");
