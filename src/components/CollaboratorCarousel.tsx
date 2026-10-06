@@ -148,7 +148,9 @@ export const CollaboratorCarousel: React.FC<CollaboratorCarouselProps> = ({ acti
                                 {colab.nome}
                               </h4>
                               {colab.lider && (
-                                <ShieldCheck size={12} className="text-amber-400 shrink-0" title="Líder de Turno" />
+                                <span title="Líder de Turno">
+                                  <ShieldCheck size={12} className="text-amber-400 shrink-0" />
+                                </span>
                               )}
                             </div>
                             <span className="text-[9.5px] text-zinc-500 font-mono block truncate">
